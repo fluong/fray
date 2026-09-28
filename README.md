@@ -56,7 +56,7 @@ the merge gate blocks.
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.2.2
+go install github.com/fluong/fray/cmd/fray@v0.2.3
 
 fray \
   -plan plan.json \
