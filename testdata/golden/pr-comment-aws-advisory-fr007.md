@@ -1,10 +1,10 @@
 Not blocking: 1 new issue
 
-**Secret access widened to the whole project**
-`module.ecs_service.data.aws_iam_policy_document.execution[0]` · module.ecs_service.data.aws_iam_policy_document.execution[0] · medium · elevation of privilege
+**Secret access widened to the whole account**
+`module.ecs_service.data.aws_iam_policy_document.execution[0]` · aws-web-app/main.tf:152 · medium · elevation of privilege
 
-fray-aws-web-app can now read every secret the role can reach, including secrets created
-later. Before this change it could read only the 1 secrets it uses.
+ecs_service can now read every secret the role can reach, including secrets created later.
+Before this change it could read only the 1 secrets it uses.
 
 Fix: scope `GetSecretValue` to the secret ARN in `Resource`, not `"*"`.
 

@@ -74,7 +74,7 @@ func awsLBElement(r planResource, resources []planResource, idx configIndex) *El
 		attrs["public"] = public
 	}
 	return &Element{
-		Name: name, Type: "process", Kind: "load_balancer", Provider: "aws",
+		Name: DisplayName(r.address, name, "load_balancer"), Type: "process", Kind: "load_balancer", Provider: "aws",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
@@ -103,7 +103,7 @@ func awsServiceElement(r planResource, resources []planResource, idx configIndex
 		*warnings = append(*warnings, "ambiguous task definition on "+r.address+"; image not read")
 	}
 	return &Element{
-		Name: name, Type: "process", Kind: "container_service", Provider: "aws",
+		Name: DisplayName(r.address, name, "container_service"), Type: "process", Kind: "container_service", Provider: "aws",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
@@ -124,7 +124,7 @@ func awsDBElement(r planResource, prevent bool) *Element {
 	}
 	setDeletionProtection(attrs, r.values, prevent)
 	return &Element{
-		Name: name, Type: "datastore", Kind: "relational_db", Provider: "aws",
+		Name: DisplayName(r.address, name, "relational_db"), Type: "datastore", Kind: "relational_db", Provider: "aws",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
@@ -170,7 +170,7 @@ func awsBucketElement(r planResource, resources []planResource, idx configIndex,
 		attrs["audit_logging"] = bucketAudit(r, resources, idx)
 	}
 	return &Element{
-		Name: name, Type: "datastore", Kind: "object_storage", Provider: "aws",
+		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "aws",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
@@ -191,7 +191,7 @@ func awsSecretElement(r planResource, resources []planResource, idx configIndex,
 		attrs["deletion_protection"] = true
 	}
 	return &Element{
-		Name: name, Type: "datastore", Kind: "secret_store", Provider: "aws",
+		Name: DisplayName(r.address, name, "secret_store"), Type: "datastore", Kind: "secret_store", Provider: "aws",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,

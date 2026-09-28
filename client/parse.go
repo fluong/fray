@@ -374,7 +374,7 @@ func cloudRunElement(r planResource, invokers []planResource, prevent bool) (*El
 		attrs["public"] = true
 	}
 	return &Element{
-		Name: name, Type: "process", Kind: "container_service", Provider: "gcp",
+		Name: DisplayName(r.address, name, "container_service"), Type: "process", Kind: "container_service", Provider: "gcp",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
@@ -389,7 +389,7 @@ func secretElement(r planResource, audit, prevent bool) *Element {
 	}
 	setDeletionProtection(attrs, r.values, prevent)
 	return &Element{
-		Name: name, Type: "datastore", Kind: "secret_store", Provider: "gcp",
+		Name: DisplayName(r.address, name, "secret_store"), Type: "datastore", Kind: "secret_store", Provider: "gcp",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
@@ -414,7 +414,7 @@ func gcsElement(r planResource, audit *bool, prevent bool) *Element {
 	}
 	setObjectDeletion(attrs, r.values, prevent)
 	return &Element{
-		Name: name, Type: "datastore", Kind: "object_storage", Provider: "gcp",
+		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "gcp",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
@@ -440,7 +440,7 @@ func r2Element(r planResource, resources []planResource, prevent bool) *Element 
 	}
 	setObjectDeletion(attrs, r.values, prevent)
 	return &Element{
-		Name: name, Type: "datastore", Kind: "object_storage", Provider: "cloudflare",
+		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "cloudflare",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,

@@ -3,6 +3,7 @@ package client
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -125,6 +126,49 @@ data "aws_iam_policy_document" "task_exec" {
 	}
 	if loc.Path == "" || loc.Line <= 0 {
 		t.Fatalf("location %+v", loc)
+	}
+}
+
+func TestModuleCallLocation(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "infra")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+module "uploads" {
+  source = "./uploads"
+
+  block_public_acls = false
+}
+
+resource "aws_s3_bucket" "local" {
+  bucket = "local"
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	locs, err := ResourceLocations(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, ok := LookupCauseLocation(locs, "module.uploads.aws_s3_bucket_public_access_block.this[0]", "public_access_blocked")
+	if !ok {
+		t.Fatal("missing module call location")
+	}
+	if call.Line != 5 { // block_public_acls line
+		t.Fatalf("want block_public_acls line, got %s", call)
+	}
+	if strings.Contains(call.Path, ".terraform/modules") {
+		t.Fatalf("vendored path %s", call.Path)
+	}
+	rootCall, ok := LookupLocation(locs, "module.uploads.aws_s3_bucket.this[0]")
+	if !ok {
+		t.Fatal("missing module.uploads call")
+	}
+	if rootCall.Line != 2 {
+		t.Fatalf("module call line %s", rootCall)
 	}
 }
 

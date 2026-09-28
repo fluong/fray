@@ -9,7 +9,7 @@
   "elements": [
     {
       "id": "e269fe54ebe835ad4",
-      "name": "fray-aws-web-app-uploads-",
+      "name": "uploads bucket",
       "type": "datastore",
       "kind": "object_storage",
       "provenance": "iac",
@@ -34,7 +34,7 @@
     },
     {
       "id": "e8373dc70dc3b47e5",
-      "name": "fray-aws-web-app",
+      "name": "alb load balancer",
       "type": "process",
       "kind": "load_balancer",
       "provenance": "iac",
@@ -50,7 +50,7 @@
     },
     {
       "id": "e84ae99cb3fa981eb",
-      "name": "fray-aws-web-app",
+      "name": "ecs_service",
       "type": "process",
       "kind": "container_service",
       "provenance": "iac",
@@ -67,7 +67,7 @@
     },
     {
       "id": "e9eaae993f2e69277",
-      "name": "fray-aws-web-app",
+      "name": "db database",
       "type": "datastore",
       "kind": "relational_db",
       "provenance": "iac",
@@ -85,7 +85,7 @@
     },
     {
       "id": "ea971486d1a0a3baf",
-      "name": "fray-aws-web-app/db-password",
+      "name": "db_password secret",
       "type": "datastore",
       "kind": "secret_store",
       "provenance": "iac",

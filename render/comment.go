@@ -267,7 +267,11 @@ func previouslyMitigated(items []apiv1.Finding, base map[findingKey]apiv1.Findin
 
 func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLocation) string {
 	where := g.cause
-	if loc, ok := client.LookupLocation(locs, g.cause); ok {
+	field := ""
+	if len(rule.Pass) > 0 {
+		field = rule.Pass[0].Field
+	}
+	if loc, ok := client.LookupCauseLocation(locs, g.cause, field); ok {
 		where = loc.String()
 	}
 	return fmt.Sprintf("`%s` · %s · %s · %s", g.cause, where, g.severity(), strideText(rule.Stride))
@@ -476,6 +480,7 @@ func groupReplacements(g causeGroup, byID map[string]client.Element, flows map[s
 		"{cause}":   g.cause,
 		"{count}":   strconv.Itoa(len(g.items)),
 		"{label}":   labelOf(element),
+		"{scope}":   scopeTerm(providerKey(resourceType(g.cause))),
 	}
 	return repl
 }
@@ -494,6 +499,14 @@ func namesOf(els []client.Element, match func(client.Element) bool) []string {
 }
 
 func labelOf(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	// Display names from the parser (e.g. "uploads bucket") are already readable.
+	if strings.Contains(name, " ") {
+		return strings.ToUpper(name[:1]) + name[1:]
+	}
 	if i := strings.IndexByte(name, '-'); i > 0 && i < len(name)-1 {
 		name = name[i+1:]
 	}
@@ -503,6 +516,18 @@ func labelOf(name string) string {
 		return ""
 	}
 	return strings.ToUpper(name[:1]) + name[1:]
+}
+
+// scopeTerm is the provider's word for the tenancy boundary that IAM grants cover.
+func scopeTerm(provider string) string {
+	switch provider {
+	case "aws", "cloudflare":
+		return "account"
+	case "gcp":
+		return "project"
+	default:
+		return "project"
+	}
 }
 
 func fill(tmpl string, repl map[string]string) string {

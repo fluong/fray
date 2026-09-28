@@ -50,7 +50,11 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 			ArtifactLocation: sarifArtifact{URI: "fray.yaml"},
 			Region:           &sarifRegion{StartLine: 1},
 		}
-		if loc, ok := client.LookupLocation(locs, cause); ok && loc.Path != "" {
+		field := ""
+		if len(rule.Pass) > 0 {
+			field = rule.Pass[0].Field
+		}
+		if loc, ok := client.LookupCauseLocation(locs, cause, field); ok && loc.Path != "" {
 			phys.ArtifactLocation.URI = loc.Path
 			if loc.Line > 0 {
 				phys.Region = &sarifRegion{StartLine: loc.Line}

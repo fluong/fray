@@ -28,6 +28,54 @@ func TestPRCommentAWSAdvisoryFR007(t *testing.T) {
 	}
 }
 
+func TestPRCommentGCPAdvisoryFR007(t *testing.T) {
+	doc := client.DFD{
+		Elements: []client.Element{
+			{ID: "e-api", Name: "fray-api", Kind: "container_service", Provider: "gcp"},
+			{
+				ID: "e-secret", Name: "fray-database-url", Kind: "secret_store", Provider: "gcp",
+				Evidence: client.Evidence{Addresses: []string{"google_secret_manager_secret.database_url"}},
+			},
+		},
+		Flows: []client.Flow{{
+			ID: "f-cred", From: "e-secret", To: "e-api", DataClass: "credentials",
+			SecretDelivery: "env", AuthzScope: "project",
+			Causes: map[string]string{"authz_scope": "google_project_iam_member.database_url_accessor"},
+		}},
+	}
+	base := apiv1.Findings{Findings: []apiv1.Finding{{
+		RuleID: "FR-007", Target: "f-cred", Status: "mitigated", Severity: "medium",
+	}}}
+	cur := apiv1.Findings{Findings: []apiv1.Finding{{
+		RuleID: "FR-007", Target: "f-cred", Status: "open", Severity: "medium",
+		Stride: []string{"elevation_of_privilege"},
+	}}}
+	texts := loadTexts(t, filepath.Join("..", "testdata", "fixtures", "rule_texts.json"))
+	dir := t.TempDir()
+	infra := filepath.Join(dir, "infra")
+	if err := os.MkdirAll(infra, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+resource "google_project_iam_member" "database_url_accessor" {
+  role   = "roles/secretmanager.secretAccessor"
+  member = "serviceAccount:run@example.iam.gserviceaccount.com"
+}
+`
+	if err := os.WriteFile(filepath.Join(infra, "main.tf"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	locs, err := client.ResourceLocations(infra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := PRComment(doc, cur, base, texts, locs)
+	want := readGolden(t, filepath.Join("..", "testdata", "golden", "pr-comment-gcp-advisory-fr007.md"))
+	if got != want {
+		t.Fatalf("comment mismatch:\n%s", got)
+	}
+}
+
 func TestPRCommentAWSBlockingHigh(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking.dfd.json"))

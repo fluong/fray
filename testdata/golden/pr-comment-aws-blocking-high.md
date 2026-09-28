@@ -1,9 +1,9 @@
 Blocked: 1 new high-severity issue
 
-**Aws web app uploads made public**
-`module.uploads.aws_s3_bucket_public_access_block.this[0]` · module.uploads.aws_s3_bucket_public_access_block.this[0] · high · information disclosure
+**Uploads bucket made public**
+`module.uploads.aws_s3_bucket_public_access_block.this[0]` · aws-web-app/main.tf:268 · high · information disclosure
 
-fray-aws-web-app-uploads- is public, so anyone who knows an object name can read it.
+uploads bucket is public, so anyone who knows an object name can read it.
 
 Fix: Keep the bucket private. Do not grant public read.
 

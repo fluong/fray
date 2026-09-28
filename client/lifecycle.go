@@ -209,6 +209,7 @@ func indexLocations(out map[string]SourceLocation, root, moduleAddr, dir string)
 	if err != nil {
 		return fmt.Errorf("module %q: %w", dir, err)
 	}
+	vendored := isVendoredPath(root, dir)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tf") {
 			continue
@@ -232,22 +233,53 @@ func indexLocations(out map[string]SourceLocation, root, moduleAddr, dir string)
 		}
 		display := filepath.ToSlash(filepath.Join(filepath.Base(root), rel))
 		for _, block := range body.Blocks {
-			if (block.Type != "resource" && block.Type != "data") || len(block.Labels) != 2 {
-				continue
+			switch {
+			case block.Type == "module" && len(block.Labels) == 1:
+				call := moduleCallKey(moduleAddr, block.Labels[0])
+				line := block.DefRange().Start.Line
+				if line == 0 {
+					line = block.TypeRange.Start.Line
+				}
+				out[call] = SourceLocation{Path: display, Line: line}
+				if block.Body != nil {
+					for name, attr := range block.Body.Attributes {
+						argLine := attr.Expr.Range().Start.Line
+						if argLine == 0 {
+							argLine = attr.NameRange.Start.Line
+						}
+						out[call+"."+name] = SourceLocation{Path: display, Line: argLine}
+					}
+				}
+			case !vendored && (block.Type == "resource" || block.Type == "data") && len(block.Labels) == 2:
+				typ := block.Labels[0]
+				if block.Type == "data" {
+					typ = "data." + typ
+				}
+				addr := resourceAddress(moduleAddr, typ, block.Labels[1])
+				line := block.DefRange().Start.Line
+				if line == 0 {
+					line = block.TypeRange.Start.Line
+				}
+				out[addr] = SourceLocation{Path: display, Line: line}
 			}
-			typ := block.Labels[0]
-			if block.Type == "data" {
-				typ = "data." + typ
-			}
-			addr := resourceAddress(moduleAddr, typ, block.Labels[1])
-			line := block.DefRange().Start.Line
-			if line == 0 {
-				line = block.TypeRange.Start.Line
-			}
-			out[addr] = SourceLocation{Path: display, Line: line}
 		}
 	}
 	return nil
+}
+
+func isVendoredPath(root, dir string) bool {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil {
+		rel = dir
+	}
+	return strings.Contains(filepath.ToSlash(rel), ".terraform/modules/")
+}
+
+func moduleCallKey(parentModuleAddr, name string) string {
+	if parentModuleAddr == "" {
+		return "module." + name
+	}
+	return parentModuleAddr + ".module." + name
 }
 
 func resourceAddress(moduleAddr, typ, name string) string {
@@ -258,16 +290,76 @@ func resourceAddress(moduleAddr, typ, name string) string {
 }
 
 // LookupLocation strips a count or for_each index and returns the block location.
+// Nested module resources resolve to the root module call site, never a path
+// under .terraform/modules.
 func LookupLocation(idx map[string]SourceLocation, address string) (SourceLocation, bool) {
+	return LookupCauseLocation(idx, address, "")
+}
+
+// LookupCauseLocation is LookupLocation, and when field is set it prefers the
+// module input argument that typically controls that attribute.
+func LookupCauseLocation(idx map[string]SourceLocation, address, field string) (SourceLocation, bool) {
 	if idx == nil {
 		return SourceLocation{}, false
+	}
+	if call, ok := rootModuleCall(address); ok {
+		for _, arg := range moduleArgHints(field) {
+			if loc, hit := idx[call+"."+arg]; hit {
+				return loc, true
+			}
+		}
+		if loc, hit := idx[call]; hit {
+			return loc, true
+		}
 	}
 	moduleAddr, typ, name, ok := splitResourceAddress(address)
 	if !ok {
 		return SourceLocation{}, false
 	}
 	loc, ok := idx[resourceAddress(moduleAddr, typ, name)]
-	return loc, ok
+	if !ok || strings.Contains(loc.Path, ".terraform/modules/") {
+		return SourceLocation{}, false
+	}
+	return loc, true
+}
+
+func rootModuleCall(address string) (string, bool) {
+	if !strings.HasPrefix(address, "module.") {
+		return "", false
+	}
+	rest := strings.TrimPrefix(address, "module.")
+	i := 0
+	for i < len(rest) && rest[i] != '.' && rest[i] != '[' {
+		i++
+	}
+	if i == 0 {
+		return "", false
+	}
+	return "module." + rest[:i], true
+}
+
+func moduleArgHints(field string) []string {
+	field = strings.TrimPrefix(field, "attributes.")
+	switch field {
+	case "public_access_blocked", "public":
+		return []string{
+			"block_public_acls",
+			"block_public_policy",
+			"ignore_public_acls",
+			"restrict_public_buckets",
+			"public_access_prevention",
+		}
+	case "authz_scope":
+		return []string{
+			"task_exec_iam_statements",
+			"task_exec_secret_arns",
+			"task_exec_ssm_param_arns",
+			"iam_role_statements",
+			"tasks_iam_role_statements",
+		}
+	default:
+		return nil
+	}
 }
 
 // splitResourceAddress strips count and for_each indexes. The module address
