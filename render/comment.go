@@ -197,24 +197,42 @@ func renderIssues(groups []causeGroup, texts map[string]apiv1.RuleText, byID map
 
 func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, base map[findingKey]apiv1.Finding, accept bool) string {
 	rule := primaryRule(g.items, texts)
+	field := ""
+	if len(rule.Pass) > 0 {
+		field = rule.Pass[0].Field
+	}
+	lost := previouslyMitigated(g.items, base)
 	fix, explanation := remedy(rule, g.cause)
 	if explanation == "" {
 		explanation = rule.Explanation
 	}
-	if rule.Before != "" && previouslyMitigated(g.items, base) {
+	if rule.Before != "" && lost {
 		explanation = strings.TrimSpace(explanation) + " " + strings.TrimSpace(rule.Before)
 	}
 	repl := groupReplacements(g, byID, flows)
+	title := fill(headline(rule), repl)
+	if lost {
+		title = noLongerTitle(title)
+	}
+	mod, hasMod := client.LookupModuleCause(locs, g.cause, field)
+	if hasMod {
+		if named := moduleInputFix(mod.Inputs); named != "" {
+			fix = named
+		}
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "**%s**\n", fill(headline(rule), repl))
-	fmt.Fprintf(&b, "%s\n\n", metaLine(g, rule, locs))
-	fmt.Fprintf(&b, "%s\n\n", wrap(fill(explanation, repl), 90))
+	fmt.Fprintf(&b, "**%s**\n", title)
+	fmt.Fprintf(&b, "%s\n\n", metaLine(g, rule, locs, mod, hasMod))
+	fmt.Fprintf(&b, "%s\n\n", wrap(pluralizeCounts(fill(explanation, repl)), 90))
 	if names := affectedNames(g.items, byID, flows); len(names) > 1 {
 		fmt.Fprintf(&b, "Affected: %s\n\n", strings.Join(names, ", "))
 	}
-	fmt.Fprintf(&b, "%s\n", wrap("Fix: "+fill(fix, repl), 90))
+	fmt.Fprintf(&b, "%s\n", wrap("Fix: "+pluralizeCounts(fill(fix, repl)), 90))
 	if accept {
 		b.WriteString("\n<details><summary>Accept this risk instead</summary>\n\n")
+		if hasMod && g.cause != mod.Call {
+			fmt.Fprintf(&b, "Resource: `%s`\n\n", g.cause)
+		}
 		b.WriteString(mitigationSnippet(g.items, byID, flows))
 		b.WriteString("</details>\n")
 	}
@@ -229,6 +247,27 @@ func headline(r apiv1.RuleText) string {
 		return r.Threat
 	}
 	return r.Title
+}
+
+// noLongerTitle rewrites a control-failure headline when the control was
+// mitigated in the baseline ("does not block" → "no longer blocks").
+func noLongerTitle(title string) string {
+	const old = " does not "
+	if i := strings.Index(title, old); i >= 0 {
+		rest := title[i+len(old):]
+		verb, after, ok := strings.Cut(rest, " ")
+		if !ok {
+			verb, after = rest, ""
+		}
+		if verb != "" && !strings.HasSuffix(verb, "s") {
+			verb += "s"
+		}
+		if after != "" {
+			return title[:i] + " no longer " + verb + " " + after
+		}
+		return title[:i] + " no longer " + verb
+	}
+	return title
 }
 
 func primaryRule(items []apiv1.Finding, texts map[string]apiv1.RuleText) apiv1.RuleText {
@@ -265,7 +304,16 @@ func previouslyMitigated(items []apiv1.Finding, base map[findingKey]apiv1.Findin
 	return true
 }
 
-func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLocation) string {
+func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLocation, mod client.ModuleCause, hasMod bool) string {
+	sev := g.severity()
+	stride := strideText(rule.Stride)
+	if hasMod {
+		where := mod.Location.String()
+		if len(mod.Inputs) > 0 {
+			return fmt.Sprintf("`%s` · %s · %s · %s · %s", mod.Call, formatInputs(mod.Inputs), where, sev, stride)
+		}
+		return fmt.Sprintf("`%s` · %s · %s · %s", mod.Call, where, sev, stride)
+	}
 	where := g.cause
 	field := ""
 	if len(rule.Pass) > 0 {
@@ -274,7 +322,64 @@ func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLo
 	if loc, ok := client.LookupCauseLocation(locs, g.cause, field); ok {
 		where = loc.String()
 	}
-	return fmt.Sprintf("`%s` · %s · %s · %s", g.cause, where, g.severity(), strideText(rule.Stride))
+	return fmt.Sprintf("`%s` · %s · %s · %s", g.cause, where, sev, stride)
+}
+
+func formatInputs(inputs []string) string {
+	parts := make([]string, len(inputs))
+	for i, in := range inputs {
+		parts[i] = "`" + in + "`"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// moduleInputFix builds a fix line from known module inputs and their safe values.
+// An empty result means the caller should keep the rule remediation text.
+func moduleInputFix(inputs []string) string {
+	if len(inputs) == 0 {
+		return ""
+	}
+	byVal := map[string][]string{}
+	var order []string
+	for _, in := range inputs {
+		val, ok := safeModuleInput(in)
+		if !ok {
+			return ""
+		}
+		if _, seen := byVal[val]; !seen {
+			order = append(order, val)
+		}
+		byVal[val] = append(byVal[val], in)
+	}
+	var parts []string
+	for _, val := range order {
+		names := byVal[val]
+		parts = append(parts, "set "+formatInputs(names)+" to "+val)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	out := parts[0]
+	for i := 1; i < len(parts); i++ {
+		out += "; " + parts[i]
+	}
+	if out != "" {
+		out = strings.ToUpper(out[:1]) + out[1:] + "."
+	}
+	return out
+}
+
+func safeModuleInput(name string) (string, bool) {
+	switch name {
+	case "block_public_acls", "block_public_policy", "ignore_public_acls", "restrict_public_buckets":
+		return "true", true
+	case "public_access_prevention":
+		return `"enforced"`, true
+	case "task_exec_iam_statements", "task_exec_secret_arns", "task_exec_ssm_param_arns":
+		return "the secret ARN (not \"*\")", true
+	default:
+		return "", false
+	}
 }
 
 func resourceType(address string) string {
@@ -413,7 +518,7 @@ func mitigationSnippet(items []apiv1.Finding, byID map[string]client.Element, fl
 			fmt.Fprintf(&b, "    address: %s\n", row.address)
 		}
 		b.WriteString("    status: accepted\n")
-		b.WriteString("    reason: reason\n")
+		b.WriteString("    reason: \"<why this risk is acceptable>\"\n")
 	}
 	b.WriteString("```\n")
 	return b.String()
@@ -542,6 +647,16 @@ func fill(tmpl string, repl map[string]string) string {
 		out = strings.ReplaceAll(out, k, v)
 	}
 	return out
+}
+
+// pluralizeCounts turns "1 secrets" into "1 secret" (and the same for a few
+// other known count nouns used in rule copy).
+func pluralizeCounts(s string) string {
+	for _, plural := range []string{"secrets", "buckets", "findings", "issues"} {
+		singular := strings.TrimSuffix(plural, "s")
+		s = strings.ReplaceAll(s, "1 "+plural, "1 "+singular)
+	}
+	return s
 }
 
 type causeGroup struct {

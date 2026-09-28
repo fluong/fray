@@ -157,11 +157,21 @@ resource "aws_s3_bucket" "local" {
 	if !ok {
 		t.Fatal("missing module call location")
 	}
-	if call.Line != 5 { // block_public_acls line
-		t.Fatalf("want block_public_acls line, got %s", call)
+	if call.Line != 2 { // module "uploads" call site
+		t.Fatalf("want module call line, got %s", call)
 	}
 	if strings.Contains(call.Path, ".terraform/modules") {
 		t.Fatalf("vendored path %s", call.Path)
+	}
+	mc, ok := LookupModuleCause(locs, "module.uploads.aws_s3_bucket_public_access_block.this[0]", "public_access_blocked")
+	if !ok {
+		t.Fatal("missing module cause")
+	}
+	if mc.Call != "module.uploads" {
+		t.Fatalf("call %s", mc.Call)
+	}
+	if len(mc.Inputs) != 1 || mc.Inputs[0] != "block_public_acls" {
+		t.Fatalf("inputs %+v", mc.Inputs)
 	}
 	rootCall, ok := LookupLocation(locs, "module.uploads.aws_s3_bucket.this[0]")
 	if !ok {

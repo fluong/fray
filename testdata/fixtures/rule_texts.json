@@ -253,13 +253,13 @@
         "provider": "aws",
         "resource": "aws_iam_policy_document",
         "text": "scope `GetSecretValue` to the secret ARN in `Resource`, not `\"*\"`.",
-        "explanation": "{process} can now read every secret the role can reach, including secrets created later."
+        "explanation": ""
       },
       {
         "provider": "aws",
         "resource": "aws_iam_policy",
         "text": "scope `GetSecretValue` to the secret ARN in `Resource`, not `\"*\"`.",
-        "explanation": "{process} can now read every secret the role can reach, including secrets created later."
+        "explanation": ""
       }
     ],
     "when": [

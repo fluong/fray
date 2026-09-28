@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: fluong/fray@v0.2.1
+      - uses: fluong/fray@v0.2.2
         with:
           api-url: ${{ vars.FRAY_API_URL }}   # required; do not hardcode in the Action repo
           working-directory: infra
@@ -54,7 +54,7 @@ the merge gate blocks.
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.2.1
+go install github.com/fluong/fray/cmd/fray@v0.2.2
 
 fray \
   -plan plan.json \

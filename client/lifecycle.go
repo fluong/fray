@@ -299,18 +299,8 @@ func LookupLocation(idx map[string]SourceLocation, address string) (SourceLocati
 // LookupCauseLocation is LookupLocation, and when field is set it prefers the
 // module input argument that typically controls that attribute.
 func LookupCauseLocation(idx map[string]SourceLocation, address, field string) (SourceLocation, bool) {
-	if idx == nil {
-		return SourceLocation{}, false
-	}
-	if call, ok := rootModuleCall(address); ok {
-		for _, arg := range moduleArgHints(field) {
-			if loc, hit := idx[call+"."+arg]; hit {
-				return loc, true
-			}
-		}
-		if loc, hit := idx[call]; hit {
-			return loc, true
-		}
+	if mc, ok := LookupModuleCause(idx, address, field); ok {
+		return mc.Location, true
 	}
 	moduleAddr, typ, name, ok := splitResourceAddress(address)
 	if !ok {
@@ -321,6 +311,41 @@ func LookupCauseLocation(idx map[string]SourceLocation, address, field string) (
 		return SourceLocation{}, false
 	}
 	return loc, true
+}
+
+// ModuleCause is the root module call that owns a nested resource, with the
+// input arguments that typically control the failed field.
+type ModuleCause struct {
+	Call     string // module.uploads
+	Inputs   []string
+	Location SourceLocation // module call site (not an input line)
+}
+
+// LookupModuleCause resolves a nested module address to its root module call.
+func LookupModuleCause(idx map[string]SourceLocation, address, field string) (ModuleCause, bool) {
+	if idx == nil {
+		return ModuleCause{}, false
+	}
+	call, ok := rootModuleCall(address)
+	if !ok {
+		return ModuleCause{}, false
+	}
+	loc, ok := idx[call]
+	if !ok {
+		return ModuleCause{}, false
+	}
+	var inputs []string
+	for _, arg := range moduleArgHints(field) {
+		if _, hit := idx[call+"."+arg]; hit {
+			inputs = append(inputs, arg)
+			// Secret scope is usually one widening input; prefer the first hit
+			// in hint priority (task_exec_iam_statements before secret_arns).
+			if strings.TrimPrefix(field, "attributes.") == "authz_scope" {
+				break
+			}
+		}
+	}
+	return ModuleCause{Call: call, Inputs: inputs, Location: loc}, true
 }
 
 func rootModuleCall(address string) (string, bool) {
@@ -354,8 +379,6 @@ func moduleArgHints(field string) []string {
 			"task_exec_iam_statements",
 			"task_exec_secret_arns",
 			"task_exec_ssm_param_arns",
-			"iam_role_statements",
-			"tasks_iam_role_statements",
 		}
 	default:
 		return nil
