@@ -98,6 +98,36 @@ func TestResourceLocation(t *testing.T) {
 	}
 }
 
+func TestDataSourceLocation(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "infra")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+data "aws_iam_policy_document" "task_exec" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["*"]
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	locs, err := ResourceLocations(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loc, ok := LookupLocation(locs, "data.aws_iam_policy_document.task_exec[0]")
+	if !ok {
+		t.Fatal("missing data location")
+	}
+	if loc.Path == "" || loc.Line <= 0 {
+		t.Fatalf("location %+v", loc)
+	}
+}
+
 func TestPreventDestroyChildModule(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, ".terraform", "modules", "child")

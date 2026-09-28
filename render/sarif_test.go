@@ -113,7 +113,7 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 	}
 }
 
-func TestSARIFOmitsLocationWhenUnknown(t *testing.T) {
+func TestSARIFFallbackLocationWhenUnknown(t *testing.T) {
 	doc := client.DFD{
 		Elements: []client.Element{{
 			ID:   "e1",
@@ -138,7 +138,16 @@ func TestSARIFOmitsLocationWhenUnknown(t *testing.T) {
 	var docSARIF struct {
 		Runs []struct {
 			Results []struct {
-				Locations []any `json:"locations"`
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+						Region *struct {
+							StartLine int `json:"startLine"`
+						} `json:"region"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
 			} `json:"results"`
 		} `json:"runs"`
 	}
@@ -148,8 +157,15 @@ func TestSARIFOmitsLocationWhenUnknown(t *testing.T) {
 	if len(docSARIF.Runs) != 1 || len(docSARIF.Runs[0].Results) != 1 {
 		t.Fatalf("want one result, got %+v", docSARIF)
 	}
-	if len(docSARIF.Runs[0].Results[0].Locations) != 0 {
-		t.Fatalf("want no locations, got %+v", docSARIF.Runs[0].Results[0].Locations)
+	locs := docSARIF.Runs[0].Results[0].Locations
+	if len(locs) != 1 {
+		t.Fatalf("want one fallback location, got %+v", locs)
+	}
+	if locs[0].PhysicalLocation.ArtifactLocation.URI != "fray.yaml" {
+		t.Fatalf("fallback uri %q", locs[0].PhysicalLocation.ArtifactLocation.URI)
+	}
+	if locs[0].PhysicalLocation.Region == nil || locs[0].PhysicalLocation.Region.StartLine != 1 {
+		t.Fatalf("fallback region %+v", locs[0].PhysicalLocation.Region)
 	}
 }
 

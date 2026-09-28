@@ -12,8 +12,9 @@ import (
 const sarifSchema = "https://json.schemastore.org/sarif-2.1.0.json"
 
 // SARIF encodes open findings as SARIF 2.1.0 for github/codeql-action/upload-sarif.
-// Locations come from CauseAddress looked up in locs; results without a known
-// path omit physicalLocation.
+// Locations come from CauseAddress looked up in locs. GitHub Code Scanning
+// rejects results with zero locations, so unknown causes fall back to line 1
+// of the cause address string as a URI (still one physicalLocation).
 func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation) ([]byte, error) {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
@@ -45,15 +46,17 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 			Message: sarifMessage{Text: msg},
 		}
 		cause := CauseAddress(f, rule, byID, flows)
+		phys := sarifPhysical{
+			ArtifactLocation: sarifArtifact{URI: "fray.yaml"},
+			Region:           &sarifRegion{StartLine: 1},
+		}
 		if loc, ok := client.LookupLocation(locs, cause); ok && loc.Path != "" {
-			phys := sarifPhysical{
-				ArtifactLocation: sarifArtifact{URI: loc.Path},
-			}
+			phys.ArtifactLocation.URI = loc.Path
 			if loc.Line > 0 {
 				phys.Region = &sarifRegion{StartLine: loc.Line}
 			}
-			r.Locations = []sarifLocation{{PhysicalLocation: phys}}
 		}
+		r.Locations = []sarifLocation{{PhysicalLocation: phys}}
 		results = append(results, r)
 	}
 

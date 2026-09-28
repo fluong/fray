@@ -232,10 +232,14 @@ func indexLocations(out map[string]SourceLocation, root, moduleAddr, dir string)
 		}
 		display := filepath.ToSlash(filepath.Join(filepath.Base(root), rel))
 		for _, block := range body.Blocks {
-			if block.Type != "resource" || len(block.Labels) != 2 {
+			if (block.Type != "resource" && block.Type != "data") || len(block.Labels) != 2 {
 				continue
 			}
-			addr := resourceAddress(moduleAddr, block.Labels[0], block.Labels[1])
+			typ := block.Labels[0]
+			if block.Type == "data" {
+				typ = "data." + typ
+			}
+			addr := resourceAddress(moduleAddr, typ, block.Labels[1])
 			line := block.DefRange().Start.Line
 			if line == 0 {
 				line = block.TypeRange.Start.Line
@@ -295,8 +299,10 @@ func splitResourceAddress(addr string) (moduleAddr, typ, name string, ok bool) {
 			return "", "", "", false
 		}
 	}
+	data := false
 	if strings.HasPrefix(rest, "data.") {
-		return "", "", "", false
+		data = true
+		rest = strings.TrimPrefix(rest, "data.")
 	}
 	dot := strings.IndexByte(rest, '.')
 	if dot <= 0 || dot == len(rest)-1 {
@@ -309,6 +315,9 @@ func splitResourceAddress(addr string) (moduleAddr, typ, name string, ok bool) {
 	}
 	if name == "" || strings.Contains(typ, "[") {
 		return "", "", "", false
+	}
+	if data {
+		typ = "data." + typ
 	}
 	if len(mods) > 0 {
 		parts := make([]string, len(mods))
