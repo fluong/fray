@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Install: git config core.hooksPath .githooks
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "gitleaks is required for pre-push (brew install gitleaks)" >&2
+  exit 1
+fi
+
+gitleaks protect --staged --verbose --no-banner
+gitleaks detect --source . --log-opts='--all' --verbose --no-banner
+"$root/scripts/check-internal-identifiers.sh"

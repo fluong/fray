@@ -1,0 +1,31 @@
+name: guardrails
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets-and-denylist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ripgrep
+          curl -sSFL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+
+      - name: gitleaks
+        run: gitleaks detect --source . --log-opts='--all' --verbose --no-banner
+
+      - name: Internal identifier denylist
+        run: |
+          chmod +x scripts/check-internal-identifiers.sh
+          ./scripts/check-internal-identifiers.sh

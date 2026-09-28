@@ -13,6 +13,13 @@ This repository ships:
 Rule evaluation and the hosted service live in a private companion repository.
 The public CLI never ships rules; build with `-remote` against a Fray API.
 
+## Contributing
+
+Copy paths from the private companion into this repo with an **explicit
+allowlist only** — never a bulk `cp -R`. CI and the optional pre-push hook
+(`git config core.hooksPath .githooks`) run gitleaks plus a denylist for
+internal identifiers.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and `testdata/aws-web-app/NOTICE` for the

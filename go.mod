@@ -2,6 +2,9 @@ module github.com/fluong/fray
 
 go 1.22
 
+// v0.1.0 permanently cached on proxy.golang.org with non-public fixtures.
+retract v0.1.0 // contained non-public test fixtures
+
 require (
 	github.com/hashicorp/hcl/v2 v2.23.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
