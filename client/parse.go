@@ -74,12 +74,16 @@ type planResource struct {
 
 type frayConfig struct {
 	SchemaVersion string          `yaml:"schema_version"`
+	Redaction     string          `yaml:"redaction"` // "" = on (default); "off" = plaintext
 	AuditConfig   string          `yaml:"audit_config"`
 	Elements      []frayElement   `yaml:"elements"`
 	Flows         []frayFlow      `yaml:"flows"`
 	Boundaries    []frayBoundary  `yaml:"boundaries"`
 	Annotations   frayAnnotations `yaml:"annotations"`
 }
+
+// RedactionOff reports whether fray.yaml sets redaction: off.
+func (c frayConfig) RedactionOff() bool { return c.Redaction == "off" }
 
 type frayElement struct {
 	Key        string         `yaml:"key"`
@@ -333,7 +337,19 @@ func loadConfig(raw []byte) (frayConfig, error) {
 	if cfg.AuditConfig != "" && cfg.AuditConfig != "owned_by_this_root" {
 		return frayConfig{}, fmt.Errorf("fray.yaml audit_config %q", cfg.AuditConfig)
 	}
+	if cfg.Redaction != "" && cfg.Redaction != "off" {
+		return frayConfig{}, fmt.Errorf("fray.yaml redaction %q (want \"off\" or omit)", cfg.Redaction)
+	}
 	return cfg, nil
+}
+
+// RedactionDisabled reports whether fray.yaml sets redaction: off.
+func RedactionDisabled(config []byte) (bool, error) {
+	cfg, err := loadConfig(config)
+	if err != nil {
+		return false, err
+	}
+	return cfg.RedactionOff(), nil
 }
 
 func cloudRunElement(r planResource, invokers []planResource, prevent bool) (*Element, []string) {

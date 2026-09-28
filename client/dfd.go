@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,10 +13,17 @@ import (
 // this struct order, with map keys sorted, so two parses of the same plan match.
 type DFD struct {
 	SchemaVersion   string     `json:"schema_version"`
+	Redaction       *Redaction `json:"redaction,omitempty"`
 	Source          Source     `json:"source"`
 	Elements        []Element  `json:"elements"`
 	TrustBoundaries []Boundary `json:"trust_boundaries"`
 	Flows           []Flow     `json:"flows"`
+}
+
+// Redaction records the HMAC scheme applied before the DFD left CI.
+type Redaction struct {
+	Scheme         string `json:"scheme"`
+	KeyFingerprint string `json:"key_fingerprint"`
 }
 
 type Source struct {
@@ -27,7 +35,7 @@ type Source struct {
 
 type Element struct {
 	ID         string         `json:"id"`
-	Name       string         `json:"name"`
+	Name       string         `json:"name,omitempty"`
 	Type       string         `json:"type"`
 	Kind       string         `json:"kind"`
 	Provenance string         `json:"provenance"`
@@ -99,14 +107,25 @@ func signalKeys(sigs []Signal) []string {
 	return out
 }
 
-// finalize assigns ids. Until here, flow and boundary references hold each
-// element's canonical key, not its id.
+// finalize assigns ids with plain SHA-256. Until here, flow and boundary
+// references hold each element's canonical key, not its id.
 func finalize(doc *DFD) {
+	finalizeWith(doc, digest)
+}
+
+// finalizeHMAC assigns ids with HMAC-SHA256 under key (redacted DFDs).
+func finalizeHMAC(doc *DFD, key []byte) {
+	finalizeWith(doc, func(prefix, k string) string {
+		return hmacDigest(key, prefix, k)
+	})
+}
+
+func finalizeWith(doc *DFD, idFn func(prefix, key string) string) {
 	keyToID := map[string]string{}
 	for i := range doc.Elements {
 		el := &doc.Elements[i]
 		el.Evidence.Signals = dedupeSignals(el.Evidence.Signals)
-		el.ID = digest("e", el.canonicalKey())
+		el.ID = idFn("e", el.canonicalKey())
 		keyToID[el.canonicalKey()] = el.ID
 	}
 	for i := range doc.TrustBoundaries {
@@ -115,7 +134,7 @@ func finalize(doc *DFD) {
 		b.Outside = translate(b.Outside, keyToID)
 		slices.Sort(b.Inside)
 		slices.Sort(b.Outside)
-		b.ID = digest("b", b.Kind+"\n"+strings.Join(b.Inside, ",")+"\n"+strings.Join(b.Outside, ","))
+		b.ID = idFn("b", b.Kind+"\n"+strings.Join(b.Inside, ",")+"\n"+strings.Join(b.Outside, ","))
 	}
 	for i := range doc.Flows {
 		f := &doc.Flows[i]
@@ -137,7 +156,7 @@ func finalize(doc *DFD) {
 		if f.identityClass != "" {
 			class = f.identityClass
 		}
-		f.ID = digest("f", f.From+"\n"+f.To+"\n"+class)
+		f.ID = idFn("f", f.From+"\n"+f.To+"\n"+class)
 	}
 	slices.SortFunc(doc.Elements, func(a, b Element) int { return strings.Compare(a.ID, b.ID) })
 	slices.SortFunc(doc.TrustBoundaries, func(a, b Boundary) int { return strings.Compare(a.ID, b.ID) })
@@ -180,6 +199,13 @@ func toSet(ids []string) map[string]bool {
 func digest(prefix, key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return prefix + hex.EncodeToString(sum[:])[:16]
+}
+
+func hmacDigest(key []byte, prefix, msg string) string {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(msg))
+	sum := mac.Sum(nil)
+	return prefix + hex.EncodeToString(sum)[:16]
 }
 
 func Marshal(doc DFD) ([]byte, error) {

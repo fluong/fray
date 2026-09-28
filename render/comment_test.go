@@ -145,6 +145,104 @@ func TestPRCommentAWSBlockingHigh(t *testing.T) {
 	}
 }
 
+func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
+	// Redaction changes wire ids only. After mapping findings back, PR comments
+	// must match the unredacted golden output for both AWS scenarios.
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	root := filepath.Join("..", "testdata")
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+
+	cases := []struct {
+		name    string
+		dfd     string
+		cur     string
+		base    string
+		golden  string
+		inject  func(client.DFD)
+		changed map[string][]string
+	}{
+		{
+			name:   "advisory-fr007",
+			dfd:    "aws-advisory.dfd.json",
+			cur:    "aws-advisory-fr007.findings.json",
+			base:   "aws-baseline.findings.json",
+			golden: "pr-comment-aws-advisory-fr007.md",
+			inject: func(doc client.DFD) {
+				injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+			},
+			changed: map[string][]string{"module.ecs_service": {"task_exec_secret_arns"}},
+		},
+		{
+			name:   "blocking-high",
+			dfd:    "aws-blocking.dfd.json",
+			cur:    "aws-blocking-high.findings.json",
+			base:   "aws-baseline.findings.json",
+			golden: "pr-comment-aws-blocking-high.md",
+			inject: func(doc client.DFD) {
+				injectElementCause(doc, "e269fe54ebe835ad4", "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
+			},
+			changed: map[string][]string{
+				"module.uploads": {
+					"block_public_acls",
+					"block_public_policy",
+					"ignore_public_acls",
+					"restrict_public_buckets",
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := loadDFD(t, filepath.Join(root, "fixtures", tc.dfd))
+			tc.inject(doc)
+			base := loadFindings(t, filepath.Join(root, "fixtures", tc.base))
+			cur := loadFindings(t, filepath.Join(root, "fixtures", tc.cur))
+			want := readGolden(t, filepath.Join(root, "golden", tc.golden))
+
+			off := PRComment(doc, cur, base, texts, locs, tc.changed)
+			if off != want {
+				t.Fatalf("unredacted comment drifted from golden")
+			}
+
+			_, idMap, err := client.Redact(doc, key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Simulate server response that cites redacted ids, then client remap.
+			curWire := remapFindingsCopy(cur, idMap.ToRedacted)
+			baseWire := remapFindingsCopy(base, idMap.ToRedacted)
+			curLocal := remapFindingsCopy(curWire, idMap.ToPlain)
+			baseLocal := remapFindingsCopy(baseWire, idMap.ToPlain)
+			on := PRComment(doc, curLocal, baseLocal, texts, locs, tc.changed)
+			if on != want {
+				t.Fatalf("redacted-path comment not byte-identical to golden")
+			}
+			if on != off {
+				t.Fatalf("redaction on/off comments differ")
+			}
+		})
+	}
+}
+
+func remapFindingsCopy(in apiv1.Findings, m map[string]string) apiv1.Findings {
+	out := in
+	out.Findings = make([]apiv1.Finding, len(in.Findings))
+	copy(out.Findings, in.Findings)
+	for i := range out.Findings {
+		if rid, ok := m[out.Findings[i].Target]; ok {
+			out.Findings[i].Target = rid
+		}
+	}
+	return out
+}
+
 func injectFlowCause(doc client.DFD, id, field, cause string) {
 	for i := range doc.Flows {
 		if doc.Flows[i].ID != id {

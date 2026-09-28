@@ -91,6 +91,9 @@ args=(
   -out "$FRAY_OUT"
   -oidc-token "$FRAY_OIDC_TOKEN"
 )
+if [[ "${FRAY_SHOW_PAYLOAD:-false}" == "true" ]]; then
+  args+=(-payload-out "${FRAY_OUT}/payload.json")
+fi
 if [[ -n "$base_commit" ]]; then
   args+=(-base-commit "$base_commit")
   # Materialize the base-commit sources so Fray can compare module call
@@ -135,6 +138,11 @@ esac
     echo "has_sarif=true"
   else
     echo "has_sarif=false"
+  fi
+  if [[ -f "${FRAY_OUT}/payload.json" ]]; then
+    echo "has_payload=true"
+  else
+    echo "has_payload=false"
   fi
 } >> "$GITHUB_OUTPUT"
 

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluong/fray/client"
 	apiv1 "github.com/fluong/fray/api/v1"
+	"github.com/fluong/fray/client"
 	"github.com/fluong/fray/render"
 )
 
@@ -23,7 +23,7 @@ func runRemote(opt options) (bool, error) {
 	if opt.APIKey == "" {
 		opt.APIKey = os.Getenv("FRAY_API_KEY")
 	}
-	if opt.OIDCToken == "" && opt.APIKey == "" {
+	if !opt.DryRun && opt.OIDCToken == "" && opt.APIKey == "" {
 		return false, fmt.Errorf("-remote requires FRAY_OIDC_TOKEN/-oidc-token or FRAY_API_KEY/-api-key")
 	}
 	if opt.DefaultBranch == "" {
@@ -32,6 +32,7 @@ func runRemote(opt options) (bool, error) {
 	if opt.Branch == "" {
 		opt.Branch = opt.DefaultBranch
 	}
+	isDefault := opt.Branch == opt.DefaultBranch
 
 	plan, err := os.ReadFile(opt.Plan)
 	if err != nil {
@@ -41,6 +42,11 @@ func runRemote(opt options) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	redactionOff, err := client.RedactionDisabled(cfg)
+	if err != nil {
+		return false, err
+	}
+
 	doc, warnings, err := client.Parse(plan, cfg, opt.Declared, client.Source{
 		Repo:     opt.Repo,
 		Commit:   opt.Commit,
@@ -53,10 +59,6 @@ func runRemote(opt options) (bool, error) {
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
-	rawDFD, err := client.Marshal(doc)
-	if err != nil {
-		return false, err
-	}
 
 	entries, err := loadMitigations(opt.Mitigations)
 	if err != nil {
@@ -67,17 +69,80 @@ func runRemote(opt options) (bool, error) {
 		return false, err
 	}
 
+	wireDoc := doc
+	idMap := client.IDMap{}
+	repoForRequest := opt.Repo
+	fieldsHashed := 0
+
+	if redactionOff {
+		fmt.Fprintln(os.Stderr, "WARNING: redaction is OFF — plaintext names and addresses will be sent to Fray.")
+		fmt.Fprintln(os.Stderr, "WARNING: redaction: off is client-side only; the hosted API rejects unredacted payloads unless the org allows it.")
+	} else {
+		key, err := client.LoadRedactionKey()
+		if err != nil {
+			return false, err
+		}
+		var redacted client.DFD
+		redacted, idMap, err = client.Redact(doc, key)
+		if err != nil {
+			return false, err
+		}
+		wireDoc = redacted
+		fieldsHashed = idMap.FieldsHashed
+		repoForRequest = wireDoc.Source.Repo
+		for i := range accepted {
+			accepted[i].TargetID = idMap.RemapAcceptedTarget(accepted[i].TargetID)
+		}
+	}
+
+	rawDFD, err := client.Marshal(wireDoc)
+	if err != nil {
+		return false, err
+	}
+
 	reqBody, err := json.Marshal(apiv1.ScanRequest{
 		DFD:                 rawDFD,
 		AcceptedMitigations: accepted,
-		Repo:                opt.Repo,
+		Repo:                repoForRequest,
 		Commit:              opt.Commit,
-		Branch:              opt.Branch,
-		DefaultBranch:       opt.DefaultBranch,
+		IsDefaultBranch:     isDefault,
 		BaseCommit:          opt.BaseCommit,
 	})
 	if err != nil {
 		return false, err
+	}
+
+	if !redactionOff {
+		if err := client.AssertNoPlaintext(reqBody, idMap.Plaintext); err != nil {
+			return false, err
+		}
+	}
+
+	if opt.ShowPayload || opt.DryRun {
+		fmt.Println(string(reqBody))
+		if redactionOff {
+			fmt.Fprintf(os.Stderr, "payload summary: redaction off — plaintext names/addresses present\n")
+		} else {
+			// Full-fixture AWS web-app: 5 addresses + 1 signal + source.repo = 7 HMAC
+			// fields. request.repo reuses the same digest (second slot); the guard
+			// scans the entire POST body, including both.
+			repoSlots := 0
+			if wireDoc.Source.Repo != "" {
+				repoSlots = 1
+				if repoForRequest == wireDoc.Source.Repo {
+					repoSlots = 2
+				}
+			}
+			fmt.Fprintf(os.Stderr, "payload summary: %d fields hashed (%d repo slots in payload), 0 plaintext names/addresses\n", fieldsHashed, repoSlots)
+		}
+	}
+	if opt.PayloadOut != "" {
+		if err := os.WriteFile(opt.PayloadOut, reqBody, 0o644); err != nil {
+			return false, err
+		}
+	}
+	if opt.DryRun {
+		return false, nil
 	}
 
 	url := strings.TrimRight(opt.Remote, "/") + "/v1/scans"
@@ -109,6 +174,18 @@ func runRemote(opt options) (bool, error) {
 	var resp apiv1.ScanResponse
 	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return false, err
+	}
+
+	if !redactionOff {
+		remapFindings(&resp.Findings, idMap)
+		remapFindingsSlice(resp.Diff.New, idMap)
+		remapFindingsSlice(resp.Diff.Resolved, idMap)
+		for i := range resp.Gate.Reasons {
+			resp.Gate.Reasons[i].TargetID = idMap.RemapID(resp.Gate.Reasons[i].TargetID)
+		}
+		if resp.Baseline.Findings != nil {
+			remapFindings(resp.Baseline.Findings, idMap)
+		}
 	}
 
 	locs, err := client.ResourceLocations(opt.Source)
@@ -161,6 +238,19 @@ func runRemote(opt options) (bool, error) {
 		}
 	}
 	return resp.Gate.Blocked, nil
+}
+
+func remapFindings(f *apiv1.Findings, m client.IDMap) {
+	if f == nil {
+		return
+	}
+	remapFindingsSlice(f.Findings, m)
+}
+
+func remapFindingsSlice(findings []apiv1.Finding, m client.IDMap) {
+	for i := range findings {
+		findings[i].Target = m.RemapID(findings[i].Target)
+	}
 }
 
 func truncate(b []byte, n int) string {

@@ -8,6 +8,10 @@
   "required": ["schema_version"],
   "properties": {
     "schema_version": { "const": "fray-config/v1" },
+    "redaction": {
+      "const": "off",
+      "description": "Client-side only. Omit (default) to redact identifying fields before POST. Explicit off sends plaintext names and addresses; the hosted API rejects unredacted payloads unless the org allows it."
+    },
     "audit_config": {
       "const": "owned_by_this_root",
       "description": "Set when this root owns object-storage data-access audit configuration. When omitted, a missing CloudTrail data event or GCP audit config is unknown rather than off."

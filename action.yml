@@ -22,6 +22,19 @@ inputs:
     description: Path to fray.yaml (relative to the GitHub workspace).
     required: false
     default: "fray.yaml"
+  redaction-key:
+    description: >
+      32-byte hex HMAC key (from secrets.FRAY_REDACTION_KEY). Required unless
+      fray.yaml sets redaction: off. Identifying fields are hashed before POST;
+      the key never leaves CI.
+    required: false
+    default: ""
+  show-payload:
+    description: >
+      When true, upload the exact JSON POST body as a workflow artifact
+      (fray-payload) so you can audit what Fray received.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -109,7 +122,20 @@ runs:
         FRAY_WORKDIR: ${{ inputs.working-directory }}
         FRAY_CONFIG: ${{ inputs.config }}
         FRAY_OUT: ${{ runner.temp }}/fray-out
+        FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
+        FRAY_SHOW_PAYLOAD: ${{ inputs.show-payload }}
       run: bash "${{ github.action_path }}/action/scan.sh"
+
+    - name: Upload sent payload
+      if: >-
+        steps.fork.outputs.is_fork != 'true' &&
+        inputs.show-payload == 'true' &&
+        steps.scan.outputs.has_payload == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: fray-payload
+        path: ${{ runner.temp }}/fray-out/payload.json
+        if-no-files-found: warn
 
     - name: Update PR comment
       if: >-

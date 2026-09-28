@@ -68,13 +68,14 @@ type GateReason struct {
 }
 
 // ScanRequest is the POST /v1/scans body.
+// Branch names are never sent: the client sets IsDefaultBranch after comparing
+// locally; the server verifies against the OIDC ref when present.
 type ScanRequest struct {
 	DFD                 json.RawMessage `json:"dfd"`
 	AcceptedMitigations []Accepted      `json:"accepted_mitigations"`
 	Repo                string          `json:"repo"`
 	Commit              string          `json:"commit"`
-	Branch              string          `json:"branch"`
-	DefaultBranch       string          `json:"default_branch"`
+	IsDefaultBranch     bool            `json:"is_default_branch"`
 	BaseCommit          string          `json:"base_commit,omitempty"`
 }
 

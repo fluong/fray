@@ -7,11 +7,11 @@
   "required": ["schema_version", "source", "elements", "trust_boundaries", "flows"],
   "properties": {
     "schema_version": { "const": "dfd/v1" },
-    "source": { "$ref": "#/$defs/source" },
+    "redaction": { "$ref": "#/$defs/redaction" },
+    "source": { "type": "object" },
     "elements": {
       "type": "array",
-      "minItems": 1,
-      "items": { "$ref": "#/$defs/element" }
+      "minItems": 1
     },
     "trust_boundaries": {
       "type": "array",
@@ -22,7 +22,44 @@
       "items": { "$ref": "#/$defs/flow" }
     }
   },
+  "allOf": [
+    {
+      "if": { "required": ["redaction"] },
+      "then": {
+        "properties": {
+          "source": { "$ref": "#/$defs/source_redacted" },
+          "elements": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/element_redacted" }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "source": { "$ref": "#/$defs/source" },
+          "elements": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/element" }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "key_fingerprint"],
+      "properties": {
+        "scheme": { "const": "hmac-sha256-v1" },
+        "key_fingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        }
+      }
+    },
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -32,6 +69,25 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
         },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "iac_tool": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,32}$"
+        },
+        "fidelity": {
+          "enum": ["plan", "static"]
+        }
+      }
+    },
+    "source_redacted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "commit", "iac_tool", "fidelity"],
+      "properties": {
+        "repo": { "$ref": "#/$defs/hashed" },
         "commit": {
           "type": "string",
           "pattern": "^[0-9a-f]{7,40}$"
@@ -67,6 +123,32 @@
         { "$ref": "#/$defs/evidence_declared" }
       ]
     },
+    "element_redacted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "kind", "provenance", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/element_id" },
+        "type": { "enum": ["process", "datastore", "external_entity"] },
+        "kind": { "$ref": "#/$defs/kind" },
+        "provider": { "$ref": "#/$defs/provider" },
+        "provenance": { "enum": ["iac", "inferred", "declared"] },
+        "evidence": { "type": "object" },
+        "attributes": { "$ref": "#/$defs/attributes" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["name"] },
+          { "required": ["subtype"] },
+          { "required": ["provider_subtype"] }
+        ]
+      },
+      "allOf": [
+        { "$ref": "#/$defs/evidence_iac_redacted" },
+        { "$ref": "#/$defs/evidence_inferred_redacted" },
+        { "$ref": "#/$defs/evidence_declared_redacted" }
+      ]
+    },
     "evidence_iac": {
       "if": {
         "properties": { "provenance": { "const": "iac" } },
@@ -84,6 +166,30 @@
                 "minItems": 1,
                 "uniqueItems": true,
                 "items": { "$ref": "#/$defs/token" }
+              }
+            }
+          }
+        },
+        "required": ["evidence"]
+      }
+    },
+    "evidence_iac_redacted": {
+      "if": {
+        "properties": { "provenance": { "const": "iac" } },
+        "required": ["provenance"]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["addresses"],
+            "properties": {
+              "addresses": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "$ref": "#/$defs/hashed" }
               }
             }
           }
@@ -114,6 +220,29 @@
         "required": ["evidence"]
       }
     },
+    "evidence_inferred_redacted": {
+      "if": {
+        "properties": { "provenance": { "const": "inferred" } },
+        "required": ["provenance"]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["signals"],
+            "properties": {
+              "signals": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/signal_redacted" }
+              }
+            }
+          }
+        },
+        "required": ["evidence"]
+      }
+    },
     "evidence_declared": {
       "if": {
         "properties": { "provenance": { "const": "declared" } },
@@ -137,6 +266,26 @@
         "required": ["evidence"]
       }
     },
+    "evidence_declared_redacted": {
+      "if": {
+        "properties": { "provenance": { "const": "declared" } },
+        "required": ["provenance"]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "key"],
+            "properties": {
+              "source": { "$ref": "#/$defs/hashed" },
+              "key": { "$ref": "#/$defs/hashed" }
+            }
+          }
+        },
+        "required": ["evidence"]
+      }
+    },
     "signal": {
       "type": "object",
       "additionalProperties": false,
@@ -144,6 +293,15 @@
       "properties": {
         "type": { "enum": ["secret_name", "env_var", "iam_role", "iam_member", "network_ingress"] },
         "name": { "$ref": "#/$defs/token" }
+      }
+    },
+    "signal_redacted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "enum": ["secret_name", "env_var", "iam_role", "iam_member", "network_ingress"] },
+        "name": { "$ref": "#/$defs/hashed" }
       }
     },
     "attributes": {
@@ -246,6 +404,10 @@
         { "not": { "pattern": "://" } },
         { "not": { "pattern": "=" } }
       ]
+    },
+    "hashed": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "display_name": {
       "type": "string",

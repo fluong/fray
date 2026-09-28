@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -27,8 +28,11 @@ type signal struct {
 
 type element struct {
 	ID         string   `json:"id"`
+	Name       string   `json:"name"`
 	Kind       string   `json:"kind"`
+	Subtype    string   `json:"subtype"`
 	Provider   string   `json:"provider"`
+	ProviderSubtype string `json:"provider_subtype"`
 	Provenance string   `json:"provenance"`
 	Evidence   evidence `json:"evidence"`
 }
@@ -48,7 +52,18 @@ type flow struct {
 	Boundaries []string `json:"boundaries"`
 }
 
+type redaction struct {
+	Scheme         string `json:"scheme"`
+	KeyFingerprint string `json:"key_fingerprint"`
+}
+
+type source struct {
+	Repo string `json:"repo"`
+}
+
 type document struct {
+	Redaction       *redaction `json:"redaction"`
+	Source          source     `json:"source"`
 	Elements        []element  `json:"elements"`
 	TrustBoundaries []boundary `json:"trust_boundaries"`
 	Flows           []flow     `json:"flows"`
@@ -125,7 +140,9 @@ func CompileBytes(schemaPath string, raw []byte) (*jsonschema.Schema, error) {
 // Semantic checks id uniqueness, references, boundary sides, and derived
 // element/boundary ids. Flow ids are not re-derived from data_class: an
 // annotation may change data_class without moving the identity key
-// (docs/schema/dfd.md).
+// (docs/schema/dfd.md). When redaction is present, HMAC ids cannot be
+// re-derived without the key — only format, uniqueness, and references are
+// checked, plus the hex-only evidence rule.
 func Semantic(doc document) error {
 	var problems []string
 	var firstPtr string
@@ -136,6 +153,19 @@ func Semantic(doc document) error {
 		problems = append(problems, msg)
 	}
 
+	redacted := doc.Redaction != nil
+	if redacted {
+		if doc.Redaction.Scheme != "hmac-sha256-v1" {
+			set("/redaction/scheme", "redaction scheme must be hmac-sha256-v1")
+		}
+		if !hex16.MatchString(doc.Redaction.KeyFingerprint) {
+			set("/redaction/key_fingerprint", "key_fingerprint must be 16 hex chars")
+		}
+		if !hashed64.MatchString(doc.Source.Repo) {
+			set("/source/repo", "redacted source.repo must be 64 hex chars")
+		}
+	}
+
 	elements := map[string]element{}
 	for i, el := range doc.Elements {
 		ptr := fmt.Sprintf("/elements/%d", i)
@@ -144,6 +174,24 @@ func Semantic(doc document) error {
 			continue
 		}
 		elements[el.ID] = el
+		if redacted {
+			if el.Name != "" {
+				set(ptr+"/name", "redacted element must omit name")
+			}
+			if el.Subtype != "" {
+				set(ptr+"/subtype", "redacted element must omit subtype")
+			}
+			if el.ProviderSubtype != "" {
+				set(ptr+"/provider_subtype", "redacted element must omit provider_subtype")
+			}
+			if err := checkRedactedEvidence(ptr, el); err != "" {
+				set(ptr+"/evidence", err)
+			}
+			if !strings.HasPrefix(el.ID, "e") || len(el.ID) != 17 {
+				set(ptr+"/id", "element "+el.ID+" has a malformed id")
+			}
+			continue
+		}
 		want, err := elementID(el)
 		if err != nil {
 			set(ptr, err.Error())
@@ -168,6 +216,12 @@ func Semantic(doc document) error {
 		}
 		if overlap(b.Inside, b.Outside) {
 			set(ptr, "boundary "+b.ID+" lists an element on both sides")
+		}
+		if redacted {
+			if !strings.HasPrefix(b.ID, "b") || len(b.ID) != 17 {
+				set(ptr+"/id", "boundary "+b.ID+" has a malformed id")
+			}
+			continue
 		}
 		if want := boundaryID(b); b.ID != want {
 			set(ptr+"/id", "boundary "+b.ID+" derived id is "+want)
@@ -211,6 +265,37 @@ func Semantic(doc document) error {
 		}
 	}
 	return nil
+}
+
+var (
+	hashed64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	hex16    = regexp.MustCompile(`^[0-9a-f]{16}$`)
+)
+
+func checkRedactedEvidence(ptr string, el element) string {
+	switch el.Provenance {
+	case "iac":
+		for i, addr := range el.Evidence.Addresses {
+			if !hashed64.MatchString(addr) {
+				return fmt.Sprintf("addresses/%d must be 64 hex chars", i)
+			}
+		}
+	case "inferred":
+		for i, sig := range el.Evidence.Signals {
+			if !hashed64.MatchString(sig.Name) {
+				return fmt.Sprintf("signals/%d/name must be 64 hex chars", i)
+			}
+		}
+	case "declared":
+		if !hashed64.MatchString(el.Evidence.Source) {
+			return "source must be 64 hex chars"
+		}
+		if !hashed64.MatchString(el.Evidence.Key) {
+			return "key must be 64 hex chars"
+		}
+	}
+	_ = ptr
+	return ""
 }
 
 func schemaError(raw []byte, err error) *Error {
