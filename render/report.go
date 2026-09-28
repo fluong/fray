@@ -135,7 +135,7 @@ func openSection(findings apiv1.Findings, texts map[string]apiv1.RuleText, byID 
 	}
 	groups := issueGroups(open, texts, byID, flows)
 	sortGroups(groups)
-	return renderIssues(groups, texts, byID, flows, locs, nil, false)
+	return renderIssues(groups, texts, byID, flows, locs, nil, nil, false)
 }
 
 func acceptedSection(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, entries []MitigationEntry, byID map[string]client.Element, flows map[string]client.Flow) string {

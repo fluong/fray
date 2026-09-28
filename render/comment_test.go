@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	apiv1 "github.com/fluong/fray/api/v1"
@@ -21,10 +22,52 @@ func TestPRCommentAWSAdvisoryFR007(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PRComment(doc, cur, base, texts, locs)
+	// Baseline compare: only task_exec_secret_arns changed to ["*"].
+	changed := map[string][]string{"module.ecs_service": {"task_exec_secret_arns"}}
+	got := PRComment(doc, cur, base, texts, locs, changed)
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-advisory-fr007.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
+	}
+}
+
+func TestPRCommentAWSAdvisoryFR007IAMStatements(t *testing.T) {
+	// Exact demo PR #1: secret_arns unchanged; task_exec_iam_statements added with Resource "*".
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
+	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := map[string][]string{"module.ecs_service": {"task_exec_iam_statements"}}
+	got := PRComment(doc, cur, base, texts, locs, changed)
+	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-advisory-fr007-iam-statements.md"))
+	if got != want {
+		t.Fatalf("comment mismatch:\n%s", got)
+	}
+}
+
+func TestPRCommentAWSAdvisoryFR007OmitsGuessedInputs(t *testing.T) {
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
+	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := PRComment(doc, cur, base, texts, locs, nil)
+	if strings.Contains(got, "task_exec_") {
+		t.Fatalf("must omit inputs without a baseline compare:\n%s", got)
+	}
+	if !strings.Contains(got, "`module.ecs_service` · aws-web-app/main.tf:112") {
+		t.Fatalf("want module call + file:line only:\n%s", got)
 	}
 }
 
@@ -69,7 +112,7 @@ resource "google_project_iam_member" "database_url_accessor" {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PRComment(doc, cur, base, texts, locs)
+	got := PRComment(doc, cur, base, texts, locs, nil)
 	want := readGolden(t, filepath.Join("..", "testdata", "golden", "pr-comment-gcp-advisory-fr007.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -87,7 +130,15 @@ func TestPRCommentAWSBlockingHigh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PRComment(doc, cur, base, texts, locs)
+	changed := map[string][]string{
+		"module.uploads": {
+			"block_public_acls",
+			"block_public_policy",
+			"ignore_public_acls",
+			"restrict_public_buckets",
+		},
+	}
+	got := PRComment(doc, cur, base, texts, locs, changed)
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-blocking-high.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)

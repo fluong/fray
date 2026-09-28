@@ -93,6 +93,17 @@ args=(
 )
 if [[ -n "$base_commit" ]]; then
   args+=(-base-commit "$base_commit")
+  # Materialize the base-commit sources so Fray can compare module call
+  # arguments (never guess which input changed from the inner resource).
+  if ! git -C "$root" cat-file -e "${base_commit}^{commit}" 2>/dev/null; then
+    echo "Fetching base commit ${base_commit}"
+    git -C "$root" fetch --no-tags --depth=1 origin "$base_commit"
+  fi
+  base_src="${FRAY_OUT}/base-source"
+  rm -rf "$base_src"
+  mkdir -p "$base_src"
+  git -C "$root" archive "$base_commit" "$FRAY_WORKDIR" | tar -x -C "$base_src"
+  args+=(-base-source "${base_src}/${FRAY_WORKDIR}")
 fi
 
 echo "::group::fray scan"

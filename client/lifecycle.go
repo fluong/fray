@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -296,10 +297,11 @@ func LookupLocation(idx map[string]SourceLocation, address string) (SourceLocati
 	return LookupCauseLocation(idx, address, "")
 }
 
-// LookupCauseLocation is LookupLocation, and when field is set it prefers the
-// module input argument that typically controls that attribute.
+// LookupCauseLocation is LookupLocation for a cause address. field is ignored;
+// nested module resources always resolve to the root module call site.
 func LookupCauseLocation(idx map[string]SourceLocation, address, field string) (SourceLocation, bool) {
-	if mc, ok := LookupModuleCause(idx, address, field); ok {
+	_ = field
+	if mc, ok := LookupModuleCause(idx, address); ok {
 		return mc.Location, true
 	}
 	moduleAddr, typ, name, ok := splitResourceAddress(address)
@@ -313,8 +315,9 @@ func LookupCauseLocation(idx map[string]SourceLocation, address, field string) (
 	return loc, true
 }
 
-// ModuleCause is the root module call that owns a nested resource, with the
-// input arguments that typically control the failed field.
+// ModuleCause is the root module call that owns a nested resource.
+// Inputs are only the arguments that differ from the baseline module call;
+// they stay empty when no baseline source is available (never guessed).
 type ModuleCause struct {
 	Call     string // module.uploads
 	Inputs   []string
@@ -322,7 +325,9 @@ type ModuleCause struct {
 }
 
 // LookupModuleCause resolves a nested module address to its root module call.
-func LookupModuleCause(idx map[string]SourceLocation, address, field string) (ModuleCause, bool) {
+// Inputs are empty; callers fill them via ChangedModuleInputs when a baseline
+// source tree is available.
+func LookupModuleCause(idx map[string]SourceLocation, address string) (ModuleCause, bool) {
 	if idx == nil {
 		return ModuleCause{}, false
 	}
@@ -334,18 +339,104 @@ func LookupModuleCause(idx map[string]SourceLocation, address, field string) (Mo
 	if !ok {
 		return ModuleCause{}, false
 	}
-	var inputs []string
-	for _, arg := range moduleArgHints(field) {
-		if _, hit := idx[call+"."+arg]; hit {
-			inputs = append(inputs, arg)
-			// Secret scope is usually one widening input; prefer the first hit
-			// in hint priority (task_exec_iam_statements before secret_arns).
-			if strings.TrimPrefix(field, "attributes.") == "authz_scope" {
-				break
+	return ModuleCause{Call: call, Location: loc}, true
+}
+
+// ModuleArguments maps "module.name.arg" to the HCL expression source of that
+// argument on a root-module call. Only the given directory is read (not
+// .terraform/modules).
+func ModuleArguments(moduleDir string) (map[string]string, error) {
+	if moduleDir == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(moduleDir)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tf") {
+			continue
+		}
+		path := filepath.Join(moduleDir, entry.Name())
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		file, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
+		if diags.HasErrors() {
+			return nil, fmt.Errorf("%s: %s", path, diags.Error())
+		}
+		body, ok := file.Body.(*hclsyntax.Body)
+		if !ok {
+			return nil, fmt.Errorf("%s: unexpected HCL body", path)
+		}
+		for _, block := range body.Blocks {
+			if block.Type != "module" || len(block.Labels) != 1 || block.Body == nil {
+				continue
+			}
+			call := "module." + block.Labels[0]
+			for name, attr := range block.Body.Attributes {
+				r := attr.Expr.Range()
+				if r.Start.Byte < 0 || r.End.Byte > len(src) || r.Start.Byte > r.End.Byte {
+					continue
+				}
+				out[call+"."+name] = string(src[r.Start.Byte:r.End.Byte])
 			}
 		}
 	}
-	return ModuleCause{Call: call, Inputs: inputs, Location: loc}, true
+	return out, nil
+}
+
+// ChangedModuleInputs returns argument names on call that differ between the
+// baseline and head module sources. When base is nil, returns nil — Fray must
+// not guess which input caused a finding.
+func ChangedModuleInputs(base, head map[string]string, call string) []string {
+	if base == nil || head == nil || call == "" {
+		return nil
+	}
+	prefix := call + "."
+	var changed []string
+	for key, headExpr := range head {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		name := strings.TrimPrefix(key, prefix)
+		if name == "" || strings.Contains(name, ".") {
+			continue
+		}
+		baseExpr, ok := base[key]
+		if !ok || baseExpr != headExpr {
+			changed = append(changed, name)
+		}
+	}
+	sort.Strings(changed)
+	return changed
+}
+
+// ChangedInputsByCall maps each module call that has argument diffs to the
+// sorted list of changed argument names. base nil means omit all inputs.
+func ChangedInputsByCall(base, head map[string]string) map[string][]string {
+	if base == nil || head == nil {
+		return nil
+	}
+	calls := map[string]bool{}
+	for key := range head {
+		if i := strings.Index(key, "."); i > 0 {
+			// module.name.arg → module.name
+			parts := strings.SplitN(key, ".", 3)
+			if len(parts) == 3 && parts[0] == "module" {
+				calls["module."+parts[1]] = true
+			}
+		}
+	}
+	out := map[string][]string{}
+	for call := range calls {
+		if inputs := ChangedModuleInputs(base, head, call); len(inputs) > 0 {
+			out[call] = inputs
+		}
+	}
+	return out
 }
 
 func rootModuleCall(address string) (string, bool) {
@@ -361,28 +452,6 @@ func rootModuleCall(address string) (string, bool) {
 		return "", false
 	}
 	return "module." + rest[:i], true
-}
-
-func moduleArgHints(field string) []string {
-	field = strings.TrimPrefix(field, "attributes.")
-	switch field {
-	case "public_access_blocked", "public":
-		return []string{
-			"block_public_acls",
-			"block_public_policy",
-			"ignore_public_acls",
-			"restrict_public_buckets",
-			"public_access_prevention",
-		}
-	case "authz_scope":
-		return []string{
-			"task_exec_iam_statements",
-			"task_exec_secret_arns",
-			"task_exec_ssm_param_arns",
-		}
-	default:
-		return nil
-	}
 }
 
 // splitResourceAddress strips count and for_each indexes. The module address

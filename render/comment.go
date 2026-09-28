@@ -10,7 +10,7 @@ import (
 	apiv1 "github.com/fluong/fray/api/v1"
 )
 
-func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation) string {
+func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string) string {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
 	base := map[findingKey]apiv1.Finding{}
@@ -45,7 +45,7 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 	sortGroups(groups)
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verdict(groups))
-	if body := renderIssues(groups, texts, byID, flows, locs, base, true); body != "" {
+	if body := renderIssues(groups, texts, byID, flows, locs, changedInputs, base, true); body != "" {
 		b.WriteString(body)
 		b.WriteByte('\n')
 	}
@@ -53,7 +53,7 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		b.WriteString("Resolved\n\n")
 		resolvedGroups := issueGroups(resolved, texts, byID, flows)
 		sortGroups(resolvedGroups)
-		b.WriteString(renderIssues(resolvedGroups, texts, byID, flows, locs, base, false))
+		b.WriteString(renderIssues(resolvedGroups, texts, byID, flows, locs, changedInputs, base, false))
 		b.WriteByte('\n')
 	}
 	fmt.Fprintf(&b, "%s\n", footer(current.Findings, base, groups, len(resolved) == 0))
@@ -184,23 +184,19 @@ func (g causeGroup) severity() string {
 	return best
 }
 
-func renderIssues(groups []causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, base map[findingKey]apiv1.Finding, accept bool) string {
+func renderIssues(groups []causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool) string {
 	var b strings.Builder
 	for i, g := range groups {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		b.WriteString(renderIssue(g, texts, byID, flows, locs, base, accept))
+		b.WriteString(renderIssue(g, texts, byID, flows, locs, changedInputs, base, accept))
 	}
 	return b.String()
 }
 
-func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, base map[findingKey]apiv1.Finding, accept bool) string {
+func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool) string {
 	rule := primaryRule(g.items, texts)
-	field := ""
-	if len(rule.Pass) > 0 {
-		field = rule.Pass[0].Field
-	}
 	lost := previouslyMitigated(g.items, base)
 	fix, explanation := remedy(rule, g.cause)
 	if explanation == "" {
@@ -214,8 +210,9 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 	if lost {
 		title = noLongerTitle(title)
 	}
-	mod, hasMod := client.LookupModuleCause(locs, g.cause, field)
+	mod, hasMod := client.LookupModuleCause(locs, g.cause)
 	if hasMod {
+		mod.Inputs = changedInputs[mod.Call]
 		if named := moduleInputFix(mod.Inputs); named != "" {
 			fix = named
 		}
@@ -333,53 +330,42 @@ func formatInputs(inputs []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// moduleInputFix builds a fix line from known module inputs and their safe values.
+// moduleInputFix builds a fix line from known module inputs.
 // An empty result means the caller should keep the rule remediation text.
+// Each input gets a fix that matches its type; unknown inputs force a fallback.
 func moduleInputFix(inputs []string) string {
 	if len(inputs) == 0 {
 		return ""
 	}
-	byVal := map[string][]string{}
-	var order []string
+	var boolInputs []string
+	var parts []string
 	for _, in := range inputs {
-		val, ok := safeModuleInput(in)
-		if !ok {
+		switch in {
+		case "block_public_acls", "block_public_policy", "ignore_public_acls", "restrict_public_buckets":
+			boolInputs = append(boolInputs, in)
+		case "public_access_prevention":
+			parts = append(parts, "Set `"+in+"` to `\"enforced\"`")
+		case "task_exec_secret_arns":
+			parts = append(parts, "Set `"+in+"` to the specific secret ARN(s) instead of \"*\"")
+		case "task_exec_ssm_param_arns":
+			parts = append(parts, "Set `"+in+"` to the specific parameter ARN(s) instead of \"*\"")
+		case "task_exec_iam_statements":
+			parts = append(parts, "Scope GetSecretValue in `"+in+"` to the secret ARN in Resource, not \"*\"")
+		default:
 			return ""
 		}
-		if _, seen := byVal[val]; !seen {
-			order = append(order, val)
-		}
-		byVal[val] = append(byVal[val], in)
 	}
-	var parts []string
-	for _, val := range order {
-		names := byVal[val]
-		parts = append(parts, "set "+formatInputs(names)+" to "+val)
+	if len(boolInputs) > 0 {
+		parts = append([]string{"Set " + formatInputs(boolInputs) + " to true"}, parts...)
 	}
 	if len(parts) == 0 {
 		return ""
 	}
 	out := parts[0]
 	for i := 1; i < len(parts); i++ {
-		out += "; " + parts[i]
+		out += "; " + strings.ToLower(parts[i][:1]) + parts[i][1:]
 	}
-	if out != "" {
-		out = strings.ToUpper(out[:1]) + out[1:] + "."
-	}
-	return out
-}
-
-func safeModuleInput(name string) (string, bool) {
-	switch name {
-	case "block_public_acls", "block_public_policy", "ignore_public_acls", "restrict_public_buckets":
-		return "true", true
-	case "public_access_prevention":
-		return `"enforced"`, true
-	case "task_exec_iam_statements", "task_exec_secret_arns", "task_exec_ssm_param_arns":
-		return "the secret ARN (not \"*\")", true
-	default:
-		return "", false
-	}
+	return out + "."
 }
 
 func resourceType(address string) string {

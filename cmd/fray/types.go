@@ -9,7 +9,7 @@ import (
 type options struct {
 	Plan, Source, Config, Mitigations, Out string
 	Repo, Commit, Declared, Branch, DefaultBranch, Remote string
-	BaseCommit, APIKey, OIDCToken                         string
+	BaseCommit, BaseSource, APIKey, OIDCToken             string
 }
 
 type mitigationFile struct {

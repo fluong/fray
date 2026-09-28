@@ -163,15 +163,15 @@ resource "aws_s3_bucket" "local" {
 	if strings.Contains(call.Path, ".terraform/modules") {
 		t.Fatalf("vendored path %s", call.Path)
 	}
-	mc, ok := LookupModuleCause(locs, "module.uploads.aws_s3_bucket_public_access_block.this[0]", "public_access_blocked")
+	mc, ok := LookupModuleCause(locs, "module.uploads.aws_s3_bucket_public_access_block.this[0]")
 	if !ok {
 		t.Fatal("missing module cause")
 	}
 	if mc.Call != "module.uploads" {
 		t.Fatalf("call %s", mc.Call)
 	}
-	if len(mc.Inputs) != 1 || mc.Inputs[0] != "block_public_acls" {
-		t.Fatalf("inputs %+v", mc.Inputs)
+	if len(mc.Inputs) != 0 {
+		t.Fatalf("inputs must stay empty without a baseline compare, got %+v", mc.Inputs)
 	}
 	rootCall, ok := LookupLocation(locs, "module.uploads.aws_s3_bucket.this[0]")
 	if !ok {
@@ -179,6 +179,91 @@ resource "aws_s3_bucket" "local" {
 	}
 	if rootCall.Line != 2 {
 		t.Fatalf("module call line %s", rootCall)
+	}
+}
+
+func TestChangedModuleInputsIAMStatements(t *testing.T) {
+	// Exact demo PR #1 shape: secret_arns stays the specific ARN; the PR adds
+	// task_exec_iam_statements with Resource "*".
+	baseDir := t.TempDir()
+	headDir := t.TempDir()
+	baseSrc := `
+module "ecs_service" {
+  source = "terraform-aws-modules/ecs/aws//modules/service"
+
+  task_exec_secret_arns = [module.db_password.secret_arn]
+}
+`
+	headSrc := `
+module "ecs_service" {
+  source = "terraform-aws-modules/ecs/aws//modules/service"
+
+  task_exec_secret_arns = [module.db_password.secret_arn]
+
+  task_exec_iam_statements = [
+    {
+      sid       = "SecretsWildcard"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = ["*"]
+    }
+  ]
+}
+`
+	if err := os.WriteFile(filepath.Join(baseDir, "main.tf"), []byte(baseSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(headDir, "main.tf"), []byte(headSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	baseArgs, err := ModuleArguments(baseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headArgs, err := ModuleArguments(headDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ChangedModuleInputs(baseArgs, headArgs, "module.ecs_service")
+	if len(got) != 1 || got[0] != "task_exec_iam_statements" {
+		t.Fatalf("changed inputs %+v, want [task_exec_iam_statements]", got)
+	}
+	if got := ChangedModuleInputs(nil, headArgs, "module.ecs_service"); got != nil {
+		t.Fatalf("without baseline must omit inputs, got %+v", got)
+	}
+}
+
+func TestChangedModuleInputsSecretARNs(t *testing.T) {
+	baseDir := t.TempDir()
+	headDir := t.TempDir()
+	baseSrc := `
+module "ecs_service" {
+  source = "./m"
+  task_exec_secret_arns = [module.db_password.secret_arn]
+}
+`
+	headSrc := `
+module "ecs_service" {
+  source = "./m"
+  task_exec_secret_arns = ["*"]
+}
+`
+	if err := os.WriteFile(filepath.Join(baseDir, "main.tf"), []byte(baseSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(headDir, "main.tf"), []byte(headSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	baseArgs, err := ModuleArguments(baseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headArgs, err := ModuleArguments(headDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ChangedModuleInputs(baseArgs, headArgs, "module.ecs_service")
+	if len(got) != 1 || got[0] != "task_exec_secret_arns" {
+		t.Fatalf("changed inputs %+v", got)
 	}
 }
 

@@ -115,6 +115,18 @@ func runRemote(opt options) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	headArgs, err := client.ModuleArguments(opt.Source)
+	if err != nil {
+		return false, err
+	}
+	var changedInputs map[string][]string
+	if opt.BaseSource != "" {
+		baseArgs, err := client.ModuleArguments(opt.BaseSource)
+		if err != nil {
+			return false, fmt.Errorf("base-source: %w", err)
+		}
+		changedInputs = client.ChangedInputsByCall(baseArgs, headArgs)
+	}
 	texts := resp.RuleTexts
 
 	if err := os.MkdirAll(opt.Out, 0o755); err != nil {
@@ -143,7 +155,7 @@ func runRemote(opt options) (bool, error) {
 	haveBaseline := resp.Baseline.Findings != nil
 	if haveBaseline {
 		baseline = *resp.Baseline.Findings
-		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs)
+		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs)
 		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 			return false, err
 		}

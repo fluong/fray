@@ -35,8 +35,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - uses: fluong/fray@v0.2.2
+      - uses: fluong/fray@v0.2.3
         with:
           api-url: ${{ vars.FRAY_API_URL }}   # required; do not hardcode in the Action repo
           working-directory: infra
