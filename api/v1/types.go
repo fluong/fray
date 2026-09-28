@@ -90,13 +90,16 @@ type ScanResponse struct {
 	} `json:"diff"`
 	Gate struct {
 		Blocked bool         `json:"blocked"`
+		Mode    string       `json:"mode,omitempty"` // "none", "diff", or "absolute"
 		Reasons []GateReason `json:"reasons"`
 	} `json:"gate"`
 	Baseline struct {
-		Source   string    `json:"source"`
-		Commit   *string   `json:"commit"`
-		ScanID   *string   `json:"scan_id"`
-		Findings *Findings `json:"findings,omitempty"`
+		Source     string    `json:"source"`
+		Comparable *bool     `json:"comparable,omitempty"`
+		Note       string    `json:"note,omitempty"`
+		Commit     *string   `json:"commit"`
+		ScanID     *string   `json:"scan_id"`
+		Findings   *Findings `json:"findings,omitempty"`
 	} `json:"baseline"`
 	RuleTexts map[string]RuleText `json:"rule_texts"`
 }

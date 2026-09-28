@@ -24,7 +24,7 @@ func TestPRCommentAWSAdvisoryFR007(t *testing.T) {
 	}
 	// Baseline compare: only task_exec_secret_arns changed to ["*"].
 	changed := map[string][]string{"module.ecs_service": {"task_exec_secret_arns"}}
-	got := PRComment(doc, cur, base, texts, locs, changed)
+	got := PRComment(doc, cur, base, texts, locs, changed, "")
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-advisory-fr007.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -44,7 +44,7 @@ func TestPRCommentAWSAdvisoryFR007IAMStatements(t *testing.T) {
 		t.Fatal(err)
 	}
 	changed := map[string][]string{"module.ecs_service": {"task_exec_iam_statements"}}
-	got := PRComment(doc, cur, base, texts, locs, changed)
+	got := PRComment(doc, cur, base, texts, locs, changed, "")
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-advisory-fr007-iam-statements.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -62,7 +62,7 @@ func TestPRCommentAWSAdvisoryFR007OmitsGuessedInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PRComment(doc, cur, base, texts, locs, nil)
+	got := PRComment(doc, cur, base, texts, locs, nil, "")
 	if strings.Contains(got, "task_exec_") {
 		t.Fatalf("must omit inputs without a baseline compare:\n%s", got)
 	}
@@ -112,7 +112,7 @@ resource "google_project_iam_member" "database_url_accessor" {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PRComment(doc, cur, base, texts, locs, nil)
+	got := PRComment(doc, cur, base, texts, locs, nil, "")
 	want := readGolden(t, filepath.Join("..", "testdata", "golden", "pr-comment-gcp-advisory-fr007.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -138,7 +138,7 @@ func TestPRCommentAWSBlockingHigh(t *testing.T) {
 			"restrict_public_buckets",
 		},
 	}
-	got := PRComment(doc, cur, base, texts, locs, changed)
+	got := PRComment(doc, cur, base, texts, locs, changed, "")
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-blocking-high.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -206,7 +206,7 @@ func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
 			cur := loadFindings(t, filepath.Join(root, "fixtures", tc.cur))
 			want := readGolden(t, filepath.Join(root, "golden", tc.golden))
 
-			off := PRComment(doc, cur, base, texts, locs, tc.changed)
+			off := PRComment(doc, cur, base, texts, locs, tc.changed, "")
 			if off != want {
 				t.Fatalf("unredacted comment drifted from golden")
 			}
@@ -220,7 +220,7 @@ func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
 			baseWire := remapFindingsCopy(base, idMap.ToRedacted)
 			curLocal := remapFindingsCopy(curWire, idMap.ToPlain)
 			baseLocal := remapFindingsCopy(baseWire, idMap.ToPlain)
-			on := PRComment(doc, curLocal, baseLocal, texts, locs, tc.changed)
+			on := PRComment(doc, curLocal, baseLocal, texts, locs, tc.changed, "")
 			if on != want {
 				t.Fatalf("redacted-path comment not byte-identical to golden")
 			}

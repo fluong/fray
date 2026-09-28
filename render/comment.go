@@ -10,7 +10,7 @@ import (
 	apiv1 "github.com/fluong/fray/api/v1"
 )
 
-func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string) string {
+func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string) string {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
 	base := map[findingKey]apiv1.Finding{}
@@ -38,12 +38,19 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 			resolved = append(resolved, f)
 		}
 	}
-	if len(opened) == 0 && len(resolved) == 0 {
+	if len(opened) == 0 && len(resolved) == 0 && baselineNote == "" {
 		return "No change in open findings.\n"
 	}
 	groups := issueGroups(opened, texts, byID, flows)
 	sortGroups(groups)
 	var b strings.Builder
+	if baselineNote != "" {
+		fmt.Fprintf(&b, "%s\n\n", baselineNote)
+	}
+	if len(opened) == 0 && len(resolved) == 0 {
+		b.WriteString("No change in open findings.\n")
+		return b.String()
+	}
 	fmt.Fprintf(&b, "%s\n\n", verdict(groups))
 	if body := renderIssues(groups, texts, byID, flows, locs, changedInputs, base, true); body != "" {
 		b.WriteString(body)

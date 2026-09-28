@@ -232,7 +232,15 @@ func runRemote(opt options) (bool, error) {
 	haveBaseline := resp.Baseline.Findings != nil
 	if haveBaseline {
 		baseline = *resp.Baseline.Findings
-		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs)
+		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, resp.Baseline.Note)
+		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
+			return false, err
+		}
+	}
+	// Also write a comment when the server reports an incomparable baseline note
+	// with no finding delta (absolute-mode key rotation on a clean PR).
+	if !haveBaseline && resp.Baseline.Note != "" {
+		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, resp.Baseline.Note)
 		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 			return false, err
 		}
