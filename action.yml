@@ -86,7 +86,7 @@ runs:
           echo "::error::Missing Actions ID token endpoints. Grant permissions: id-token: write"
           exit 2
         fi
-        token="$(curl -sSFL \
+        token="$(curl -fsSL \
           -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
           -H "Accept: application/json; api-version=2.0" \
           "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=fray" \
