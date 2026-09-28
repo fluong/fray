@@ -131,6 +131,13 @@ func runRemote(opt options) (bool, error) {
 	if err := os.WriteFile(filepath.Join(opt.Out, "threat-model.md"), []byte(report), 0o644); err != nil {
 		return false, err
 	}
+	sarif, err := render.SARIF(doc, resp.Findings, texts, locs)
+	if err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(filepath.Join(opt.Out, "findings.sarif"), sarif, 0o644); err != nil {
+		return false, err
+	}
 
 	var baseline apiv1.Findings
 	haveBaseline := resp.Baseline.Findings != nil

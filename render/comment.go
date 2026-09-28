@@ -551,7 +551,9 @@ func where(id string, byID map[string]client.Element, flows map[string]client.Fl
 	return id
 }
 
-func causeOf(f apiv1.Finding, rule apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow) string {
+// CauseAddress is the Terraform address that caused the finding, used for
+// source locations in PR comments and SARIF.
+func CauseAddress(f apiv1.Finding, rule apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow) string {
 	if f.Status == "open" || f.Status == "" {
 		if field, _ := failedAttribute(rule, f.Target, byID, flows); field != "" {
 			if cause := causeForField(f.Target, field, byID, flows); cause != "" {
@@ -560,6 +562,10 @@ func causeOf(f apiv1.Finding, rule apiv1.RuleText, byID map[string]client.Elemen
 		}
 	}
 	return defaultCause(f.Target, byID, flows)
+}
+
+func causeOf(f apiv1.Finding, rule apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow) string {
+	return CauseAddress(f, rule, byID, flows)
 }
 
 func causeForField(id, field string, byID map[string]client.Element, flows map[string]client.Flow) string {

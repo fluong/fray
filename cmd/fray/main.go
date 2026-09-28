@@ -14,7 +14,7 @@ func main() {
 	flag.StringVar(&opt.Config, "config", "", "path to fray.yaml")
 	flag.StringVar(&opt.Mitigations, "mitigations", "", "path to mitigations.yaml")
 	flag.StringVar(&opt.BaseCommit, "base-commit", "", "PR base commit sha (remote baseline lookup)")
-	flag.StringVar(&opt.Out, "out", ".", "directory for findings.json, threat-model.md, and pr-comment.md")
+	flag.StringVar(&opt.Out, "out", ".", "directory for findings.json, findings.sarif, threat-model.md, and pr-comment.md")
 	flag.StringVar(&opt.Repo, "repo", "", "source.repo recorded on the DFD")
 	flag.StringVar(&opt.Commit, "commit", "", "source.commit recorded on the DFD")
 	flag.StringVar(&opt.Declared, "declared-source", "", "path recorded on declared elements; defaults to -config")
