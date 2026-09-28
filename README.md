@@ -57,7 +57,7 @@ Example of a redacted DFD fragment (scheme `hmac-sha256-v1`):
   "schema_version": "dfd/v1",
   "redaction": {
     "scheme": "hmac-sha256-v1",
-    "key_fingerprint": "a1b2c3d4e5f60718"
+    "key_fingerprint": "0123456789abcdef"
   },
   "source": {
     "repo": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
