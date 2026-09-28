@@ -1,0 +1,15 @@
+aws-web-app fixture
+
+This directory is original Terraform configuration. It does not vendor
+module or provider source. It calls these modules, each under the
+Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0):
+
+  terraform-aws-modules/terraform-aws-vpc            v6.7.3  b3abd6df2ecf052451a361ed55b8f06f8742a795
+  terraform-aws-modules/terraform-aws-alb            v10.5.1 6c6e48c10d450d01cf6715346e926df0b858efc2
+  terraform-aws-modules/terraform-aws-ecs            v7.6.1  60b428812ddcffe48abc6af0988fe826c89da961
+  terraform-aws-modules/terraform-aws-rds            v7.2.2  175da043429cbbe41c512f976105719f6d0e538c
+  terraform-aws-modules/terraform-aws-s3-bucket      v5.16.1 5dc2f1f89743ab935114b0b039bc88044a672ca2
+  terraform-aws-modules/terraform-aws-secrets-manager v2.1.1 b13c2b3028536c79145162469671929e4ea83835
+
+Copyrights remain with the terraform-aws-modules authors. Checked
+2026-09-27: each repository's LICENSE is Apache-2.0.

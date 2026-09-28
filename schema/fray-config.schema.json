@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fray:fray-config:v1",
+  "title": "fray.yaml",
+  "description": "Human augmentation of a plan. Declared elements, flows, and boundary membership, plus annotations on inferred elements and on flow data class. Addresses are a Terraform address, declared:<key>, or signal:<type>:<name>.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "const": "fray-config/v1" },
+    "audit_config": {
+      "const": "owned_by_this_root",
+      "description": "Set when this root owns object-storage data-access audit configuration. When omitted, a missing CloudTrail data event or GCP audit config is unknown rather than off."
+    },
+    "elements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/element" }
+    },
+    "flows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/flow" }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/boundary" }
+    },
+    "annotations": { "$ref": "#/$defs/annotations" }
+  },
+  "$defs": {
+    "address": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "allOf": [
+        { "not": { "pattern": "://" } },
+        { "not": { "pattern": "=" } }
+      ]
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "name", "type", "kind"],
+      "properties": {
+        "key": { "$ref": "#/$defs/address" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "type": { "enum": ["process", "datastore", "external_entity"] },
+        "kind": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "attributes": { "type": "object" }
+      }
+    },
+    "flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "data_class", "transport"],
+      "properties": {
+        "from": { "$ref": "#/$defs/address" },
+        "to": { "$ref": "#/$defs/address" },
+        "data_class": {
+          "enum": ["credentials", "customer_data", "logs", "config", "unknown"]
+        },
+        "transport": { "enum": ["tls", "plaintext", "local", "unknown"] },
+        "authz_scope": {
+          "enum": ["resource", "project", "account", "organization", "public"]
+        },
+        "secret_delivery": { "enum": ["env", "volume"] }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "inside", "outside"],
+      "properties": {
+        "kind": { "enum": ["network", "account", "provider", "operator"] },
+        "inside": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/address" }
+        },
+        "outside": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/address" }
+        }
+      }
+    },
+    "annotations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "elements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/element_annotation" }
+        },
+        "flows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/flow_annotation" }
+        }
+      }
+    },
+    "element_annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signal"],
+      "anyOf": [
+        { "required": ["kind"] },
+        { "required": ["provider"] }
+      ],
+      "properties": {
+        "signal": { "$ref": "#/$defs/address" },
+        "kind": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 }
+      }
+    },
+    "flow_annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "data_class"],
+      "properties": {
+        "from": { "$ref": "#/$defs/address" },
+        "to": { "$ref": "#/$defs/address" },
+        "data_class": {
+          "enum": ["credentials", "customer_data", "logs", "config", "unknown"]
+        }
+      }
+    }
+  }
+}

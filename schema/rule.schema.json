@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fray:rule:v1",
+  "title": "Fray rule",
+  "description": "A rule selects elements or flows, then checks a pass condition. when and pass are conjunctions: every condition must hold. There is no or. Operators are equals, in, exists, not, lte, and gte. A when condition that reads an absent attribute does not match, so the rule emits nothing. Once when matches, pass true is mitigated and pass false is open. equals, in, lte, and gte yield unverified when the attribute is absent; not of an unverified read is unverified. exists is true or false, including when the attribute is absent. A false condition wins over an unverified sibling. Unverified does not gate CI. boundary equals kind/direction and matches one crossing of the flow. The evaluator rejects a field that does not apply to target.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "threat", "explanation", "stride", "severity", "target", "when", "pass", "rationale", "mitigation"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^FR-[0-9]{3}$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "threat": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "explanation": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "group": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "group_title": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "before": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "remediations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/remediation" }
+    },
+    "stride": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stride" }
+    },
+    "severity": { "enum": ["low", "medium", "high"] },
+    "severity_by_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "When a flow crosses a boundary of this kind, the finding severity is the higher of the rule severity and this override.",
+      "properties": {
+        "network": { "enum": ["low", "medium", "high"] },
+        "account": { "enum": ["low", "medium", "high"] },
+        "provider": { "enum": ["low", "medium", "high"] },
+        "operator": { "enum": ["low", "medium", "high"] }
+      }
+    },
+    "target": { "enum": ["element", "flow"] },
+    "when": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/condition" }
+    },
+    "pass": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/condition" }
+    },
+    "rationale": { "type": "string", "minLength": 1 },
+    "mitigation": { "type": "string", "minLength": 1 },
+    "references": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reference" }
+    }
+  },
+  "$defs": {
+    "stride": {
+      "enum": [
+        "spoofing",
+        "tampering",
+        "repudiation",
+        "information_disclosure",
+        "denial_of_service",
+        "elevation_of_privilege"
+      ]
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "resource", "text"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "resource": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "explanation": { "type": "string", "minLength": 1, "maxLength": 400 }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "pattern": "^https://\\S+$" }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": {
+        "op": { "enum": ["equals", "in", "exists", "not", "lte", "gte"] },
+        "field": { "$ref": "#/$defs/field" },
+        "value": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "boolean" },
+            { "type": "number" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "anyOf": [
+                  { "type": "string" },
+                  { "type": "boolean" },
+                  { "type": "number" }
+                ]
+              }
+            }
+          ]
+        },
+        "cond": { "$ref": "#/$defs/condition" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "op": { "const": "not" } },
+            "required": ["op"]
+          },
+          "then": {
+            "required": ["cond"],
+            "not": { "anyOf": [{ "required": ["field"] }, { "required": ["value"] }] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "op": { "const": "exists" } },
+            "required": ["op"]
+          },
+          "then": {
+            "required": ["field"],
+            "not": { "anyOf": [{ "required": ["value"] }, { "required": ["cond"] }] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "op": { "enum": ["equals", "in", "lte", "gte"] } },
+            "required": ["op"]
+          },
+          "then": {
+            "required": ["field", "value"],
+            "not": { "required": ["cond"] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "op": { "const": "equals" } },
+            "required": ["op"]
+          },
+          "then": {
+            "properties": { "value": { "not": { "type": "array" } } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "op": { "const": "in" } },
+            "required": ["op"]
+          },
+          "then": {
+            "properties": { "value": { "type": "array" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "op": { "enum": ["lte", "gte"] } },
+            "required": ["op"]
+          },
+          "then": {
+            "properties": { "value": { "type": "number" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "field": { "const": "boundary" }, "op": { "const": "equals" } },
+            "required": ["field", "op"]
+          },
+          "then": {
+            "properties": { "value": { "$ref": "#/$defs/boundary" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "field": { "const": "boundary" }, "op": { "const": "in" } },
+            "required": ["field", "op"]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/boundary" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "boundary": {
+      "enum": [
+        "network/outside_to_inside",
+        "network/inside_to_outside",
+        "account/outside_to_inside",
+        "account/inside_to_outside",
+        "provider/outside_to_inside",
+        "provider/inside_to_outside",
+        "operator/outside_to_inside",
+        "operator/inside_to_outside"
+      ]
+    },
+    "field": {
+      "enum": [
+        "type",
+        "kind",
+        "provider",
+        "subtype",
+        "provider_subtype",
+        "provenance",
+        "attributes.public",
+        "attributes.acls_disabled",
+        "attributes.public_access_blocked",
+        "attributes.encrypted_at_rest",
+        "attributes.deletion_protection",
+        "attributes.region",
+        "attributes.max_instances",
+        "attributes.image_pinned_by_digest",
+        "attributes.audit_logging",
+        "attributes.rotation_configured",
+        "attributes.versioning",
+        "attributes.object_lock",
+        "attributes.network_restricted",
+        "data_class",
+        "transport",
+        "authz_scope",
+        "secret_delivery",
+        "from.type",
+        "from.kind",
+        "from.provider",
+        "to.type",
+        "to.kind",
+        "to.provider",
+        "boundary",
+        "internet_reachable"
+      ]
+    }
+  }
+}

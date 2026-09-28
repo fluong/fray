@@ -1,0 +1,28 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "example/negative",
+    "commit": "0000000000000000000000000000000000000003",
+    "iac_tool": "terraform",
+    "fidelity": "static"
+  },
+  "elements": [
+    {
+      "id": "e0000000000000001",
+      "type": "datastore",
+      "kind": "relational_db",
+      "provider": "neon",
+      "provenance": "inferred",
+      "evidence": {
+        "signals": [
+          {
+            "type": "env_var",
+            "name": "postgres://u:p@h/db"
+          }
+        ]
+      }
+    }
+  ],
+  "trust_boundaries": [],
+  "flows": []
+}

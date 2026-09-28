@@ -1,0 +1,181 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "example/aws-web-app",
+    "commit": "4530a865f29ba14931379f361b177a992edeab51",
+    "iac_tool": "terraform",
+    "fidelity": "plan"
+  },
+  "elements": [
+    {
+      "id": "e269fe54ebe835ad4",
+      "name": "fray-aws-web-app-uploads-",
+      "type": "datastore",
+      "kind": "object_storage",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "module.uploads.aws_s3_bucket.this[0]"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "acls_disabled": true,
+        "deletion_protection": false,
+        "encrypted_at_rest": true,
+        "public": true,
+        "public_access_blocked": false,
+        "versioning": false
+      },
+      "causes": {
+        "public": "module.uploads.aws_s3_bucket_public_access_block.this[0]",
+        "public_access_blocked": "module.uploads.aws_s3_bucket_public_access_block.this[0]"
+      }
+    },
+    {
+      "id": "e8373dc70dc3b47e5",
+      "name": "fray-aws-web-app",
+      "type": "process",
+      "kind": "load_balancer",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "module.alb.aws_lb.this[0]"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "public": true
+      }
+    },
+    {
+      "id": "e84ae99cb3fa981eb",
+      "name": "fray-aws-web-app",
+      "type": "process",
+      "kind": "container_service",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "module.ecs_service.aws_ecs_service.this[0]"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "image_pinned_by_digest": false,
+        "max_instances": 10
+      }
+    },
+    {
+      "id": "e9eaae993f2e69277",
+      "name": "fray-aws-web-app",
+      "type": "datastore",
+      "kind": "relational_db",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "module.db.module.db_instance.aws_db_instance.this[0]"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "deletion_protection": true,
+        "encrypted_at_rest": true,
+        "public": false
+      }
+    },
+    {
+      "id": "ea971486d1a0a3baf",
+      "name": "fray-aws-web-app/db-password",
+      "type": "datastore",
+      "kind": "secret_store",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "module.db_password.aws_secretsmanager_secret.this[0]"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "audit_logging": true,
+        "deletion_protection": true,
+        "rotation_configured": false
+      }
+    },
+    {
+      "id": "ec948ee4e90f845ac",
+      "name": "Public client",
+      "type": "external_entity",
+      "kind": "public_client",
+      "provenance": "inferred",
+      "evidence": {
+        "signals": [
+          {
+            "type": "network_ingress",
+            "name": "0.0.0.0/0"
+          }
+        ]
+      }
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "b4df77853a264d49d",
+      "kind": "network",
+      "inside": [
+        "e8373dc70dc3b47e5",
+        "e84ae99cb3fa981eb"
+      ],
+      "outside": [
+        "ec948ee4e90f845ac"
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "f188131ed00d977b4",
+      "from": "e8373dc70dc3b47e5",
+      "to": "e84ae99cb3fa981eb",
+      "data_class": "unknown",
+      "transport": "plaintext",
+      "boundaries": []
+    },
+    {
+      "id": "f1dd6fbcaa72c4b2c",
+      "from": "e84ae99cb3fa981eb",
+      "to": "e9eaae993f2e69277",
+      "data_class": "unknown",
+      "transport": "unknown",
+      "boundaries": []
+    },
+    {
+      "id": "f4545fe8f60fa981b",
+      "from": "ea971486d1a0a3baf",
+      "to": "e84ae99cb3fa981eb",
+      "data_class": "credentials",
+      "transport": "local",
+      "boundaries": [],
+      "authz_scope": "resource",
+      "secret_delivery": "env"
+    },
+    {
+      "id": "f632e6cd60295f653",
+      "from": "ec948ee4e90f845ac",
+      "to": "e8373dc70dc3b47e5",
+      "data_class": "unknown",
+      "transport": "plaintext",
+      "boundaries": [
+        "b4df77853a264d49d"
+      ],
+      "authz_scope": "public"
+    },
+    {
+      "id": "fdf4a3ff165b32984",
+      "from": "e84ae99cb3fa981eb",
+      "to": "e269fe54ebe835ad4",
+      "data_class": "unknown",
+      "transport": "tls",
+      "boundaries": [],
+      "authz_scope": "resource"
+    }
+  ]
+}

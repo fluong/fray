@@ -1,0 +1,66 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "example/negative",
+    "commit": "0000000000000000000000000000000000000005",
+    "iac_tool": "terraform",
+    "fidelity": "static"
+  },
+  "elements": [
+    {
+      "id": "e15fddba05cb8040e",
+      "type": "process",
+      "kind": "container_service",
+      "provenance": "declared",
+      "evidence": {
+        "source": "fray.yaml",
+        "key": "inside-a"
+      }
+    },
+    {
+      "id": "ed840f7e80a7fa3a1",
+      "type": "process",
+      "kind": "container_service",
+      "provenance": "declared",
+      "evidence": {
+        "source": "fray.yaml",
+        "key": "inside-b"
+      }
+    },
+    {
+      "id": "e365c63e4df953e04",
+      "type": "process",
+      "kind": "container_service",
+      "provenance": "declared",
+      "evidence": {
+        "source": "fray.yaml",
+        "key": "outside-c"
+      }
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "b7597dd3902a89e0c",
+      "kind": "network",
+      "inside": [
+        "e15fddba05cb8040e",
+        "ed840f7e80a7fa3a1"
+      ],
+      "outside": [
+        "e365c63e4df953e04"
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "f1fa677525ca3443c",
+      "from": "e15fddba05cb8040e",
+      "to": "ed840f7e80a7fa3a1",
+      "data_class": "customer_data",
+      "transport": "tls",
+      "boundaries": [
+        "b7597dd3902a89e0c"
+      ]
+    }
+  ]
+}

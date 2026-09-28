@@ -1,0 +1,700 @@
+{
+  "FR-001": {
+    "id": "FR-001",
+    "title": "Network entry is not anonymous",
+    "threat": "Anyone on the internet can call this service",
+    "explanation": "{from} can reach {process} without a caller identity.",
+    "group": "{count} network entries are anonymous",
+    "group_title": "{process} is open to the internet",
+    "before": "",
+    "mitigation": "Require a caller identity on this flow. Do not grant it to the public.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "boundary",
+        "value": "network/outside_to_inside",
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "not",
+        "field": "",
+        "value": null,
+        "cond": {
+          "op": "equals",
+          "field": "authz_scope",
+          "value": "public",
+          "cond": null
+        }
+      }
+    ],
+    "target": "flow",
+    "severity": "medium",
+    "stride": [
+      "spoofing"
+    ]
+  },
+  "FR-002": {
+    "id": "FR-002",
+    "title": "Internet-reachable compute has a small instance cap",
+    "threat": "Internet-reachable service can grow without a tight cap",
+    "explanation": "{element} is reachable from the internet and its instance cap is above 10.",
+    "group": "",
+    "group_title": "{element} can scale without a tight cap",
+    "before": "",
+    "mitigation": "Set the maximum instance count to 10 or fewer.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "container_service",
+        "cond": null
+      },
+      {
+        "op": "equals",
+        "field": "internet_reachable",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "lte",
+        "field": "attributes.max_instances",
+        "value": 10,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "medium",
+    "stride": [
+      "denial_of_service"
+    ]
+  },
+  "FR-003": {
+    "id": "FR-003",
+    "title": "Credentials are not injected through the environment",
+    "threat": "Secret is exposed in the process environment",
+    "explanation": "A secret is injected into {process} as an environment variable.",
+    "group": "{count} secrets are injected through the environment",
+    "group_title": "Secret exposed in the process environment",
+    "before": "",
+    "mitigation": "Deliver the secret as a mounted file. Do not put it in the process environment.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "data_class",
+        "value": "credentials",
+        "cond": null
+      },
+      {
+        "op": "exists",
+        "field": "secret_delivery",
+        "value": null,
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "secret_delivery",
+        "value": "volume",
+        "cond": null
+      }
+    ],
+    "target": "flow",
+    "severity": "low",
+    "stride": [
+      "information_disclosure"
+    ]
+  },
+  "FR-004": {
+    "id": "FR-004",
+    "title": "Model invocation is scoped to one resource",
+    "threat": "Model access covers every model in the project",
+    "explanation": "{process} can call every model in the project, not only {to}.",
+    "group": "{count} model calls are granted project-wide",
+    "group_title": "Model access covers the whole project",
+    "before": "",
+    "mitigation": "Grant the caller access to the single model resource.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "in",
+        "field": "data_class",
+        "value": [
+          "customer_data",
+          "unknown"
+        ],
+        "cond": null
+      },
+      {
+        "op": "equals",
+        "field": "to.kind",
+        "value": "llm_api",
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "authz_scope",
+        "value": "resource",
+        "cond": null
+      }
+    ],
+    "target": "flow",
+    "severity": "low",
+    "stride": [
+      "elevation_of_privilege"
+    ]
+  },
+  "FR-005": {
+    "id": "FR-005",
+    "title": "Container image is pinned by digest",
+    "threat": "Container image can be replaced without a review",
+    "explanation": "{element} starts from a mutable image tag, so a later start can run different code.",
+    "group": "",
+    "group_title": "{element} image can change without review",
+    "before": "",
+    "mitigation": "Deploy the image by digest.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "container_service",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.image_pinned_by_digest",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "medium",
+    "stride": [
+      "tampering"
+    ]
+  },
+  "FR-006": {
+    "id": "FR-006",
+    "title": "Secret reads are audit logged",
+    "threat": "Secret reads leave no audit trail",
+    "explanation": "A read of {element} cannot be attributed to a caller.",
+    "group": "",
+    "group_title": "Secret reads are not audited",
+    "before": "",
+    "mitigation": "Record data-read and data-write access on the secret store.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "secret_store",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.audit_logging",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "low",
+    "stride": [
+      "repudiation"
+    ]
+  },
+  "FR-007": {
+    "id": "FR-007",
+    "title": "Secret use is scoped to one resource",
+    "threat": "Secret access granted at project scope",
+    "explanation": "{process} can now read every secret in the project, including secrets created later.",
+    "group": "{count} secrets now readable project-wide",
+    "group_title": "Secret access widened to the whole project",
+    "before": "Before this change it could read only the {count} secrets it uses.",
+    "mitigation": "Grant access on the individual secret, not on the project or account.\n",
+    "remediations": [
+      {
+        "provider": "gcp",
+        "resource": "google_project_iam_member",
+        "text": "grant `roles/secretmanager.secretAccessor` on each secret with `google_secret_manager_secret_iam_member`, not on the project.",
+        "explanation": ""
+      },
+      {
+        "provider": "aws",
+        "resource": "aws_iam_policy_document",
+        "text": "scope `GetSecretValue` to the secret ARN in `Resource`, not `\"*\"`.",
+        "explanation": "{process} can now read every secret the role can reach, including secrets created later."
+      },
+      {
+        "provider": "aws",
+        "resource": "aws_iam_policy",
+        "text": "scope `GetSecretValue` to the secret ARN in `Resource`, not `\"*\"`.",
+        "explanation": "{process} can now read every secret the role can reach, including secrets created later."
+      }
+    ],
+    "when": [
+      {
+        "op": "equals",
+        "field": "data_class",
+        "value": "credentials",
+        "cond": null
+      },
+      {
+        "op": "exists",
+        "field": "secret_delivery",
+        "value": null,
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "authz_scope",
+        "value": "resource",
+        "cond": null
+      }
+    ],
+    "target": "flow",
+    "severity": "medium",
+    "stride": [
+      "elevation_of_privilege"
+    ]
+  },
+  "FR-008": {
+    "id": "FR-008",
+    "title": "Secret store cannot be destroyed by the tool",
+    "threat": "Secret store can be destroyed by the infrastructure tool",
+    "explanation": "Destroying {element} deletes the live credential.",
+    "group": "",
+    "group_title": "{element} can be destroyed by the infrastructure tool",
+    "before": "",
+    "mitigation": "Block destroy of the secret store in the infrastructure tool.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "secret_store",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.deletion_protection",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "low",
+    "stride": [
+      "tampering",
+      "denial_of_service"
+    ]
+  },
+  "FR-009": {
+    "id": "FR-009",
+    "title": "Secrets are rotated",
+    "threat": "Secret is never rotated",
+    "explanation": "{element} stays valid indefinitely after it leaks.",
+    "group": "",
+    "group_title": "{element} is never rotated",
+    "before": "",
+    "mitigation": "Configure a rotation schedule on the secret.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "secret_store",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.rotation_configured",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "low",
+    "stride": [
+      "information_disclosure"
+    ]
+  },
+  "FR-010": {
+    "id": "FR-010",
+    "title": "Object storage is not public",
+    "threat": "Objects are readable by anyone who can name them",
+    "explanation": "{element} is public, so anyone who knows an object name can read it.",
+    "group": "{count} buckets are public",
+    "group_title": "{label} made public",
+    "before": "",
+    "mitigation": "Keep the bucket private. Do not grant public read.\n",
+    "remediations": [
+      {
+        "provider": "cloudflare",
+        "resource": "cloudflare_r2_managed_domain",
+        "text": "remove or disable `{cause}`. To share specific objects, use presigned URLs.",
+        "explanation": "This enables a public r2.dev URL on {element}. Anyone who knows an object name can read it without credentials."
+      }
+    ],
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "object_storage",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.public",
+        "value": false,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "high",
+    "stride": [
+      "information_disclosure"
+    ]
+  },
+  "FR-012": {
+    "id": "FR-012",
+    "title": "Object storage cannot be destroyed by the tool",
+    "threat": "Object storage can be destroyed by the infrastructure tool",
+    "explanation": "Destroying {element} removes the stored objects.",
+    "group": "",
+    "group_title": "{element} can be destroyed by the infrastructure tool",
+    "before": "",
+    "mitigation": "Block destroy of the bucket in the infrastructure tool.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "object_storage",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.deletion_protection",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "medium",
+    "stride": [
+      "tampering",
+      "denial_of_service"
+    ]
+  },
+  "FR-014": {
+    "id": "FR-014",
+    "title": "Object storage keeps prior versions",
+    "threat": "Overwriting an object drops the previous copy",
+    "explanation": "{element} does not keep prior versions.",
+    "group": "",
+    "group_title": "Overwriting an object drops the previous copy",
+    "before": "",
+    "mitigation": "Enable versioning on the bucket.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "object_storage",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.versioning",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "medium",
+    "stride": [
+      "tampering",
+      "denial_of_service"
+    ]
+  },
+  "FR-017": {
+    "id": "FR-017",
+    "title": "LLM processing region is pinned",
+    "threat": "Model processing region is not pinned",
+    "explanation": "Calls to {element} are not pinned to one regional endpoint.",
+    "group": "",
+    "group_title": "Model processing region is not pinned",
+    "before": "",
+    "mitigation": "Set the model region to a single regional endpoint, not global.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "llm_api",
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "exists",
+        "field": "attributes.region",
+        "value": null,
+        "cond": null
+      },
+      {
+        "op": "not",
+        "field": "",
+        "value": null,
+        "cond": {
+          "op": "in",
+          "field": "attributes.region",
+          "value": [
+            "global"
+          ],
+          "cond": null
+        }
+      }
+    ],
+    "target": "element",
+    "severity": "low",
+    "stride": [
+      "information_disclosure"
+    ]
+  },
+  "FR-023": {
+    "id": "FR-023",
+    "title": "Object reads are audit logged",
+    "threat": "Object reads leave no audit trail",
+    "explanation": "A read of {element} cannot be attributed to a caller.",
+    "group": "",
+    "group_title": "{element} reads are not audited",
+    "before": "",
+    "mitigation": "Record data-read access on the bucket.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "object_storage",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.audit_logging",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "medium",
+    "stride": [
+      "repudiation"
+    ]
+  },
+  "FR-024": {
+    "id": "FR-024",
+    "title": "Object storage does not use ACLs",
+    "threat": "Object ACLs can grant access that bucket policy does not show",
+    "explanation": "{element} still allows object ACLs.",
+    "group": "",
+    "group_title": "{element} allows object ACLs",
+    "before": "",
+    "mitigation": "Disable object ACLs so only bucket IAM grants access.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "object_storage",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.acls_disabled",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "medium",
+    "stride": [
+      "elevation_of_privilege"
+    ]
+  },
+  "FR-025": {
+    "id": "FR-025",
+    "title": "Object storage blocks public access",
+    "threat": "Public access to the bucket is not blocked",
+    "explanation": "{element} can be opened later by a public hostname.",
+    "group": "{count} buckets do not block public access",
+    "group_title": "{label} does not block public access",
+    "before": "",
+    "mitigation": "Block public access on the bucket.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "equals",
+        "field": "kind",
+        "value": "object_storage",
+        "cond": null
+      },
+      {
+        "op": "in",
+        "field": "provenance",
+        "value": [
+          "iac"
+        ],
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "attributes.public_access_blocked",
+        "value": true,
+        "cond": null
+      }
+    ],
+    "target": "element",
+    "severity": "high",
+    "stride": [
+      "information_disclosure"
+    ]
+  },
+  "FR-026": {
+    "id": "FR-026",
+    "title": "Traffic that crosses a trust boundary is encrypted",
+    "threat": "Traffic crosses a trust boundary unencrypted",
+    "explanation": "Traffic from {from} to {to} crosses a trust boundary without TLS.",
+    "group": "",
+    "group_title": "Traffic crosses a trust boundary unencrypted",
+    "before": "",
+    "mitigation": "Encrypt this flow in transit.\n",
+    "remediations": null,
+    "when": [
+      {
+        "op": "exists",
+        "field": "boundary",
+        "value": null,
+        "cond": null
+      }
+    ],
+    "pass": [
+      {
+        "op": "equals",
+        "field": "transport",
+        "value": "tls",
+        "cond": null
+      }
+    ],
+    "target": "flow",
+    "severity": "medium",
+    "stride": [
+      "information_disclosure"
+    ]
+  }
+}

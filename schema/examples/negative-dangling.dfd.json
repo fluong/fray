@@ -1,0 +1,32 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "example/negative",
+    "commit": "0000000000000000000000000000000000000006",
+    "iac_tool": "terraform",
+    "fidelity": "static"
+  },
+  "elements": [
+    {
+      "id": "eeb05cfb8992ab71a",
+      "type": "process",
+      "kind": "container_service",
+      "provenance": "declared",
+      "evidence": {
+        "source": "fray.yaml",
+        "key": "present"
+      }
+    }
+  ],
+  "trust_boundaries": [],
+  "flows": [
+    {
+      "id": "f321b88d316afff8c",
+      "from": "eeb05cfb8992ab71a",
+      "to": "e0000000000000000",
+      "data_class": "customer_data",
+      "transport": "tls",
+      "boundaries": []
+    }
+  ]
+}
