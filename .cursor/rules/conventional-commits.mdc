@@ -1,0 +1,29 @@
+---
+description: Git commit messages use Conventional Commits
+alwaysApply: true
+---
+
+# Commit messages
+
+Every commit subject uses Conventional Commits:
+
+```
+type(scope): subject
+```
+
+- `type` is one of `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`.
+- `scope` is optional and names the area, such as `infra` or `docs`.
+- Subject is imperative, lowercase, and has no trailing period.
+- A body is optional. When present, it says why, not a file list.
+
+```
+feat(infra): add Cloud Run backend with least-privilege IAM
+
+Keep secret material out of Terraform state and avoid a VPC for public TLS hops.
+```
+
+```
+docs: record the own-architecture threat model
+```
+
+Do not use a bare summary such as `Add Terraform for the backend`.
