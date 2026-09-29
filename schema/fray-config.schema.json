@@ -140,6 +140,20 @@
             "public"
           ]
         },
+        "authz_grants": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "resource",
+              "project",
+              "account",
+              "organization",
+              "public"
+            ]
+          }
+        },
         "secret_delivery": {
           "enum": [
             "env",

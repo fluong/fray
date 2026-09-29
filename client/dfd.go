@@ -75,6 +75,7 @@ type Flow struct {
 	Transport      string   `json:"transport"`
 	Boundaries     []string `json:"boundaries"`
 	AuthzScope     string   `json:"authz_scope,omitempty"`
+	AuthzGrants    []string `json:"authz_grants,omitempty"`
 	SecretDelivery string   `json:"secret_delivery,omitempty"`
 	// Causes maps a flow field to the resource address that set it.
 	Causes map[string]string `json:"-"`

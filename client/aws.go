@@ -245,6 +245,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		}
 		if anonymous {
 			flow.AuthzScope = "public"
+			flow.AuthzGrants = normalizeAuthzGrants("public")
 			if listener != "" {
 				flow.Causes = map[string]string{"authz_scope": listener}
 			}
@@ -315,8 +316,9 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []co
 				DataClass: "credentials", Transport: "local", SecretDelivery: "env",
 				Causes: map[string]string{"secret_delivery": svc.address},
 			}
-			if scope, cause := awsSecretScope(sec, docs, idx.callRefs(module), resources, elements); scope != "" {
+			if scope, grants, cause := awsSecretScope(sec, docs, idx.callRefs(module), resources, elements); scope != "" {
 				flow.AuthzScope = scope
+				flow.AuthzGrants = grants
 				if cause != "" {
 					flow.Causes["authz_scope"] = cause
 				}
@@ -329,7 +331,7 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []co
 
 func bucketFlows(svc planResource, svcEl *Element, module string, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
 	docs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "task_role_arn"), resources, data, idx)
-	hits, account, cause, ambiguous := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
+	hits, grants, cause, ambiguous := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
 	if ambiguous {
 		*warnings = append(*warnings, "ambiguous bucket for "+svc.address)
 		return nil
@@ -337,14 +339,14 @@ func bucketFlows(svc planResource, svcEl *Element, module string, resources, dat
 	if len(hits) != 1 {
 		return nil
 	}
+	scope := effectiveAuthzScope(grants)
+	if scope == "" {
+		return nil
+	}
 	flow := &Flow{
 		From: svcEl.canonicalKey(), To: hits[0].canonicalKey(),
 		DataClass: "unknown", Transport: "tls",
-	}
-	if account {
-		flow.AuthzScope = "account"
-	} else {
-		flow.AuthzScope = "resource"
+		AuthzScope: scope, AuthzGrants: grants,
 	}
 	if cause != "" {
 		flow.Causes = map[string]string{"authz_scope": cause}

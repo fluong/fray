@@ -95,12 +95,13 @@ type frayElement struct {
 }
 
 type frayFlow struct {
-	From           string `yaml:"from"`
-	To             string `yaml:"to"`
-	DataClass      string `yaml:"data_class"`
-	Transport      string `yaml:"transport"`
-	AuthzScope     string `yaml:"authz_scope"`
-	SecretDelivery string `yaml:"secret_delivery"`
+	From           string   `yaml:"from"`
+	To             string   `yaml:"to"`
+	DataClass      string   `yaml:"data_class"`
+	Transport      string   `yaml:"transport"`
+	AuthzScope     string   `yaml:"authz_scope"`
+	AuthzGrants    []string `yaml:"authz_grants"`
+	SecretDelivery string   `yaml:"secret_delivery"`
 }
 
 type frayBoundary struct {
@@ -683,8 +684,9 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 				DataClass: "credentials", Transport: "local", SecretDelivery: "env",
 				Causes: map[string]string{"secret_delivery": svc.address},
 			}
-			if scope, cause := secretScope(env.secret, sa, secretIAM, projectIAM); scope != "" {
+			if scope, grants, cause := secretScope(env.secret, sa, secretIAM, projectIAM); scope != "" {
 				flow.AuthzScope = scope
+				flow.AuthzGrants = grants
 				if cause != "" {
 					flow.Causes["authz_scope"] = cause
 				}
@@ -722,14 +724,16 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 			flows = append(flows, &Flow{
 				From: secTemp(svcEl), To: secTemp(llm),
 				DataClass: "unknown", Transport: "tls", AuthzScope: "project",
-				Causes: map[string]string{"authz_scope": projectRole(projectIAM, "roles/aiplatform.user", sa)},
+				AuthzGrants: normalizeAuthzGrants("project"),
+				Causes:      map[string]string{"authz_scope": projectRole(projectIAM, "roles/aiplatform.user", sa)},
 			})
 		}
 		if caller != nil && publicInvoker(svc, invokers) {
 			flows = append(flows, &Flow{
 				From: secTemp(caller), To: secTemp(svcEl),
 				DataClass: "unknown", Transport: "tls", AuthzScope: "public",
-				Causes: map[string]string{"authz_scope": publicInvokerAddress(svc, invokers)},
+				AuthzGrants: normalizeAuthzGrants("public"),
+				Causes:      map[string]string{"authz_scope": publicInvokerAddress(svc, invokers)},
 			})
 		}
 	}
@@ -761,8 +765,9 @@ func declaredFlow(f frayFlow, elements []*Element) (*Flow, error) {
 	return &Flow{
 		From: from.canonicalKey(), To: to.canonicalKey(),
 		DataClass: f.DataClass, Transport: f.Transport,
-		AuthzScope: f.AuthzScope, SecretDelivery: f.SecretDelivery,
-		Boundaries: []string{},
+		AuthzScope: f.AuthzScope, AuthzGrants: normalizeAuthzGrants(f.AuthzGrants...),
+		SecretDelivery: f.SecretDelivery,
+		Boundaries:     []string{},
 	}, nil
 }
 
@@ -1080,22 +1085,34 @@ func secretMatch(got, secretID string) bool {
 	return got == secretID || strings.HasSuffix(got, "/secrets/"+secretID)
 }
 
-// secretScope is the broadest grant that applies. A project-level
-// secretAccessor covers every secret in the project, including secrets that
-// also have a per-secret binding. That union is deterministic.
-func secretScope(secretID, sa string, secretIAM, projectIAM []planResource) (scope, cause string) {
-	for _, m := range projectIAM {
-		if m.values["role"] == "roles/secretmanager.secretAccessor" && memberIs(m.values["member"], sa) {
-			return "project", m.address
-		}
-	}
+// secretScope is the broadest grant that applies, plus every contributing
+// grant. A project-level secretAccessor covers every secret in the project,
+// including secrets that also have a per-secret binding.
+func secretScope(secretID, sa string, secretIAM, projectIAM []planResource) (scope string, grants []string, cause string) {
+	var scopes []string
+	resourceCause, projectCause := "", ""
 	for _, m := range secretIAM {
 		sid, _ := m.values["secret_id"].(string)
 		if secretMatch(sid, secretID) && memberIs(m.values["member"], sa) {
-			return "resource", m.address
+			scopes = append(scopes, "resource")
+			resourceCause = m.address
 		}
 	}
-	return "", ""
+	for _, m := range projectIAM {
+		if m.values["role"] == "roles/secretmanager.secretAccessor" && memberIs(m.values["member"], sa) {
+			scopes = append(scopes, "project")
+			projectCause = m.address
+		}
+	}
+	grants = normalizeAuthzGrants(scopes...)
+	scope = effectiveAuthzScope(grants)
+	switch scope {
+	case "project":
+		cause = projectCause
+	case "resource":
+		cause = resourceCause
+	}
+	return scope, grants, cause
 }
 
 func projectRole(members []planResource, role, sa string) string {

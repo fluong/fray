@@ -153,6 +153,9 @@
       "transport": "local",
       "boundaries": [],
       "authz_scope": "resource",
+      "authz_grants": [
+        "resource"
+      ],
       "secret_delivery": "env"
     },
     {
@@ -164,7 +167,10 @@
       "boundaries": [
         "b4df77853a264d49d"
       ],
-      "authz_scope": "public"
+      "authz_scope": "public",
+      "authz_grants": [
+        "public"
+      ]
     },
     {
       "id": "fdf4a3ff165b32984",
@@ -173,7 +179,10 @@
       "data_class": "unknown",
       "transport": "tls",
       "boundaries": [],
-      "authz_scope": "resource"
+      "authz_scope": "resource",
+      "authz_grants": [
+        "resource"
+      ]
     }
   ]
 }

@@ -863,13 +863,13 @@ func nullResources(resources []any) bool {
 	return true
 }
 
-func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resources []planResource, elements []*Element) (string, string) {
+func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resources []planResource, elements []*Element) (scope string, grants []string, cause string) {
 	account := false
 	covers := false
-	cause := ""
+	accountCause, coverCause := "", ""
 	resolved, ambiguous := elementsFromRefs(callRefs, resources, elements, "aws_secretsmanager_secret")
 	if ambiguous {
-		return "", ""
+		return "", nil, ""
 	}
 	for _, doc := range docs {
 		for _, st := range docStatements(doc) {
@@ -878,36 +878,40 @@ func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resour
 			}
 			if wildcardResources(st.resources) {
 				account = true
-				cause = st.doc
+				accountCause = st.doc
 				continue
 			}
 			if nullResources(st.resources) {
 				for _, hit := range resolved {
 					if hit.canonicalKey() == sec.canonicalKey() {
 						covers = true
-						cause = st.doc
+						coverCause = st.doc
 					}
 				}
 			}
 		}
 	}
-	if account {
-		return "account", cause
-	}
+	var scopes []string
 	if covers {
-		return "resource", cause
+		scopes = append(scopes, "resource")
+		cause = coverCause
 	}
-	return "", ""
+	if account {
+		scopes = append(scopes, "account")
+		cause = accountCause // broadest wins for cause
+	}
+	grants = normalizeAuthzGrants(scopes...)
+	return effectiveAuthzScope(grants), grants, cause
 }
 
-func bucketsFromDocs(docs []planResource, callRefs []string, resources []planResource, elements []*Element) ([]*Element, bool, string, bool) {
-	resolved, ambiguous := elementsFromRefs(callRefs, resources, elements, "aws_s3_bucket")
-	if ambiguous {
-		return nil, false, "", true
+func bucketsFromDocs(docs []planResource, callRefs []string, resources []planResource, elements []*Element) (hits []*Element, grants []string, cause string, ambiguous bool) {
+	resolved, amb := elementsFromRefs(callRefs, resources, elements, "aws_s3_bucket")
+	if amb {
+		return nil, nil, "", true
 	}
 	account := false
 	covers := false
-	cause := ""
+	accountCause, coverCause := "", ""
 	for _, doc := range docs {
 		for _, st := range docStatements(doc) {
 			if !grantsAction(st, s3Action) {
@@ -915,22 +919,32 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 			}
 			if wildcardResources(st.resources) {
 				account = true
-				cause = st.doc
+				accountCause = st.doc
 				continue
 			}
 			if nullResources(st.resources) && len(resolved) > 0 {
 				covers = true
-				cause = st.doc
+				coverCause = st.doc
 			}
 		}
 	}
-	if !account && !covers {
-		return nil, false, "", false
+	var scopes []string
+	if covers {
+		scopes = append(scopes, "resource")
+		cause = coverCause
+	}
+	if account {
+		scopes = append(scopes, "account")
+		cause = accountCause
+	}
+	grants = normalizeAuthzGrants(scopes...)
+	if len(grants) == 0 {
+		return nil, nil, "", false
 	}
 	if len(resolved) != 1 {
-		return nil, account, cause, len(resolved) > 1
+		return nil, grants, cause, len(resolved) > 1
 	}
-	return resolved, account, cause, false
+	return resolved, grants, cause, false
 }
 
 func elementsFromRefs(refs []string, resources []planResource, elements []*Element, typ string) ([]*Element, bool) {

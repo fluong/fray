@@ -689,6 +689,21 @@
             "public"
           ]
         },
+        "authz_grants": {
+          "type": "array",
+          "description": "Every authz_scope value that contributes to this flow. authz_scope remains the effective (broadest) scope; rules use authz_scope. Enum values only — redaction-safe.",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "resource",
+              "project",
+              "account",
+              "organization",
+              "public"
+            ]
+          }
+        },
         "secret_delivery": {
           "enum": [
             "env",

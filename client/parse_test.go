@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -150,6 +151,9 @@ func TestProjectScopeCoversEverySecret(t *testing.T) {
 		n++
 		if f.AuthzScope != "project" {
 			t.Fatalf("scope %q, want project", f.AuthzScope)
+		}
+		if !slices.Equal(f.AuthzGrants, []string{"resource", "project"}) {
+			t.Fatalf("grants %#v, want [resource project]", f.AuthzGrants)
 		}
 		if f.Causes["authz_scope"] != "google_project_iam_member.database_url_accessor" {
 			t.Fatalf("cause %q", f.Causes["authz_scope"])
