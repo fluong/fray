@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.5.0] — unreleased
+## [0.5.0] — 2026-09-29
 
 ### Added
 - Rule FR-027 companion support: element `purpose=audit_archive`, flow `authz_actions`
