@@ -31,10 +31,11 @@
   `purpose: audit_archive` (etc.) for buckets you want FR-027 to cover. Evidence
   records `purpose_source` as `type` | `relation` | `declared`.
 - Authz grants remain multi-valued (`authz_grants`); effective scope stays on `authz_scope`.
-- R2 service→bucket mechanical flows record `authz_scope=resource` when R2 key envs
-  are present (so inbound_writer / FR-027 can see the writer). Prior to v0.5.0 that
-  flow omitted `authz_scope` entirely; `resource` is correct because R2 access keys
-  are bucket-scoped credentials, not project/account IAM.
+- R2 service→bucket authz is derived from `cloudflare_api_token` /
+  `cloudflare_account_token` policies in the plan: bucket resource keys
+  (`com.cloudflare.edge.r2.bucket.…`) → `resource`; account keys
+  (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
+  `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
 ### Notes for fray-server
 After this tag is published, bump every `github.com/fluong/fray` require to `v0.5.0`

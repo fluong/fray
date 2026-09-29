@@ -25,6 +25,8 @@ var ignoredTypes = map[string]bool{
 	"google_logging_project_sink":                    true,
 	"google_logging_folder_sink":                     true,
 	"google_logging_organization_sink":               true,
+	"cloudflare_api_token":                           true,
+	"cloudflare_account_token":                       true,
 	// AWS types that are siblings or network plumbing, not elements.
 	"aws_appautoscaling_policy":                          true,
 	"aws_appautoscaling_target":                          true,
@@ -184,6 +186,8 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			// Mapped in buildAWS. Not warned as unknown.
 		case "cloudflare_r2_managed_domain", "cloudflare_r2_custom_domain":
 			// Read later to decide whether a bucket is public. Not an element.
+		case "cloudflare_api_token", "cloudflare_account_token":
+			// Policies feed R2 service→bucket authz_scope. Not an element.
 		default:
 			if ignoredTypes[r.typ] || seenUnknown[r.typ] {
 				continue
@@ -277,7 +281,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		return DFD{}, warnings, err
 	}
 
-	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, elements, &warnings)
+	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, resources, elements, &warnings)
 	flows = append(flows, awsFlows...)
 	for _, f := range cfg.Flows {
 		flow, err := declaredFlow(f, elements)
@@ -644,7 +648,7 @@ func secretRef(env map[string]any) string {
 	return ""
 }
 
-func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectIAM []planResource, elements []*Element, warnings *[]string) []*Flow {
+func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectIAM, allResources []planResource, elements []*Element, warnings *[]string) []*Flow {
 	var flows []*Flow
 	secretByID := map[string]*Element{}
 	for _, s := range secrets {
@@ -733,13 +737,20 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 				slices.Sort(names)
 				*warnings = append(*warnings, "ambiguous R2 bucket for R2 key envs on "+svc.address+"; candidates: "+strings.Join(names, ", "))
 			} else if r2el != nil {
-				flows = append(flows, &Flow{
+				flow := &Flow{
 					From: secTemp(svcEl), To: secTemp(r2el),
 					DataClass: "unknown", Transport: "tls",
-					// R2 access-key envs imply a bucket-scoped write capability.
-					AuthzScope:  "resource",
-					AuthzGrants: normalizeAuthzGrants("resource"),
-				})
+				}
+				if scope, grants, cause, ok := r2TokenAuthz(allResources); ok {
+					flow.AuthzScope = scope
+					flow.AuthzGrants = grants
+					if cause != "" {
+						flow.Causes = map[string]string{"authz_scope": cause}
+					}
+				} else {
+					*warnings = append(*warnings, "R2 key envs on "+svc.address+" but no cloudflare_api_token in plan; authz_scope omitted")
+				}
+				flows = append(flows, flow)
 			}
 		}
 		if llm != nil && hasEnv(svc, "VERTEX_REGION") && saMatches(projectIAM, "roles/aiplatform.user", sa) {

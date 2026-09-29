@@ -229,3 +229,91 @@ func TestAmbiguousR2Buckets(t *testing.T) {
 		}
 	}
 }
+
+func TestR2AuthzFromAPIToken(t *testing.T) {
+	baseSvc := `{"address":"google_cloud_run_v2_service.api","mode":"managed","type":"google_cloud_run_v2_service","change":{"after":{
+	      "name":"api","location":"europe-west1",
+	      "template":[{"service_account":"api@example.iam.gserviceaccount.com","containers":[{"image":"example","env":[
+	        {"name":"R2_ACCESS_KEY_ID","value_source":[{"secret_key_ref":[{"secret":"r2-key"}]}]},
+	        {"name":"R2_SECRET_ACCESS_KEY","value_source":[{"secret_key_ref":[{"secret":"r2-secret"}]}]}
+	      ]}]}]
+	    }}}`
+	baseSecret := `{"address":"google_secret_manager_secret.r2","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"r2-key","rotation":[]}}},
+	    {"address":"google_secret_manager_secret.r2sec","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"r2-secret","rotation":[]}}},
+	    {"address":"cloudflare_r2_bucket.archive","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"archive"}}}`
+	src := Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}
+	cfg := []byte("schema_version: fray-config/v1\n")
+
+	r2Flow := func(t *testing.T, plan []byte) (Flow, []string) {
+		t.Helper()
+		doc, warnings, err := Parse(plan, cfg, "fray.yaml", src, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range doc.Flows {
+			for _, el := range doc.Elements {
+				if el.ID == f.To && el.Kind == "object_storage" {
+					return f, warnings
+				}
+			}
+		}
+		t.Fatal("missing service→R2 flow")
+		return Flow{}, nil
+	}
+
+	t.Run("bucket-scoped", func(t *testing.T) {
+		plan := []byte(`{"resource_changes":[` + baseSvc + `,` + baseSecret + `,
+	    {"address":"cloudflare_api_token.r2","mode":"managed","type":"cloudflare_api_token","change":{"after":{
+	      "name":"r2-write",
+	      "policies":[{"effect":"allow","resources":{"com.cloudflare.edge.r2.bucket.abc_default_archive":"*"}}]
+	    }}}
+	  ]}`)
+		f, warnings := r2Flow(t, plan)
+		if f.AuthzScope != "resource" {
+			t.Fatalf("scope %q", f.AuthzScope)
+		}
+		if !slices.Equal(f.AuthzGrants, []string{"resource"}) {
+			t.Fatalf("grants %#v", f.AuthzGrants)
+		}
+		if f.Causes["authz_scope"] != "cloudflare_api_token.r2" {
+			t.Fatalf("cause %q", f.Causes["authz_scope"])
+		}
+		for _, w := range warnings {
+			if strings.Contains(w, "authz_scope omitted") {
+				t.Fatalf("unexpected warning: %s", w)
+			}
+		}
+	})
+
+	t.Run("account-wide", func(t *testing.T) {
+		plan := []byte(`{"resource_changes":[` + baseSvc + `,` + baseSecret + `,
+	    {"address":"cloudflare_api_token.r2","mode":"managed","type":"cloudflare_api_token","change":{"after":{
+	      "name":"r2-account",
+	      "policies":[{"effect":"allow","resources":"{\"com.cloudflare.api.account.abc\":\"*\"}"}]
+	    }}}
+	  ]}`)
+		f, _ := r2Flow(t, plan)
+		if f.AuthzScope != "account" {
+			t.Fatalf("scope %q", f.AuthzScope)
+		}
+		if !slices.Equal(f.AuthzGrants, []string{"account"}) {
+			t.Fatalf("grants %#v", f.AuthzGrants)
+		}
+	})
+
+	t.Run("token-absent", func(t *testing.T) {
+		plan := []byte(`{"resource_changes":[` + baseSvc + `,` + baseSecret + `]}`)
+		f, warnings := r2Flow(t, plan)
+		if f.AuthzScope != "" {
+			t.Fatalf("scope %q want empty", f.AuthzScope)
+		}
+		if f.AuthzGrants != nil {
+			t.Fatalf("grants %#v want nil", f.AuthzGrants)
+		}
+		joined := strings.Join(warnings, "\n")
+		if !strings.Contains(joined, "no cloudflare_api_token in plan; authz_scope omitted") {
+			t.Fatalf("warnings: %s", joined)
+		}
+	})
+}
+
