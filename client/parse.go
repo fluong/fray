@@ -432,6 +432,9 @@ func gcsElement(r planResource, audit *bool, prevent bool) *Element {
 	if versioningOn(r.values["versioning"]) {
 		attrs["versioning"] = true
 	}
+	if locked, known := gcsRetentionLocked(r.values["retention_policy"]); known {
+		attrs["object_lock"] = locked
+	}
 	setObjectDeletion(attrs, r.values, prevent)
 	return &Element{
 		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "gcp",
@@ -446,7 +449,8 @@ func r2Element(r planResource, resources []planResource, prevent bool) *Element 
 	attrs := map[string]any{
 		"acls_disabled": true,
 		"audit_logging": false,
-		"object_lock":   false,
+		// object_lock omitted: Cloudflare R2 lock / retention is not parsed yet
+		// (roadmap). Absent → FR-027 stays unverified rather than false-open.
 	}
 	causes := map[string]string{}
 	if cause, public := r2PublicCause(name, resources); public {
@@ -717,6 +721,9 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 				flows = append(flows, &Flow{
 					From: secTemp(svcEl), To: secTemp(r2el),
 					DataClass: "unknown", Transport: "tls",
+					// R2 access-key envs imply a bucket-scoped write capability.
+					AuthzScope:  "resource",
+					AuthzGrants: normalizeAuthzGrants("resource"),
 				})
 			}
 		}
@@ -988,6 +995,42 @@ func versioningOn(v any) bool {
 		}
 	}
 	return false
+}
+
+// gcsRetentionLocked reads retention_policy.is_locked.
+//
+// Truth table:
+//   - is_locked=true → object_lock=true, known
+//   - is_locked=false (unlocked retention) → attribute absent
+//   - no retention_policy → object_lock=false, known
+func gcsRetentionLocked(v any) (locked, known bool) {
+	items := asList(v)
+	if len(items) == 0 {
+		if m, ok := v.(map[string]any); ok {
+			items = []any{m}
+		}
+	}
+	if len(items) == 0 {
+		// No retention policy block → not locked, known false.
+		return false, true
+	}
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		b, ok := m["is_locked"].(bool)
+		if !ok {
+			// Policy present without is_locked → absent.
+			return false, false
+		}
+		if b {
+			return true, true
+		}
+		// Unlocked retention is bypassable → absent.
+		return false, false
+	}
+	return false, false
 }
 
 func auditDataRead(audits []planResource, service string) bool {

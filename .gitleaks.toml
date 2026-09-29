@@ -1,0 +1,14 @@
+# Gitleaks config for the public fray tree.
+# Allowlist only the exact README example fingerprint string — not the rule.
+
+title = "fray"
+
+[[allowlists]]
+description = "README example key_fingerprint (documentation only)"
+regexTarget = "match"
+regexes = [
+  '''"key_fingerprint": "0123456789abcdef"''',
+]
+paths = [
+  '''README\.md$''',
+]

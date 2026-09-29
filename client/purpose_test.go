@@ -18,6 +18,8 @@ func TestInferPurpose(t *testing.T) {
 		"access logs":        "logs",
 		"public api gateway": "public_api",
 		"internal api":       "internal_api",
+		"GitHub API":         "", // external control plane — not internal_api
+		"fray-api":           "", // bare "api" is not enough
 		"random widget":      "",
 	}
 	for name, want := range cases {

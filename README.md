@@ -7,7 +7,7 @@ scan API, and get STRIDE findings plus a merge gate back. Rule evaluation and
 the hosted service live in a private companion repository — this repo never
 ships rules.
 
-Latest release: **v0.4.0**. `v0.1.0` is retracted (non-public fixtures leaked
+Latest release: **v0.5.0** (pending tag). `v0.1.0` is retracted (non-public fixtures leaked
 into the module zip; see `go.mod`).
 
 Related:

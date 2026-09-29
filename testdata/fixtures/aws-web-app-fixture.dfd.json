@@ -24,6 +24,7 @@
         "acls_disabled": true,
         "deletion_protection": false,
         "encrypted_at_rest": true,
+        "object_lock": false,
         "public": false,
         "public_access_blocked": true,
         "versioning": false
@@ -182,6 +183,10 @@
       "authz_scope": "resource",
       "authz_grants": [
         "resource"
+      ],
+      "authz_actions": [
+        "DeleteObject",
+        "PutObject"
       ]
     }
   ]

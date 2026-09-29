@@ -689,7 +689,7 @@
             "public"
           ]
         },
-        "authz_grants": {
+		"authz_grants": {
           "type": "array",
           "description": "Every authz_scope value that contributes to this flow. authz_scope remains the effective (broadest) scope; rules use authz_scope. Enum values only — redaction-safe.",
           "uniqueItems": true,
@@ -701,6 +701,25 @@
               "account",
               "organization",
               "public"
+            ]
+          }
+        },
+        "authz_actions": {
+          "type": "array",
+          "description": "S3 write/policy actions granted on this flow when known from IAM. Closed enum: BypassGovernanceRetention, DeleteObject, DeleteObjectVersion, PutBucketPolicy, PutBucketVersioning, PutLifecycleConfiguration, PutObject, PutObjectLockConfiguration, PutObjectRetention. Matching is case-insensitive; * and ? wildcards may appear anywhere (s3:*Object, s3:Get?bject). *, s3:* expand to the full enum. Absent means unknown — NotAction, Condition, or bucket-policy-sourced grants cannot be reduced to this enum; the parser emits a warning. Not part of the flow id.",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "BypassGovernanceRetention",
+              "DeleteObject",
+              "DeleteObjectVersion",
+              "PutBucketPolicy",
+              "PutBucketVersioning",
+              "PutLifecycleConfiguration",
+              "PutObject",
+              "PutObjectLockConfiguration",
+              "PutObjectRetention"
             ]
           }
         },

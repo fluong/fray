@@ -10,6 +10,8 @@ type Finding struct {
 	Status   string   `json:"status"`
 	Severity string   `json:"severity"`
 	Stride   []string `json:"stride"`
+	// Evidence is optional rule-specific facts (e.g. inbound writers for FR-027).
+	Evidence []string `json:"evidence,omitempty"`
 }
 
 // Findings is the findings.json document shape.
@@ -59,6 +61,11 @@ type RuleText struct {
 	Target       string            `json:"target"`
 	Severity     string            `json:"severity"`
 	Stride       []string          `json:"stride"`
+	WhyHere      string            `json:"why_here,omitempty"`
+	FixHere      string            `json:"fix_here,omitempty"`
+	ContextWhen  []Condition       `json:"context_when,omitempty"`
+	// CoversAttributes are DFD fields this rule speaks for (restates_rule).
+	CoversAttributes []string `json:"covers_attributes,omitempty"`
 }
 
 // GateReason identifies a finding that caused the gate to block.
@@ -80,11 +87,13 @@ type ScanRequest struct {
 }
 
 // FindingEnrichment is optional AI prose under one rule finding.
-// WhyHere may contain {element_id} placeholders filled locally with names.
+// WhyHere and FixHere may contain {element_id} placeholders filled locally with names.
+// When FixHere is set, the PR comment uses it in place of the rule's generic fix line.
 type FindingEnrichment struct {
 	RuleID  string `json:"rule_id"`
 	Target  string `json:"target"`
-	WhyHere string `json:"why_here"`
+	WhyHere string `json:"why_here,omitempty"`
+	FixHere string `json:"fix_here,omitempty"`
 }
 
 // AdvisoryObservation is one AI-generated note. Text and Suggestion may use

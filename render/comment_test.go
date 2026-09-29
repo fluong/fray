@@ -333,15 +333,16 @@ func TestPRCommentFR007EnrichmentTarget(t *testing.T) {
 	enrichments := []apiv1.FindingEnrichment{{
 		RuleID:  "FR-007",
 		Target:  "f4545fe8f60fa981b",
-		WhyHere: "A secret-scoped grant from {e84ae99cb3fa981eb} to {ea971486d1a0a3baf} already exists, so the account-wide grant is redundant.",
+		WhyHere: "{e84ae99cb3fa981eb} already has a resource-scoped grant to {ea971486d1a0a3baf} alongside this account-wide path.",
+		FixHere: "Drop the account-wide grant; the secret-scoped grant already authorizes this flow.",
 	}}
 	// Duplicate advisory content must be dropped — no Advisory section.
 	advisory := &apiv1.Advisory{
 		Observations: []apiv1.AdvisoryObservation{{
 			Stride:     "elevation_of_privilege",
 			ElementIDs: []string{"e84ae99cb3fa981eb", "ea971486d1a0a3baf"},
-			Text:       "A secret-scoped grant from {e84ae99cb3fa981eb} to {ea971486d1a0a3baf} already exists, so the account-wide grant is redundant.",
-			Suggestion: "Drop the Resource \"*\" statement.",
+			Text:       "{e84ae99cb3fa981eb} already has a resource-scoped grant to {ea971486d1a0a3baf} alongside this account-wide path.",
+			Suggestion: "Drop the account-wide grant; the secret-scoped grant already authorizes this flow.",
 		}},
 	}
 	got := PRComment(doc, cur, base, texts, locs, changed, "", advisory, enrichments)
@@ -376,7 +377,7 @@ func TestPRCommentFR025EnrichmentTarget(t *testing.T) {
 	enrichments := []apiv1.FindingEnrichment{{
 		RuleID:  "FR-025",
 		Target:  "e269fe54ebe835ad4",
-		WhyHere: "ACLs are already disabled on this bucket (object ownership is BucketOwnerEnforced), so a bucket policy is now the only way it could become public — and nothing blocks one anymore.",
+		WhyHere: "ACLs are already disabled on this bucket, so a bucket policy is now the only way it could become public — and nothing blocks one anymore.",
 	}}
 	got := PRComment(doc, cur, base, texts, locs, changed, "", nil, enrichments)
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-fr025-enrichment-target.md"))

@@ -76,6 +76,9 @@ type Flow struct {
 	Boundaries     []string `json:"boundaries"`
 	AuthzScope     string   `json:"authz_scope,omitempty"`
 	AuthzGrants    []string `json:"authz_grants,omitempty"`
+	// AuthzActions lists S3 write/policy actions granted on this flow when known
+	// (closed enum including DeleteObject, PutObject, BypassGovernanceRetention, …).
+	AuthzActions   []string `json:"authz_actions,omitempty"`
 	SecretDelivery string   `json:"secret_delivery,omitempty"`
 	// Causes maps a flow field to the resource address that set it.
 	Causes map[string]string `json:"-"`

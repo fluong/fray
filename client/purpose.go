@@ -51,8 +51,8 @@ func InferPurpose(name string) string {
 		return "public_api"
 	case strings.Contains(n, "internal") && strings.Contains(n, "api"):
 		return "internal_api"
-	case strings.Contains(n, "api"):
-		return "internal_api"
+	// Do not match bare "api" — "GitHub API" is an external control plane, not
+	// an internal_api process. Require "internal"/"public" or an annotation.
 	default:
 		return ""
 	}

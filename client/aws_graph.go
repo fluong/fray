@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -721,11 +722,12 @@ func taskAddress(resources []planResource, module string) string {
 }
 
 type iamStatement struct {
-	actions   []string
-	resources []any
-	allow     bool
-	condition bool
-	doc       string
+	actions    []string
+	notActions []string
+	resources  []any
+	allow      bool
+	condition  bool
+	doc        string
 }
 
 func roleDocuments(module string, roleRefs []string, resources, data []planResource, idx configIndex) []planResource {
@@ -803,11 +805,12 @@ func docStatements(doc planResource) []iamStatement {
 			continue
 		}
 		out = append(out, iamStatement{
-			actions:   stringList(m["actions"]),
-			resources: asList(m["resources"]),
-			allow:     true,
-			condition: conditionPresent(m["condition"]),
-			doc:       doc.address,
+			actions:    stringList(m["actions"]),
+			notActions: stringList(m["not_actions"]),
+			resources:  asList(m["resources"]),
+			allow:      true,
+			condition:  conditionPresent(m["condition"]),
+			doc:        doc.address,
 		})
 	}
 	return out
@@ -904,16 +907,30 @@ func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resour
 	return effectiveAuthzScope(grants), grants, cause
 }
 
-func bucketsFromDocs(docs []planResource, callRefs []string, resources []planResource, elements []*Element) (hits []*Element, grants []string, cause string, ambiguous bool) {
+func bucketsFromDocs(docs []planResource, callRefs []string, resources []planResource, elements []*Element) (hits []*Element, grants, actions []string, cause string, ambiguous bool, actionWarn string) {
 	resolved, amb := elementsFromRefs(callRefs, resources, elements, "aws_s3_bucket")
 	if amb {
-		return nil, nil, "", true
+		return nil, nil, nil, "", true, ""
 	}
 	account := false
 	covers := false
 	accountCause, coverCause := "", ""
+	var actionSet []string
+	actionsUnknown := false
 	for _, doc := range docs {
 		for _, st := range docStatements(doc) {
+			if !grantsAction(st, s3Action) && len(st.notActions) == 0 {
+				continue
+			}
+			classified, unknown, warn := classifyS3WriteActions(st)
+			if unknown {
+				actionsUnknown = true
+				if actionWarn == "" {
+					actionWarn = warn
+				}
+			} else {
+				actionSet = mergeAuthzActions(actionSet, classified)
+			}
 			if !grantsAction(st, s3Action) {
 				continue
 			}
@@ -939,12 +956,133 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 	}
 	grants = normalizeAuthzGrants(scopes...)
 	if len(grants) == 0 {
-		return nil, nil, "", false
+		return nil, nil, nil, "", false, ""
+	}
+	if actionsUnknown {
+		actionSet = nil
 	}
 	if len(resolved) != 1 {
-		return nil, grants, cause, len(resolved) > 1
+		return nil, grants, actionSet, cause, len(resolved) > 1, actionWarn
 	}
-	return resolved, grants, cause, false
+	return resolved, grants, actionSet, cause, false, actionWarn
+}
+
+// classifyS3WriteActions maps IAM actions to the closed authz_actions enum.
+// Matching is case-insensitive. Glob wildcards * and ? may appear anywhere
+// in the action name (e.g. s3:*Object, s3:Get?bject). Returns unknown=true
+// (omit authz_actions) for NotAction, Condition, or bucket-policy-sourced
+// grants — the closed enum cannot be derived safely.
+func classifyS3WriteActions(st iamStatement) (actions []string, unknown bool, warn string) {
+	if len(st.notActions) > 0 {
+		return nil, true, "authz_actions unknown: NotAction on " + st.doc
+	}
+	if st.condition {
+		return nil, true, "authz_actions unknown: Condition on " + st.doc
+	}
+	if isBucketPolicyDoc(st.doc) {
+		return nil, true, "authz_actions unknown: bucket-policy-sourced grant on " + st.doc
+	}
+	var out []string
+	add := func(name string) {
+		if !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	for _, a := range st.actions {
+		for _, name := range matchTrackedS3Actions(a) {
+			add(name)
+		}
+	}
+	slices.Sort(out)
+	return out, false, ""
+}
+
+// trackedS3WriteActions is the closed authz_actions enum (alphabetical).
+var trackedS3WriteActions = []string{
+	"BypassGovernanceRetention",
+	"DeleteObject",
+	"DeleteObjectVersion",
+	"PutBucketPolicy",
+	"PutBucketVersioning",
+	"PutLifecycleConfiguration",
+	"PutObject",
+	"PutObjectLockConfiguration",
+	"PutObjectRetention",
+}
+
+// iamActionAliases maps alternate IAM spellings onto tracked enum members.
+var iamActionAliases = map[string]string{
+	"putbucketlifecycleconfiguration": "PutLifecycleConfiguration",
+}
+
+func matchTrackedS3Actions(raw string) []string {
+	pat := strings.ToLower(strings.TrimSpace(raw))
+	if pat == "" {
+		return nil
+	}
+	if pat == "*" || pat == "s3:*" {
+		return slices.Clone(trackedS3WriteActions)
+	}
+	var out []string
+	for _, name := range trackedS3WriteActions {
+		cand := []string{strings.ToLower(name), "s3:" + strings.ToLower(name)}
+		for _, c := range cand {
+			if iamGlobMatch(pat, c) {
+				out = append(out, name)
+				break
+			}
+		}
+	}
+	for alias, mapped := range iamActionAliases {
+		for _, c := range []string{alias, "s3:" + alias} {
+			if iamGlobMatch(pat, c) && !slices.Contains(out, mapped) {
+				out = append(out, mapped)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// iamGlobMatch matches a lowercased IAM action pattern against a candidate.
+// * matches any run of characters; ? matches exactly one.
+func iamGlobMatch(pattern, candidate string) bool {
+	var b strings.Builder
+	b.WriteByte('^')
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '*':
+			b.WriteString(".*")
+		case '?':
+			b.WriteByte('.')
+		case '.', '+', '(', ')', '|', '[', ']', '{', '}', '^', '$', '\\':
+			b.WriteByte('\\')
+			b.WriteByte(pattern[i])
+		default:
+			b.WriteByte(pattern[i])
+		}
+	}
+	b.WriteByte('$')
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return false
+	}
+	return re.MatchString(candidate)
+}
+
+func isBucketPolicyDoc(addr string) bool {
+	return strings.Contains(addr, "aws_s3_bucket_policy.")
+}
+
+func mergeAuthzActions(a, b []string) []string {
+	out := slices.Clone(a)
+	for _, x := range b {
+		if !slices.Contains(out, x) {
+			out = append(out, x)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func elementsFromRefs(refs []string, resources []planResource, elements []*Element, typ string) ([]*Element, bool) {

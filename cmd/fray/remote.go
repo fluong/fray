@@ -282,6 +282,7 @@ func remapEnrichments(items []apiv1.FindingEnrichment, m client.IDMap) {
 	for i := range items {
 		items[i].Target = m.RemapID(items[i].Target)
 		items[i].WhyHere = remapPlaceholders(items[i].WhyHere, m)
+		items[i].FixHere = remapPlaceholders(items[i].FixHere, m)
 	}
 }
 

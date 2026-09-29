@@ -6,9 +6,8 @@ Blocked: 1 new high-severity issue
 Nothing in the bucket is public yet, but nothing now prevents a bucket policy or ACL from
 making it public.
 
-Why this matters here: ACLs are already disabled on this bucket (object ownership is
-BucketOwnerEnforced), so a bucket policy is now the only way it could become public —
-and nothing blocks one anymore.
+Why this matters here: ACLs are already disabled on this bucket, so a bucket policy is now
+the only way it could become public — and nothing blocks one anymore.
 
 Fix: Set `block_public_acls`, `block_public_policy`, `ignore_public_acls`,
 `restrict_public_buckets` to true.

@@ -6,11 +6,10 @@ Not blocking: 1 new issue
 ecs_service can now read every secret in the account, including secrets created later.
 Before this change it could read only the 1 secret it uses.
 
-Why this matters here: A secret-scoped grant from ecs_service to db_password secret
-already exists, so the account-wide grant is redundant.
+Why this matters here: ecs_service already has a resource-scoped grant to db_password
+secret alongside this account-wide path.
 
-Fix: Scope GetSecretValue in `task_exec_iam_statements` to the secret ARN in Resource, not
-"*".
+Fix: Drop the account-wide grant; the secret-scoped grant already authorizes this flow.
 
 <details><summary>Accept this risk instead</summary>
 

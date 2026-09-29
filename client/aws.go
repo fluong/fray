@@ -137,6 +137,7 @@ func awsBucketElement(r planResource, resources []planResource, idx configIndex,
 		name, _ = r.values["bucket_prefix"].(string)
 	}
 	attrs := map[string]any{}
+	causes := map[string]string{}
 	setObjectDeletion(attrs, r.values, prevent)
 	if sib, ok := oneSibling(r, resources, "aws_s3_bucket_versioning", idx); ok {
 		switch versioningStatus(sib.values) {
@@ -166,15 +167,24 @@ func awsBucketElement(r planResource, resources []planResource, idx configIndex,
 			attrs["encrypted_at_rest"] = true
 		}
 	}
+	if locked, known := awsObjectLock(r, resources, idx); known {
+		attrs["object_lock"] = locked
+	} else if reason := awsObjectLockAbsentReason(r, resources, idx); reason != "" {
+		causes["object_lock"] = reason
+	}
 	if auditOwned {
 		attrs["audit_logging"] = bucketAudit(r, resources, idx)
 	}
-	return &Element{
+	el := &Element{
 		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "aws",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
 	}
+	if len(causes) > 0 {
+		el.Causes = causes
+	}
+	return el
 }
 
 func awsSecretElement(r planResource, resources []planResource, idx configIndex, prevent bool) *Element {
@@ -331,7 +341,7 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []co
 
 func bucketFlows(svc planResource, svcEl *Element, module string, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
 	docs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "task_role_arn"), resources, data, idx)
-	hits, grants, cause, ambiguous := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
+	hits, grants, actions, cause, ambiguous, actionWarn := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
 	if ambiguous {
 		*warnings = append(*warnings, "ambiguous bucket for "+svc.address)
 		return nil
@@ -343,10 +353,13 @@ func bucketFlows(svc planResource, svcEl *Element, module string, resources, dat
 	if scope == "" {
 		return nil
 	}
+	if actionWarn != "" {
+		*warnings = append(*warnings, actionWarn)
+	}
 	flow := &Flow{
 		From: svcEl.canonicalKey(), To: hits[0].canonicalKey(),
 		DataClass: "unknown", Transport: "tls",
-		AuthzScope: scope, AuthzGrants: grants,
+		AuthzScope: scope, AuthzGrants: grants, AuthzActions: actions,
 	}
 	if cause != "" {
 		flow.Causes = map[string]string{"authz_scope": cause}
@@ -378,4 +391,64 @@ func dbFlows(resources []planResource, idx configIndex, elements []*Element, war
 		})
 	}
 	return flows
+}
+
+// awsObjectLock reports object_lock for an S3 bucket.
+//
+// Truth table:
+//   - object_lock_enabled=false → false, known
+//   - enabled=true + default_retention mode=COMPLIANCE → true, known
+//   - enabled=true + default_retention mode=GOVERNANCE → absent
+//     (s3:BypassGovernanceRetention can remove retention)
+//   - enabled=true, no default_retention in this plan → absent
+//   - lock configuration managed in another root → absent
+func awsObjectLock(r planResource, resources []planResource, idx configIndex) (locked, known bool) {
+	enabled, enabledSet := r.values["object_lock_enabled"].(bool)
+	if enabledSet && !enabled {
+		return false, true
+	}
+	sib, hasConfig := oneSibling(r, resources, "aws_s3_bucket_object_lock_configuration", idx)
+	if hasConfig {
+		mode, hasMode := retentionMode(sib.values)
+		if hasMode && mode == "COMPLIANCE" {
+			return true, true
+		}
+		// GOVERNANCE or retention not visible → absent.
+		return false, false
+	}
+	return false, false
+}
+
+// awsObjectLockAbsentReason names why object_lock is omitted from attributes.
+// Empty when the attribute is simply unknown for a boring reason.
+func awsObjectLockAbsentReason(r planResource, resources []planResource, idx configIndex) string {
+	sib, hasConfig := oneSibling(r, resources, "aws_s3_bucket_object_lock_configuration", idx)
+	if !hasConfig {
+		return ""
+	}
+	mode, hasMode := retentionMode(sib.values)
+	if hasMode && mode == "GOVERNANCE" {
+		return "s3:BypassGovernanceRetention"
+	}
+	return ""
+}
+
+func retentionMode(values map[string]any) (mode string, ok bool) {
+	for _, rule := range asList(values["rule"]) {
+		m, isMap := rule.(map[string]any)
+		if !isMap {
+			continue
+		}
+		for _, ret := range asList(m["default_retention"]) {
+			rm, isMap := ret.(map[string]any)
+			if !isMap {
+				continue
+			}
+			mode, _ = rm["mode"].(string)
+			if mode != "" {
+				return mode, true
+			}
+		}
+	}
+	return "", false
 }

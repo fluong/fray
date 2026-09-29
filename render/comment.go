@@ -80,13 +80,18 @@ func advisoryEmpty(a *apiv1.Advisory) bool {
 	return a == nil || (a.Note == "" && len(a.Observations) == 0)
 }
 
-func enrichmentIndex(items []apiv1.FindingEnrichment) map[findingKey]string {
-	out := map[findingKey]string{}
+type enrichmentText struct {
+	WhyHere string
+	FixHere string
+}
+
+func enrichmentIndex(items []apiv1.FindingEnrichment) map[findingKey]enrichmentText {
+	out := map[findingKey]enrichmentText{}
 	for _, e := range items {
-		if e.WhyHere == "" {
+		if e.WhyHere == "" && e.FixHere == "" {
 			continue
 		}
-		out[findingKey{e.RuleID, e.Target}] = e.WhyHere
+		out[findingKey{e.RuleID, e.Target}] = enrichmentText{WhyHere: e.WhyHere, FixHere: e.FixHere}
 	}
 	return out
 }
@@ -215,18 +220,18 @@ func (g causeGroup) severity() string {
 	return best
 }
 
-func renderIssues(groups []causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool, why map[findingKey]string) string {
+func renderIssues(groups []causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool, enrich map[findingKey]enrichmentText) string {
 	var b strings.Builder
 	for i, g := range groups {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		b.WriteString(renderIssue(g, texts, byID, flows, locs, changedInputs, base, accept, why))
+		b.WriteString(renderIssue(g, texts, byID, flows, locs, changedInputs, base, accept, enrich))
 	}
 	return b.String()
 }
 
-func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool, why map[findingKey]string) string {
+func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool, enrich map[findingKey]enrichmentText) string {
 	rule := primaryRule(g.items, texts)
 	lost := previouslyMitigated(g.items, base)
 	fix, explanation := remedy(rule, g.cause)
@@ -249,11 +254,17 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 		}
 	}
 	names := displayNames(byID, flows)
+	if line := fixHereLine(g.items, enrich, names); line != "" {
+		fix = line
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s**\n", title)
 	fmt.Fprintf(&b, "%s\n\n", metaLine(g, rule, locs, mod, hasMod))
 	fmt.Fprintf(&b, "%s\n\n", wrap(pluralizeCounts(fill(explanation, repl)), 90))
-	if line := whyHereLine(g.items, why, names); line != "" {
+	if line := whyHereLine(g.items, enrich, names); line != "" {
+		fmt.Fprintf(&b, "%s\n\n", wrap(line, 90))
+	}
+	if line := findingEvidenceLine(g.items, names); line != "" {
 		fmt.Fprintf(&b, "%s\n\n", wrap(line, 90))
 	}
 	if affected := affectedNames(g.items, byID, flows); len(affected) > 1 {
@@ -271,16 +282,43 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 	return b.String()
 }
 
-func whyHereLine(items []apiv1.Finding, why map[findingKey]string, names map[string]string) string {
+func whyHereLine(items []apiv1.Finding, enrich map[findingKey]enrichmentText, names map[string]string) string {
 	for _, f := range items {
-		if raw, ok := why[findingKey{f.RuleID, f.Target}]; ok && raw != "" {
+		if raw, ok := enrich[findingKey{f.RuleID, f.Target}]; ok && raw.WhyHere != "" {
 			// Sanitize before filling names so underscore italics cannot eat
 			// characters inside local display names (ecs_service, block_public_*).
-			text := FillIDPlaceholders(SanitizeAdvisoryText(raw), names)
+			text := FillIDPlaceholders(SanitizeAdvisoryText(raw.WhyHere), names)
 			if text == "" {
 				return ""
 			}
 			return "Why this matters here: " + text
+		}
+	}
+	return ""
+}
+
+func findingEvidenceLine(items []apiv1.Finding, names map[string]string) string {
+	for _, f := range items {
+		if len(f.Evidence) == 0 {
+			continue
+		}
+		parts := make([]string, 0, len(f.Evidence))
+		for _, e := range f.Evidence {
+			parts = append(parts, FillIDPlaceholders(e, names))
+		}
+		return "Evidence: " + strings.Join(parts, "; ")
+	}
+	return ""
+}
+
+func fixHereLine(items []apiv1.Finding, enrich map[findingKey]enrichmentText, names map[string]string) string {
+	for _, f := range items {
+		if raw, ok := enrich[findingKey{f.RuleID, f.Target}]; ok && raw.FixHere != "" {
+			text := FillIDPlaceholders(SanitizeAdvisoryText(raw.FixHere), names)
+			if text == "" {
+				return ""
+			}
+			return text
 		}
 	}
 	return ""
@@ -361,7 +399,7 @@ func renderAdvisory(advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichm
 func novelObservations(obs []apiv1.AdvisoryObservation, enrichments []apiv1.FindingEnrichment, opened []apiv1.Finding, texts map[string]apiv1.RuleText, names map[string]string) []apiv1.AdvisoryObservation {
 	said := make([]string, 0, len(enrichments)+len(opened)*3)
 	for _, e := range enrichments {
-		said = append(said, normAdvice(FillIDPlaceholders(e.WhyHere, names)))
+		said = append(said, normAdvice(FillIDPlaceholders(e.WhyHere+" "+e.FixHere, names)))
 	}
 	for _, f := range opened {
 		rt := texts[f.RuleID]

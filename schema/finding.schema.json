@@ -37,6 +37,11 @@
               "elevation_of_privilege"
             ]
           }
+        },
+        "evidence": {
+          "type": "array",
+          "description": "Optional rule-specific facts (absolute ids / closed action names only).",
+          "items": { "type": "string", "minLength": 1, "maxLength": 400 }
         }
       }
     }
