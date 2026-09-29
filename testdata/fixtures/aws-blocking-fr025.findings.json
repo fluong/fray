@@ -1,0 +1,143 @@
+{
+  "schema_version": "finding/v1",
+  "findings": [
+    {
+      "rule_id": "FR-001",
+      "target": "f632e6cd60295f653",
+      "status": "open",
+      "severity": "medium",
+      "stride": [
+        "spoofing"
+      ]
+    },
+    {
+      "rule_id": "FR-002",
+      "target": "e84ae99cb3fa981eb",
+      "status": "mitigated",
+      "severity": "medium",
+      "stride": [
+        "denial_of_service"
+      ]
+    },
+    {
+      "rule_id": "FR-003",
+      "target": "f4545fe8f60fa981b",
+      "status": "open",
+      "severity": "low",
+      "stride": [
+        "information_disclosure"
+      ]
+    },
+    {
+      "rule_id": "FR-005",
+      "target": "e84ae99cb3fa981eb",
+      "status": "open",
+      "severity": "medium",
+      "stride": [
+        "tampering"
+      ]
+    },
+    {
+      "rule_id": "FR-006",
+      "target": "ea971486d1a0a3baf",
+      "status": "mitigated",
+      "severity": "low",
+      "stride": [
+        "repudiation"
+      ]
+    },
+    {
+      "rule_id": "FR-007",
+      "target": "f4545fe8f60fa981b",
+      "status": "mitigated",
+      "severity": "medium",
+      "stride": [
+        "elevation_of_privilege"
+      ]
+    },
+    {
+      "rule_id": "FR-008",
+      "target": "ea971486d1a0a3baf",
+      "status": "mitigated",
+      "severity": "low",
+      "stride": [
+        "tampering",
+        "denial_of_service"
+      ]
+    },
+    {
+      "rule_id": "FR-009",
+      "target": "ea971486d1a0a3baf",
+      "status": "open",
+      "severity": "low",
+      "stride": [
+        "information_disclosure"
+      ]
+    },
+    {
+      "rule_id": "FR-010",
+      "target": "e269fe54ebe835ad4",
+      "status": "mitigated",
+      "severity": "high",
+      "stride": [
+        "information_disclosure"
+      ]
+    },
+    {
+      "rule_id": "FR-012",
+      "target": "e269fe54ebe835ad4",
+      "status": "open",
+      "severity": "medium",
+      "stride": [
+        "tampering",
+        "denial_of_service"
+      ]
+    },
+    {
+      "rule_id": "FR-014",
+      "target": "e269fe54ebe835ad4",
+      "status": "open",
+      "severity": "medium",
+      "stride": [
+        "tampering",
+        "denial_of_service"
+      ]
+    },
+    {
+      "rule_id": "FR-023",
+      "target": "e269fe54ebe835ad4",
+      "status": "unverified",
+      "severity": "medium",
+      "stride": [
+        "repudiation"
+      ]
+    },
+    {
+      "rule_id": "FR-024",
+      "target": "e269fe54ebe835ad4",
+      "status": "mitigated",
+      "severity": "medium",
+      "stride": [
+        "elevation_of_privilege"
+      ]
+    },
+    {
+      "rule_id": "FR-025",
+      "target": "e269fe54ebe835ad4",
+      "status": "open",
+      "severity": "high",
+      "stride": [
+        "information_disclosure"
+      ]
+    },
+    {
+      "rule_id": "FR-026",
+      "target": "f632e6cd60295f653",
+      "status": "mitigated",
+      "severity": "high",
+      "stride": [
+        "information_disclosure"
+      ]
+    }
+  ]
+}

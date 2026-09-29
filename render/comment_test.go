@@ -24,7 +24,7 @@ func TestPRCommentAWSAdvisoryFR007(t *testing.T) {
 	}
 	// Baseline compare: only task_exec_secret_arns changed to ["*"].
 	changed := map[string][]string{"module.ecs_service": {"task_exec_secret_arns"}}
-	got := PRComment(doc, cur, base, texts, locs, changed, "")
+	got := PRComment(doc, cur, base, texts, locs, changed, "", nil, nil)
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-advisory-fr007.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -44,7 +44,7 @@ func TestPRCommentAWSAdvisoryFR007IAMStatements(t *testing.T) {
 		t.Fatal(err)
 	}
 	changed := map[string][]string{"module.ecs_service": {"task_exec_iam_statements"}}
-	got := PRComment(doc, cur, base, texts, locs, changed, "")
+	got := PRComment(doc, cur, base, texts, locs, changed, "", nil, nil)
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-advisory-fr007-iam-statements.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -62,7 +62,7 @@ func TestPRCommentAWSAdvisoryFR007OmitsGuessedInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PRComment(doc, cur, base, texts, locs, nil, "")
+	got := PRComment(doc, cur, base, texts, locs, nil, "", nil, nil)
 	if strings.Contains(got, "task_exec_") {
 		t.Fatalf("must omit inputs without a baseline compare:\n%s", got)
 	}
@@ -112,7 +112,7 @@ resource "google_project_iam_member" "database_url_accessor" {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PRComment(doc, cur, base, texts, locs, nil, "")
+	got := PRComment(doc, cur, base, texts, locs, nil, "", nil, nil)
 	want := readGolden(t, filepath.Join("..", "testdata", "golden", "pr-comment-gcp-advisory-fr007.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -138,7 +138,7 @@ func TestPRCommentAWSBlockingHigh(t *testing.T) {
 			"restrict_public_buckets",
 		},
 	}
-	got := PRComment(doc, cur, base, texts, locs, changed, "")
+	got := PRComment(doc, cur, base, texts, locs, changed, "", nil, nil)
 	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-blocking-high.md"))
 	if got != want {
 		t.Fatalf("comment mismatch:\n%s", got)
@@ -206,7 +206,7 @@ func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
 			cur := loadFindings(t, filepath.Join(root, "fixtures", tc.cur))
 			want := readGolden(t, filepath.Join(root, "golden", tc.golden))
 
-			off := PRComment(doc, cur, base, texts, locs, tc.changed, "")
+			off := PRComment(doc, cur, base, texts, locs, tc.changed, "", nil, nil)
 			if off != want {
 				t.Fatalf("unredacted comment drifted from golden")
 			}
@@ -220,7 +220,7 @@ func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
 			baseWire := remapFindingsCopy(base, idMap.ToRedacted)
 			curLocal := remapFindingsCopy(curWire, idMap.ToPlain)
 			baseLocal := remapFindingsCopy(baseWire, idMap.ToPlain)
-			on := PRComment(doc, curLocal, baseLocal, texts, locs, tc.changed, "")
+			on := PRComment(doc, curLocal, baseLocal, texts, locs, tc.changed, "", nil, nil)
 			if on != want {
 				t.Fatalf("redacted-path comment not byte-identical to golden")
 			}
@@ -313,4 +313,138 @@ func readGolden(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+// Target-text goldens (*-target.md) are hand-written expected output, not
+// recorded model responses (see testdata/golden/README.md).
+
+func TestPRCommentFR007EnrichmentTarget(t *testing.T) {
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
+	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := map[string][]string{"module.ecs_service": {"task_exec_iam_statements"}}
+	enrichments := []apiv1.FindingEnrichment{{
+		RuleID:  "FR-007",
+		Target:  "f4545fe8f60fa981b",
+		WhyHere: "A secret-scoped grant from {e84ae99cb3fa981eb} to {ea971486d1a0a3baf} already exists, so the account-wide grant is redundant.",
+	}}
+	// Duplicate advisory content must be dropped — no Advisory section.
+	advisory := &apiv1.Advisory{
+		Observations: []apiv1.AdvisoryObservation{{
+			Stride:     "elevation_of_privilege",
+			ElementIDs: []string{"e84ae99cb3fa981eb", "ea971486d1a0a3baf"},
+			Text:       "A secret-scoped grant from {e84ae99cb3fa981eb} to {ea971486d1a0a3baf} already exists, so the account-wide grant is redundant.",
+			Suggestion: "Drop the Resource \"*\" statement.",
+		}},
+	}
+	got := PRComment(doc, cur, base, texts, locs, changed, "", advisory, enrichments)
+	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-fr007-enrichment-target.md"))
+	if got != want {
+		t.Fatalf("comment mismatch:\n%s", got)
+	}
+	if strings.Contains(got, "Advisory (AI)") {
+		t.Fatal("Advisory section must be omitted when it only restates enrichment")
+	}
+}
+
+func TestPRCommentFR025EnrichmentTarget(t *testing.T) {
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.dfd.json"))
+	injectElementCause(doc, "e269fe54ebe835ad4", "public_access_blocked", "module.uploads.aws_s3_bucket.this[0]")
+	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.findings.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := map[string][]string{
+		"module.uploads": {
+			"block_public_acls",
+			"block_public_policy",
+			"ignore_public_acls",
+			"restrict_public_buckets",
+		},
+	}
+	enrichments := []apiv1.FindingEnrichment{{
+		RuleID:  "FR-025",
+		Target:  "e269fe54ebe835ad4",
+		WhyHere: "ACLs are already disabled on this bucket (object ownership is BucketOwnerEnforced), so a bucket policy is now the only way it could become public — and nothing blocks one anymore.",
+	}}
+	got := PRComment(doc, cur, base, texts, locs, changed, "", nil, enrichments)
+	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-aws-fr025-enrichment-target.md"))
+	if got != want {
+		t.Fatalf("comment mismatch:\n%s", got)
+	}
+	if strings.Contains(got, "Advisory (AI)") {
+		t.Fatal("Advisory section must be omitted for enrichment-only demo golden")
+	}
+}
+
+func TestPRCommentAdvisoryEmptyOmitsSection(t *testing.T) {
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
+	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := map[string][]string{"module.ecs_service": {"task_exec_iam_statements"}}
+	got := PRComment(doc, cur, base, texts, locs, changed, "", &apiv1.Advisory{}, nil)
+	if strings.Contains(got, "Advisory (AI)") {
+		t.Fatalf("empty advisory must omit section:\n%s", got)
+	}
+	got = PRComment(doc, cur, base, texts, locs, changed, "", nil, nil)
+	if strings.Contains(got, "Advisory (AI)") {
+		t.Fatalf("nil advisory must omit section:\n%s", got)
+	}
+}
+
+func TestPRCommentAdvisoryNovelTarget(t *testing.T) {
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.dfd.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No finding delta — only a novel advisory observation.
+	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	advisory := &apiv1.Advisory{
+		Observations: []apiv1.AdvisoryObservation{{
+			Stride:     "tampering",
+			ElementIDs: []string{"e269fe54ebe835ad4"},
+			Text:       "Object lock is off on {e269fe54ebe835ad4} while a process holds write credentials into it.",
+			Suggestion: "Enable object lock, or remove write credentials from non-audit principals.",
+		}},
+	}
+	got := PRComment(doc, cur, base, texts, locs, nil, "", advisory, nil)
+	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-advisory-novel-target.md"))
+	if got != want {
+		t.Fatalf("comment mismatch:\n%s", got)
+	}
+}
+
+func TestSanitizeAdvisoryText(t *testing.T) {
+	in := "See [docs](https://evil.example) and <script>x</script> **bold** `code`"
+	got := SanitizeAdvisoryText(in)
+	for _, bad := range []string{"http", "<", "**", "`"} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("still contains %q: %q", bad, got)
+		}
+	}
+	if !strings.Contains(got, "docs") || !strings.Contains(got, "bold") || !strings.Contains(got, "code") {
+		t.Fatalf("lost text: %q", got)
+	}
 }

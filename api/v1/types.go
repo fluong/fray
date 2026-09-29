@@ -79,6 +79,30 @@ type ScanRequest struct {
 	BaseCommit          string          `json:"base_commit,omitempty"`
 }
 
+// FindingEnrichment is optional AI prose under one rule finding.
+// WhyHere may contain {element_id} placeholders filled locally with names.
+type FindingEnrichment struct {
+	RuleID  string `json:"rule_id"`
+	Target  string `json:"target"`
+	WhyHere string `json:"why_here"`
+}
+
+// AdvisoryObservation is one AI-generated note. Text and Suggestion may use
+// {element_id} placeholders; ElementIDs lists every element involved.
+type AdvisoryObservation struct {
+	Stride     string   `json:"stride"`
+	ElementIDs []string `json:"element_ids"`
+	Text       string   `json:"text"`
+	Suggestion string   `json:"suggestion"`
+}
+
+// Advisory is AI analysis attached to a scan. It never affects the gate.
+// When the LLM is skipped, Note is "AI analysis unavailable for this run".
+type Advisory struct {
+	Observations []AdvisoryObservation `json:"observations,omitempty"`
+	Note         string                `json:"note,omitempty"`
+}
+
 // ScanResponse is the POST /v1/scans response.
 type ScanResponse struct {
 	ScanID   string   `json:"scan_id"`
@@ -101,7 +125,9 @@ type ScanResponse struct {
 		ScanID     *string   `json:"scan_id"`
 		Findings   *Findings `json:"findings,omitempty"`
 	} `json:"baseline"`
-	RuleTexts map[string]RuleText `json:"rule_texts"`
+	RuleTexts   map[string]RuleText `json:"rule_texts"`
+	Advisory    *Advisory           `json:"advisory,omitempty"`
+	Enrichments []FindingEnrichment `json:"enrichments,omitempty"`
 }
 
 // MarshalFindings encodes findings as indented JSON with a trailing newline.

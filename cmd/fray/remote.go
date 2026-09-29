@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -186,6 +187,8 @@ func runRemote(opt options) (bool, error) {
 		if resp.Baseline.Findings != nil {
 			remapFindings(resp.Baseline.Findings, idMap)
 		}
+		remapAdvisory(resp.Advisory, idMap)
+		remapEnrichments(resp.Enrichments, idMap)
 	}
 
 	locs, err := client.ResourceLocations(opt.Source)
@@ -232,7 +235,7 @@ func runRemote(opt options) (bool, error) {
 	haveBaseline := resp.Baseline.Findings != nil
 	if haveBaseline {
 		baseline = *resp.Baseline.Findings
-		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, resp.Baseline.Note)
+		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments)
 		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 			return false, err
 		}
@@ -240,7 +243,7 @@ func runRemote(opt options) (bool, error) {
 	// Also write a comment when the server reports an incomparable baseline note
 	// with no finding delta (absolute-mode key rotation on a clean PR).
 	if !haveBaseline && resp.Baseline.Note != "" {
-		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, resp.Baseline.Note)
+		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments)
 		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 			return false, err
 		}
@@ -260,6 +263,37 @@ func remapFindingsSlice(findings []apiv1.Finding, m client.IDMap) {
 		findings[i].Target = m.RemapID(findings[i].Target)
 	}
 }
+
+func remapAdvisory(a *apiv1.Advisory, m client.IDMap) {
+	if a == nil {
+		return
+	}
+	for i := range a.Observations {
+		o := &a.Observations[i]
+		for j := range o.ElementIDs {
+			o.ElementIDs[j] = m.RemapID(o.ElementIDs[j])
+		}
+		o.Text = remapPlaceholders(o.Text, m)
+		o.Suggestion = remapPlaceholders(o.Suggestion, m)
+	}
+}
+
+func remapEnrichments(items []apiv1.FindingEnrichment, m client.IDMap) {
+	for i := range items {
+		items[i].Target = m.RemapID(items[i].Target)
+		items[i].WhyHere = remapPlaceholders(items[i].WhyHere, m)
+	}
+}
+
+func remapPlaceholders(text string, m client.IDMap) string {
+	return idPlaceholder.ReplaceAllStringFunc(text, func(tok string) string {
+		id := tok[1 : len(tok)-1]
+		return "{" + m.RemapID(id) + "}"
+	})
+}
+
+var idPlaceholder = regexp.MustCompile(`\{([efb][0-9a-f]{6,})\}`)
+
 
 func truncate(b []byte, n int) string {
 	if len(b) <= n {

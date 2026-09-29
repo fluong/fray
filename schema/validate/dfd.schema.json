@@ -4,44 +4,72 @@
   "title": "Fray DFD",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "source", "elements", "trust_boundaries", "flows"],
+  "required": [
+    "schema_version",
+    "source",
+    "elements",
+    "trust_boundaries",
+    "flows"
+  ],
   "properties": {
-    "schema_version": { "const": "dfd/v1" },
-    "redaction": { "$ref": "#/$defs/redaction" },
-    "source": { "type": "object" },
+    "schema_version": {
+      "const": "dfd/v1"
+    },
+    "redaction": {
+      "$ref": "#/$defs/redaction"
+    },
+    "source": {
+      "type": "object"
+    },
     "elements": {
       "type": "array",
       "minItems": 1
     },
     "trust_boundaries": {
       "type": "array",
-      "items": { "$ref": "#/$defs/trust_boundary" }
+      "items": {
+        "$ref": "#/$defs/trust_boundary"
+      }
     },
     "flows": {
       "type": "array",
-      "items": { "$ref": "#/$defs/flow" }
+      "items": {
+        "$ref": "#/$defs/flow"
+      }
     }
   },
   "allOf": [
     {
-      "if": { "required": ["redaction"] },
+      "if": {
+        "required": [
+          "redaction"
+        ]
+      },
       "then": {
         "properties": {
-          "source": { "$ref": "#/$defs/source_redacted" },
+          "source": {
+            "$ref": "#/$defs/source_redacted"
+          },
           "elements": {
             "type": "array",
             "minItems": 1,
-            "items": { "$ref": "#/$defs/element_redacted" }
+            "items": {
+              "$ref": "#/$defs/element_redacted"
+            }
           }
         }
       },
       "else": {
         "properties": {
-          "source": { "$ref": "#/$defs/source" },
+          "source": {
+            "$ref": "#/$defs/source"
+          },
           "elements": {
             "type": "array",
             "minItems": 1,
-            "items": { "$ref": "#/$defs/element" }
+            "items": {
+              "$ref": "#/$defs/element"
+            }
           }
         }
       }
@@ -51,9 +79,14 @@
     "redaction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scheme", "key_fingerprint"],
+      "required": [
+        "scheme",
+        "key_fingerprint"
+      ],
       "properties": {
-        "scheme": { "const": "hmac-sha256-v1" },
+        "scheme": {
+          "const": "hmac-sha256-v1"
+        },
         "key_fingerprint": {
           "type": "string",
           "pattern": "^[0-9a-f]{16}$"
@@ -63,7 +96,12 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repo", "commit", "iac_tool", "fidelity"],
+      "required": [
+        "repo",
+        "commit",
+        "iac_tool",
+        "fidelity"
+      ],
       "properties": {
         "repo": {
           "type": "string",
@@ -78,16 +116,26 @@
           "pattern": "^[a-z0-9_-]{1,32}$"
         },
         "fidelity": {
-          "enum": ["plan", "static"]
+          "enum": [
+            "plan",
+            "static"
+          ]
         }
       }
     },
     "source_redacted": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repo", "commit", "iac_tool", "fidelity"],
+      "required": [
+        "repo",
+        "commit",
+        "iac_tool",
+        "fidelity"
+      ],
       "properties": {
-        "repo": { "$ref": "#/$defs/hashed" },
+        "repo": {
+          "$ref": "#/$defs/hashed"
+        },
         "commit": {
           "type": "string",
           "pattern": "^[0-9a-f]{7,40}$"
@@ -97,277 +145,556 @@
           "pattern": "^[a-z0-9_-]{1,32}$"
         },
         "fidelity": {
-          "enum": ["plan", "static"]
+          "enum": [
+            "plan",
+            "static"
+          ]
         }
       }
     },
     "element": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type", "kind", "provenance", "evidence"],
+      "required": [
+        "id",
+        "type",
+        "kind",
+        "provenance",
+        "evidence"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/element_id" },
-        "name": { "$ref": "#/$defs/display_name" },
-        "type": { "enum": ["process", "datastore", "external_entity"] },
-        "kind": { "$ref": "#/$defs/kind" },
-        "subtype": { "$ref": "#/$defs/token" },
-        "provider": { "$ref": "#/$defs/provider" },
-        "provider_subtype": { "$ref": "#/$defs/token" },
-        "provenance": { "enum": ["iac", "inferred", "declared"] },
-        "evidence": { "type": "object" },
-        "attributes": { "$ref": "#/$defs/attributes" }
+        "id": {
+          "$ref": "#/$defs/element_id"
+        },
+        "name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "type": {
+          "enum": [
+            "process",
+            "datastore",
+            "external_entity"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "subtype": {
+          "$ref": "#/$defs/token"
+        },
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "provider_subtype": {
+          "$ref": "#/$defs/token"
+        },
+        "provenance": {
+          "enum": [
+            "iac",
+            "inferred",
+            "declared"
+          ]
+        },
+        "evidence": {
+          "type": "object"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "purpose": {
+          "$ref": "#/$defs/purpose"
+        }
       },
       "allOf": [
-        { "$ref": "#/$defs/evidence_iac" },
-        { "$ref": "#/$defs/evidence_inferred" },
-        { "$ref": "#/$defs/evidence_declared" }
+        {
+          "$ref": "#/$defs/evidence_iac"
+        },
+        {
+          "$ref": "#/$defs/evidence_inferred"
+        },
+        {
+          "$ref": "#/$defs/evidence_declared"
+        }
       ]
     },
     "element_redacted": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type", "kind", "provenance", "evidence"],
+      "required": [
+        "id",
+        "type",
+        "kind",
+        "provenance",
+        "evidence"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/element_id" },
-        "type": { "enum": ["process", "datastore", "external_entity"] },
-        "kind": { "$ref": "#/$defs/kind" },
-        "provider": { "$ref": "#/$defs/provider" },
-        "provenance": { "enum": ["iac", "inferred", "declared"] },
-        "evidence": { "type": "object" },
-        "attributes": { "$ref": "#/$defs/attributes" }
+        "id": {
+          "$ref": "#/$defs/element_id"
+        },
+        "type": {
+          "enum": [
+            "process",
+            "datastore",
+            "external_entity"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "provenance": {
+          "enum": [
+            "iac",
+            "inferred",
+            "declared"
+          ]
+        },
+        "evidence": {
+          "type": "object"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "purpose": {
+          "$ref": "#/$defs/purpose"
+        }
       },
       "not": {
         "anyOf": [
-          { "required": ["name"] },
-          { "required": ["subtype"] },
-          { "required": ["provider_subtype"] }
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "subtype"
+            ]
+          },
+          {
+            "required": [
+              "provider_subtype"
+            ]
+          }
         ]
       },
       "allOf": [
-        { "$ref": "#/$defs/evidence_iac_redacted" },
-        { "$ref": "#/$defs/evidence_inferred_redacted" },
-        { "$ref": "#/$defs/evidence_declared_redacted" }
+        {
+          "$ref": "#/$defs/evidence_iac_redacted"
+        },
+        {
+          "$ref": "#/$defs/evidence_inferred_redacted"
+        },
+        {
+          "$ref": "#/$defs/evidence_declared_redacted"
+        }
       ]
     },
     "evidence_iac": {
       "if": {
-        "properties": { "provenance": { "const": "iac" } },
-        "required": ["provenance"]
+        "properties": {
+          "provenance": {
+            "const": "iac"
+          }
+        },
+        "required": [
+          "provenance"
+        ]
       },
       "then": {
         "properties": {
           "evidence": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["addresses"],
+            "required": [
+              "addresses"
+            ],
             "properties": {
               "addresses": {
                 "type": "array",
                 "minItems": 1,
                 "uniqueItems": true,
-                "items": { "$ref": "#/$defs/token" }
+                "items": {
+                  "$ref": "#/$defs/token"
+                }
               }
             }
           }
         },
-        "required": ["evidence"]
+        "required": [
+          "evidence"
+        ]
       }
     },
     "evidence_iac_redacted": {
       "if": {
-        "properties": { "provenance": { "const": "iac" } },
-        "required": ["provenance"]
+        "properties": {
+          "provenance": {
+            "const": "iac"
+          }
+        },
+        "required": [
+          "provenance"
+        ]
       },
       "then": {
         "properties": {
           "evidence": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["addresses"],
+            "required": [
+              "addresses"
+            ],
             "properties": {
               "addresses": {
                 "type": "array",
                 "minItems": 1,
                 "uniqueItems": true,
-                "items": { "$ref": "#/$defs/hashed" }
+                "items": {
+                  "$ref": "#/$defs/hashed"
+                }
               }
             }
           }
         },
-        "required": ["evidence"]
+        "required": [
+          "evidence"
+        ]
       }
     },
     "evidence_inferred": {
       "if": {
-        "properties": { "provenance": { "const": "inferred" } },
-        "required": ["provenance"]
+        "properties": {
+          "provenance": {
+            "const": "inferred"
+          }
+        },
+        "required": [
+          "provenance"
+        ]
       },
       "then": {
         "properties": {
           "evidence": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["signals"],
+            "required": [
+              "signals"
+            ],
             "properties": {
               "signals": {
                 "type": "array",
                 "minItems": 1,
-                "items": { "$ref": "#/$defs/signal" }
+                "items": {
+                  "$ref": "#/$defs/signal"
+                }
               }
             }
           }
         },
-        "required": ["evidence"]
+        "required": [
+          "evidence"
+        ]
       }
     },
     "evidence_inferred_redacted": {
       "if": {
-        "properties": { "provenance": { "const": "inferred" } },
-        "required": ["provenance"]
+        "properties": {
+          "provenance": {
+            "const": "inferred"
+          }
+        },
+        "required": [
+          "provenance"
+        ]
       },
       "then": {
         "properties": {
           "evidence": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["signals"],
+            "required": [
+              "signals"
+            ],
             "properties": {
               "signals": {
                 "type": "array",
                 "minItems": 1,
-                "items": { "$ref": "#/$defs/signal_redacted" }
+                "items": {
+                  "$ref": "#/$defs/signal_redacted"
+                }
               }
             }
           }
         },
-        "required": ["evidence"]
+        "required": [
+          "evidence"
+        ]
       }
     },
     "evidence_declared": {
       "if": {
-        "properties": { "provenance": { "const": "declared" } },
-        "required": ["provenance"]
+        "properties": {
+          "provenance": {
+            "const": "declared"
+          }
+        },
+        "required": [
+          "provenance"
+        ]
       },
       "then": {
         "properties": {
           "evidence": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["source", "key"],
+            "required": [
+              "source",
+              "key"
+            ],
             "properties": {
               "source": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"
               },
-              "key": { "$ref": "#/$defs/token" }
+              "key": {
+                "$ref": "#/$defs/token"
+              }
             }
           }
         },
-        "required": ["evidence"]
+        "required": [
+          "evidence"
+        ]
       }
     },
     "evidence_declared_redacted": {
       "if": {
-        "properties": { "provenance": { "const": "declared" } },
-        "required": ["provenance"]
+        "properties": {
+          "provenance": {
+            "const": "declared"
+          }
+        },
+        "required": [
+          "provenance"
+        ]
       },
       "then": {
         "properties": {
           "evidence": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["source", "key"],
+            "required": [
+              "source",
+              "key"
+            ],
             "properties": {
-              "source": { "$ref": "#/$defs/hashed" },
-              "key": { "$ref": "#/$defs/hashed" }
+              "source": {
+                "$ref": "#/$defs/hashed"
+              },
+              "key": {
+                "$ref": "#/$defs/hashed"
+              }
             }
           }
         },
-        "required": ["evidence"]
+        "required": [
+          "evidence"
+        ]
       }
     },
     "signal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "name"],
+      "required": [
+        "type",
+        "name"
+      ],
       "properties": {
-        "type": { "enum": ["secret_name", "env_var", "iam_role", "iam_member", "network_ingress"] },
-        "name": { "$ref": "#/$defs/token" }
+        "type": {
+          "enum": [
+            "secret_name",
+            "env_var",
+            "iam_role",
+            "iam_member",
+            "network_ingress"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/token"
+        }
       }
     },
     "signal_redacted": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "name"],
+      "required": [
+        "type",
+        "name"
+      ],
       "properties": {
-        "type": { "enum": ["secret_name", "env_var", "iam_role", "iam_member", "network_ingress"] },
-        "name": { "$ref": "#/$defs/hashed" }
+        "type": {
+          "enum": [
+            "secret_name",
+            "env_var",
+            "iam_role",
+            "iam_member",
+            "network_ingress"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/hashed"
+        }
       }
     },
     "attributes": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "public": { "type": "boolean" },
-        "acls_disabled": { "type": "boolean" },
-        "public_access_blocked": { "type": "boolean" },
-        "encrypted_at_rest": { "type": "boolean" },
-        "deletion_protection": { "type": "boolean" },
+        "public": {
+          "type": "boolean"
+        },
+        "acls_disabled": {
+          "type": "boolean"
+        },
+        "public_access_blocked": {
+          "type": "boolean"
+        },
+        "encrypted_at_rest": {
+          "type": "boolean"
+        },
+        "deletion_protection": {
+          "type": "boolean"
+        },
         "region": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"
         },
-        "max_instances": { "type": "integer", "minimum": 0 },
-        "image_pinned_by_digest": { "type": "boolean" },
-        "audit_logging": { "type": "boolean" },
-        "rotation_configured": { "type": "boolean" },
-        "versioning": { "type": "boolean" },
-        "object_lock": { "type": "boolean" },
-        "network_restricted": { "type": "boolean" }
+        "max_instances": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "image_pinned_by_digest": {
+          "type": "boolean"
+        },
+        "audit_logging": {
+          "type": "boolean"
+        },
+        "rotation_configured": {
+          "type": "boolean"
+        },
+        "versioning": {
+          "type": "boolean"
+        },
+        "object_lock": {
+          "type": "boolean"
+        },
+        "network_restricted": {
+          "type": "boolean"
+        }
       }
     },
     "trust_boundary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "inside", "outside"],
+      "required": [
+        "id",
+        "kind",
+        "inside",
+        "outside"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/boundary_id" },
-        "kind": { "enum": ["network", "account", "provider", "operator"] },
+        "id": {
+          "$ref": "#/$defs/boundary_id"
+        },
+        "kind": {
+          "enum": [
+            "network",
+            "account",
+            "provider",
+            "operator"
+          ]
+        },
         "inside": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/element_id" }
+          "items": {
+            "$ref": "#/$defs/element_id"
+          }
         },
         "outside": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/element_id" }
+          "items": {
+            "$ref": "#/$defs/element_id"
+          }
         }
       }
     },
     "flow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "from", "to", "data_class", "transport", "boundaries"],
+      "required": [
+        "id",
+        "from",
+        "to",
+        "data_class",
+        "transport",
+        "boundaries"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/flow_id" },
-        "from": { "$ref": "#/$defs/element_id" },
-        "to": { "$ref": "#/$defs/element_id" },
-        "data_class": {
-          "enum": ["credentials", "customer_data", "logs", "config", "unknown"]
+        "id": {
+          "$ref": "#/$defs/flow_id"
         },
-        "transport": { "enum": ["tls", "plaintext", "local", "unknown"] },
+        "from": {
+          "$ref": "#/$defs/element_id"
+        },
+        "to": {
+          "$ref": "#/$defs/element_id"
+        },
+        "data_class": {
+          "enum": [
+            "credentials",
+            "customer_data",
+            "logs",
+            "config",
+            "unknown"
+          ]
+        },
+        "transport": {
+          "enum": [
+            "tls",
+            "plaintext",
+            "local",
+            "unknown"
+          ]
+        },
         "boundaries": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/boundary_id" }
+          "items": {
+            "$ref": "#/$defs/boundary_id"
+          }
         },
         "authz_scope": {
-          "enum": ["resource", "project", "account", "organization", "public"]
+          "enum": [
+            "resource",
+            "project",
+            "account",
+            "organization",
+            "public"
+          ]
         },
-        "secret_delivery": { "enum": ["env", "volume"] }
+        "secret_delivery": {
+          "enum": [
+            "env",
+            "volume"
+          ]
+        }
       }
     },
     "kind": {
@@ -395,14 +722,31 @@
       ]
     },
     "provider": {
-      "enum": ["gcp", "aws", "cloudflare", "neon", "github", "other"]
+      "enum": [
+        "gcp",
+        "aws",
+        "cloudflare",
+        "neon",
+        "github",
+        "other"
+      ]
     },
     "token": {
       "type": "string",
       "allOf": [
-        { "pattern": "^\\S{1,256}$" },
-        { "not": { "pattern": "://" } },
-        { "not": { "pattern": "=" } }
+        {
+          "pattern": "^\\S{1,256}$"
+        },
+        {
+          "not": {
+            "pattern": "://"
+          }
+        },
+        {
+          "not": {
+            "pattern": "="
+          }
+        }
       ]
     },
     "hashed": {
@@ -412,13 +756,48 @@
     "display_name": {
       "type": "string",
       "allOf": [
-        { "minLength": 1, "maxLength": 120 },
-        { "not": { "pattern": "://" } },
-        { "not": { "pattern": "=" } }
+        {
+          "minLength": 1,
+          "maxLength": 120
+        },
+        {
+          "not": {
+            "pattern": "://"
+          }
+        },
+        {
+          "not": {
+            "pattern": "="
+          }
+        }
       ]
     },
-    "element_id": { "type": "string", "pattern": "^e[0-9a-f]{16}$" },
-    "flow_id": { "type": "string", "pattern": "^f[0-9a-f]{16}$" },
-    "boundary_id": { "type": "string", "pattern": "^b[0-9a-f]{16}$" }
+    "element_id": {
+      "type": "string",
+      "pattern": "^e[0-9a-f]{16}$"
+    },
+    "flow_id": {
+      "type": "string",
+      "pattern": "^f[0-9a-f]{16}$"
+    },
+    "boundary_id": {
+      "type": "string",
+      "pattern": "^b[0-9a-f]{16}$"
+    },
+    "purpose": {
+      "enum": [
+        "audit_archive",
+        "customer_uploads",
+        "backups",
+        "static_assets",
+        "logs",
+        "secrets",
+        "app_data",
+        "internal_api",
+        "public_api",
+        "other"
+      ],
+      "description": "Non-identifying role of the element. Declared or inferred locally; only the enum value is sent."
+    }
   }
 }

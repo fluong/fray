@@ -7,7 +7,7 @@ scan API, and get STRIDE findings plus a merge gate back. Rule evaluation and
 the hosted service live in a private companion repository — this repo never
 ships rules.
 
-Latest release: **v0.3.1**. `v0.1.0` is retracted (non-public fixtures leaked
+Latest release: **v0.4.0**. `v0.1.0` is retracted (non-public fixtures leaked
 into the module zip; see `go.mod`).
 
 Related:
@@ -35,7 +35,8 @@ Redaction is **on by default**. Before Fray receives a scan, the client replaces
 resource names, Terraform addresses, signal names, declared keys/paths, and the
 `source.repo` string with HMAC-SHA256 digests under a key that only you hold
 (`FRAY_REDACTION_KEY`). Element and flow ids are re-derived from those digests.
-The key never leaves CI.
+The key never leaves CI. Optional element `purpose` values (a closed enum such as
+`customer_uploads` or `backups`) are sent in the clear — they are not names.
 
 Fray still knows **which GitHub repository and ref** sent a scan: that identity
 comes from the Actions OIDC token used to authenticate. Redaction does not hide
@@ -119,7 +120,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: fluong/fray@v0.3.1
+      - uses: fluong/fray@v0.4.0
         with:
           api-url: ${{ vars.FRAY_API_URL }}   # required; do not hardcode in this repo
           working-directory: infra
@@ -154,7 +155,7 @@ writes an empty dispositions file for the CLI.
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.3.1
+go install github.com/fluong/fray/cmd/fray@v0.4.0
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 

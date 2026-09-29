@@ -112,8 +112,10 @@ type frayBoundary struct {
 type frayAnnotations struct {
 	Elements []struct {
 		Signal   string `yaml:"signal"`
+		Address  string `yaml:"address"`
 		Kind     string `yaml:"kind"`
 		Provider string `yaml:"provider"`
+		Purpose  string `yaml:"purpose"`
 	} `yaml:"elements"`
 	Flows []struct {
 		From      string `yaml:"from"`
@@ -257,6 +259,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 	if err := applyElementAnnotations(elements, cfg); err != nil {
 		return DFD{}, warnings, err
 	}
+	applyPurposeInferencePtrs(elements)
 
 	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, elements, &warnings)
 	flows = append(flows, awsFlows...)
@@ -765,18 +768,37 @@ func declaredFlow(f frayFlow, elements []*Element) (*Flow, error) {
 
 func applyElementAnnotations(elements []*Element, cfg frayConfig) error {
 	for _, ann := range cfg.Annotations.Elements {
-		hits, err := matchSignal(ann.Signal, elements)
-		if err != nil {
-			return err
+		if ann.Purpose != "" && !ValidPurpose(ann.Purpose) {
+			return fmt.Errorf("annotation purpose %q is not a dfd/v1 purpose", ann.Purpose)
 		}
-		if len(hits) != 1 {
-			return fmt.Errorf("annotation %s matched %d elements", ann.Signal, len(hits))
+		var hits []*Element
+		switch {
+		case ann.Address != "":
+			el, err := resolve(ann.Address, elements)
+			if err != nil {
+				return err
+			}
+			hits = []*Element{el}
+		case ann.Signal != "":
+			var err error
+			hits, err = matchSignal(ann.Signal, elements)
+			if err != nil {
+				return err
+			}
+			if len(hits) != 1 {
+				return fmt.Errorf("annotation %s matched %d elements", ann.Signal, len(hits))
+			}
+		default:
+			return fmt.Errorf("element annotation needs address or signal")
 		}
 		if ann.Kind != "" {
 			hits[0].Kind = ann.Kind
 		}
 		if ann.Provider != "" {
 			hits[0].Provider = ann.Provider
+		}
+		if ann.Purpose != "" {
+			hits[0].Purpose = ann.Purpose
 		}
 	}
 	return nil

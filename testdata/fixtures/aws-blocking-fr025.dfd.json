@@ -19,13 +19,12 @@
         ]
       },
       "provider": "aws",
-      "purpose": "customer_uploads",
       "attributes": {
         "acls_disabled": true,
         "deletion_protection": false,
         "encrypted_at_rest": true,
         "public": false,
-        "public_access_blocked": true,
+        "public_access_blocked": false,
         "versioning": false
       }
     },
@@ -92,7 +91,6 @@
         ]
       },
       "provider": "aws",
-      "purpose": "secrets",
       "attributes": {
         "audit_logging": true,
         "deletion_protection": true,
@@ -152,8 +150,11 @@
       "data_class": "credentials",
       "transport": "local",
       "boundaries": [],
-      "authz_scope": "resource",
-      "secret_delivery": "env"
+      "authz_scope": "account",
+      "secret_delivery": "env",
+      "causes": {
+        "authz_scope": "module.ecs_service.data.aws_iam_policy_document.execution[0]"
+      }
     },
     {
       "id": "f632e6cd60295f653",

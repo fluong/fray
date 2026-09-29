@@ -10,7 +10,7 @@ import (
 	apiv1 "github.com/fluong/fray/api/v1"
 )
 
-func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string) string {
+func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string, advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichment) string {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
 	base := map[findingKey]apiv1.Finding{}
@@ -38,21 +38,26 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 			resolved = append(resolved, f)
 		}
 	}
-	if len(opened) == 0 && len(resolved) == 0 && baselineNote == "" {
+	if len(opened) == 0 && len(resolved) == 0 && baselineNote == "" && advisoryEmpty(advisory) {
 		return "No change in open findings.\n"
 	}
 	groups := issueGroups(opened, texts, byID, flows)
 	sortGroups(groups)
+	why := enrichmentIndex(enrichments)
 	var b strings.Builder
 	if baselineNote != "" {
 		fmt.Fprintf(&b, "%s\n\n", baselineNote)
 	}
 	if len(opened) == 0 && len(resolved) == 0 {
 		b.WriteString("No change in open findings.\n")
+		if section := renderAdvisory(advisory, enrichments, opened, texts, byID, flows); section != "" {
+			b.WriteByte('\n')
+			b.WriteString(section)
+		}
 		return b.String()
 	}
 	fmt.Fprintf(&b, "%s\n\n", verdict(groups))
-	if body := renderIssues(groups, texts, byID, flows, locs, changedInputs, base, true); body != "" {
+	if body := renderIssues(groups, texts, byID, flows, locs, changedInputs, base, true, why); body != "" {
 		b.WriteString(body)
 		b.WriteByte('\n')
 	}
@@ -60,11 +65,30 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		b.WriteString("Resolved\n\n")
 		resolvedGroups := issueGroups(resolved, texts, byID, flows)
 		sortGroups(resolvedGroups)
-		b.WriteString(renderIssues(resolvedGroups, texts, byID, flows, locs, changedInputs, base, false))
+		b.WriteString(renderIssues(resolvedGroups, texts, byID, flows, locs, changedInputs, base, false, why))
 		b.WriteByte('\n')
 	}
 	fmt.Fprintf(&b, "%s\n", footer(current.Findings, base, groups, len(resolved) == 0))
+	if section := renderAdvisory(advisory, enrichments, opened, texts, byID, flows); section != "" {
+		b.WriteByte('\n')
+		b.WriteString(section)
+	}
 	return b.String()
+}
+
+func advisoryEmpty(a *apiv1.Advisory) bool {
+	return a == nil || (a.Note == "" && len(a.Observations) == 0)
+}
+
+func enrichmentIndex(items []apiv1.FindingEnrichment) map[findingKey]string {
+	out := map[findingKey]string{}
+	for _, e := range items {
+		if e.WhyHere == "" {
+			continue
+		}
+		out[findingKey{e.RuleID, e.Target}] = e.WhyHere
+	}
+	return out
 }
 
 func verdict(groups []causeGroup) string {
@@ -191,18 +215,18 @@ func (g causeGroup) severity() string {
 	return best
 }
 
-func renderIssues(groups []causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool) string {
+func renderIssues(groups []causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool, why map[findingKey]string) string {
 	var b strings.Builder
 	for i, g := range groups {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		b.WriteString(renderIssue(g, texts, byID, flows, locs, changedInputs, base, accept))
+		b.WriteString(renderIssue(g, texts, byID, flows, locs, changedInputs, base, accept, why))
 	}
 	return b.String()
 }
 
-func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool) string {
+func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow, locs map[string]client.SourceLocation, changedInputs map[string][]string, base map[findingKey]apiv1.Finding, accept bool, why map[findingKey]string) string {
 	rule := primaryRule(g.items, texts)
 	lost := previouslyMitigated(g.items, base)
 	fix, explanation := remedy(rule, g.cause)
@@ -224,12 +248,16 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 			fix = named
 		}
 	}
+	names := displayNames(byID, flows)
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s**\n", title)
 	fmt.Fprintf(&b, "%s\n\n", metaLine(g, rule, locs, mod, hasMod))
 	fmt.Fprintf(&b, "%s\n\n", wrap(pluralizeCounts(fill(explanation, repl)), 90))
-	if names := affectedNames(g.items, byID, flows); len(names) > 1 {
-		fmt.Fprintf(&b, "Affected: %s\n\n", strings.Join(names, ", "))
+	if line := whyHereLine(g.items, why, names); line != "" {
+		fmt.Fprintf(&b, "%s\n\n", wrap(line, 90))
+	}
+	if affected := affectedNames(g.items, byID, flows); len(affected) > 1 {
+		fmt.Fprintf(&b, "Affected: %s\n\n", strings.Join(affected, ", "))
 	}
 	fmt.Fprintf(&b, "%s\n", wrap("Fix: "+pluralizeCounts(fill(fix, repl)), 90))
 	if accept {
@@ -241,6 +269,183 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 		b.WriteString("</details>\n")
 	}
 	return b.String()
+}
+
+func whyHereLine(items []apiv1.Finding, why map[findingKey]string, names map[string]string) string {
+	for _, f := range items {
+		if raw, ok := why[findingKey{f.RuleID, f.Target}]; ok && raw != "" {
+			// Sanitize before filling names so underscore italics cannot eat
+			// characters inside local display names (ecs_service, block_public_*).
+			text := FillIDPlaceholders(SanitizeAdvisoryText(raw), names)
+			if text == "" {
+				return ""
+			}
+			return "Why this matters here: " + text
+		}
+	}
+	return ""
+}
+
+func displayNames(byID map[string]client.Element, flows map[string]client.Flow) map[string]string {
+	out := map[string]string{}
+	for id, el := range byID {
+		if el.Name != "" {
+			out[id] = el.Name
+		} else {
+			out[id] = id
+		}
+	}
+	for id, f := range flows {
+		from, to := byID[f.From].Name, byID[f.To].Name
+		if from == "" {
+			from = f.From
+		}
+		if to == "" {
+			to = f.To
+		}
+		out[id] = from + " → " + to
+	}
+	return out
+}
+
+func renderAdvisory(advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichment, opened []apiv1.Finding, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow) string {
+	if advisoryEmpty(advisory) {
+		return ""
+	}
+	names := displayNames(byID, flows)
+	obs := novelObservations(advisory.Observations, enrichments, opened, texts, names)
+	if len(obs) == 0 && advisory.Note == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Advisory (AI)\n\n")
+	b.WriteString("AI-generated — does not affect the merge gate.\n")
+	if advisory.Note != "" && len(obs) == 0 {
+		b.WriteByte('\n')
+		b.WriteString(SanitizeAdvisoryText(advisory.Note))
+		b.WriteByte('\n')
+		return b.String()
+	}
+	if len(obs) > 3 {
+		obs = obs[:3]
+	}
+	for _, o := range obs {
+		b.WriteByte('\n')
+		stride := strings.TrimSpace(o.Stride)
+		if stride == "" {
+			stride = "observation"
+		}
+		involved := make([]string, 0, len(o.ElementIDs))
+		for _, id := range o.ElementIDs {
+			if n, ok := names[id]; ok {
+				involved = append(involved, "`"+n+"`")
+			}
+		}
+		fmt.Fprintf(&b, "**%s**", strideLabel(stride))
+		if len(involved) > 0 {
+			fmt.Fprintf(&b, " · %s", strings.Join(involved, ", "))
+		}
+		b.WriteByte('\n')
+		if text := FillIDPlaceholders(SanitizeAdvisoryText(o.Text), names); text != "" {
+			fmt.Fprintf(&b, "%s\n", wrap(text, 90))
+		}
+		if sug := FillIDPlaceholders(SanitizeAdvisoryText(o.Suggestion), names); sug != "" {
+			fmt.Fprintf(&b, "%s\n", wrap("Suggestion: "+sug, 90))
+		}
+	}
+	return b.String()
+}
+
+// novelObservations drops advisory notes that restate a rule finding or a
+// "Why this matters here" enrichment — the Advisory section is only for extras.
+func novelObservations(obs []apiv1.AdvisoryObservation, enrichments []apiv1.FindingEnrichment, opened []apiv1.Finding, texts map[string]apiv1.RuleText, names map[string]string) []apiv1.AdvisoryObservation {
+	said := make([]string, 0, len(enrichments)+len(opened)*3)
+	for _, e := range enrichments {
+		said = append(said, normAdvice(FillIDPlaceholders(e.WhyHere, names)))
+	}
+	for _, f := range opened {
+		rt := texts[f.RuleID]
+		said = append(said,
+			normAdvice(rt.Explanation),
+			normAdvice(rt.Threat),
+			normAdvice(rt.GroupTitle),
+			normAdvice(rt.Title),
+			normAdvice(rt.Mitigation),
+		)
+	}
+	var out []apiv1.AdvisoryObservation
+	for _, o := range obs {
+		blob := normAdvice(FillIDPlaceholders(o.Text+" "+o.Suggestion, names))
+		if blob == "" || adviceRestates(blob, said) {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
+func normAdvice(s string) string {
+	s = strings.ToLower(SanitizeAdvisoryText(s))
+	s = strings.Join(strings.Fields(s), " ")
+	s = strings.Trim(s, ".,:;!")
+	return s
+}
+
+func adviceRestates(obs string, said []string) bool {
+	for _, s := range said {
+		if s == "" {
+			continue
+		}
+		if obs == s || strings.Contains(obs, s) || strings.Contains(s, obs) {
+			return true
+		}
+		if similarAdvice(obs, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func similarAdvice(a, b string) bool {
+	if len(a) < 24 || len(b) < 24 {
+		return false
+	}
+	wa, wb := strings.Fields(a), strings.Fields(b)
+	set := map[string]bool{}
+	for _, w := range wa {
+		if len(w) > 3 {
+			set[w] = true
+		}
+	}
+	if len(set) == 0 {
+		return false
+	}
+	hit := 0
+	for _, w := range wb {
+		if len(w) > 3 && set[w] {
+			hit++
+		}
+	}
+	den := len(set)
+	if n := 0; true {
+		for _, w := range wb {
+			if len(w) > 3 {
+				n++
+			}
+		}
+		if n < den {
+			den = n
+		}
+	}
+	if den == 0 {
+		return false
+	}
+	return float64(hit)/float64(den) >= 0.6
+}
+
+func strideLabel(s string) string {
+	// Same lowercase style as metaLine / strideText (e.g. "information disclosure").
+	return strings.ReplaceAll(strings.TrimSpace(s), "_", " ")
 }
 
 func headline(r apiv1.RuleText) string {

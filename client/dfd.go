@@ -41,6 +41,7 @@ type Element struct {
 	Provenance string         `json:"provenance"`
 	Evidence   Evidence       `json:"evidence"`
 	Provider   string         `json:"provider,omitempty"`
+	Purpose    string         `json:"purpose,omitempty"` // closed enum; never a free-text name
 	Attributes map[string]any `json:"attributes,omitempty"`
 	// Causes maps an attribute name to the resource address that set it.
 	// It is local report data and is not part of the DFD.
