@@ -19,7 +19,6 @@
         ]
       },
       "provider": "aws",
-      "purpose": "customer_uploads",
       "attributes": {
         "acls_disabled": true,
         "deletion_protection": false,
@@ -90,7 +89,8 @@
       "evidence": {
         "addresses": [
           "module.db_password.aws_secretsmanager_secret.this[0]"
-        ]
+        ],
+        "purpose_source": "type"
       },
       "provider": "aws",
       "purpose": "secrets",

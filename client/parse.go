@@ -22,6 +22,9 @@ var ignoredTypes = map[string]bool{
 	"google_project_iam_member":                      true,
 	"google_secret_manager_secret_iam_member":        true,
 	"google_cloud_run_v2_service_iam_member":         true,
+	"google_logging_project_sink":                    true,
+	"google_logging_folder_sink":                     true,
+	"google_logging_organization_sink":               true,
 	// AWS types that are siblings or network plumbing, not elements.
 	"aws_appautoscaling_policy":                          true,
 	"aws_appautoscaling_target":                          true,
@@ -91,6 +94,7 @@ type frayElement struct {
 	Type       string         `yaml:"type"`
 	Kind       string         `yaml:"kind"`
 	Provider   string         `yaml:"provider"`
+	Purpose    string         `yaml:"purpose"`
 	Attributes map[string]any `yaml:"attributes"`
 }
 
@@ -245,10 +249,16 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 	}
 
 	for _, dec := range cfg.Elements {
+		if dec.Purpose != "" && !ValidPurpose(dec.Purpose) {
+			return DFD{}, warnings, fmt.Errorf("declared element %q purpose %q is not a dfd/v1 purpose", dec.Key, dec.Purpose)
+		}
 		el := &Element{
 			Name: dec.Name, Type: dec.Type, Kind: dec.Kind, Provider: dec.Provider,
 			Provenance: "declared",
 			Evidence:   Evidence{Source: declaredSource, Key: dec.Key},
+		}
+		if dec.Purpose != "" {
+			setPurpose(el, dec.Purpose, PurposeSourceDeclared, true)
 		}
 		if len(dec.Attributes) > 0 {
 			el.Attributes = dec.Attributes
@@ -257,10 +267,15 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		byAddress["declared:"+dec.Key] = el
 	}
 
+	idx, err := indexConfig(plan)
+	if err != nil {
+		return DFD{}, warnings, err
+	}
+	applyPurpose(elements, resources, idx)
+
 	if err := applyElementAnnotations(elements, cfg); err != nil {
 		return DFD{}, warnings, err
 	}
-	applyPurposeInferencePtrs(elements)
 
 	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, elements, &warnings)
 	flows = append(flows, awsFlows...)
@@ -810,7 +825,7 @@ func applyElementAnnotations(elements []*Element, cfg frayConfig) error {
 			hits[0].Provider = ann.Provider
 		}
 		if ann.Purpose != "" {
-			hits[0].Purpose = ann.Purpose
+			setPurpose(hits[0], ann.Purpose, PurposeSourceDeclared, true)
 		}
 	}
 	return nil

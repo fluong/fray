@@ -49,10 +49,11 @@ type Element struct {
 }
 
 type Evidence struct {
-	Addresses []string `json:"addresses,omitempty"`
-	Signals   []Signal `json:"signals,omitempty"`
-	Source    string   `json:"source,omitempty"`
-	Key       string   `json:"key,omitempty"`
+	Addresses     []string `json:"addresses,omitempty"`
+	Signals       []Signal `json:"signals,omitempty"`
+	Source        string   `json:"source,omitempty"`
+	Key           string   `json:"key,omitempty"`
+	PurposeSource string   `json:"purpose_source,omitempty"` // type | relation | declared
 }
 
 type Signal struct {

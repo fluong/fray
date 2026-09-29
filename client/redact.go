@@ -152,10 +152,11 @@ func Redact(doc DFD, key []byte) (DFD, IDMap, error) {
 		hashedEl := Element{
 			Provenance: el.Provenance,
 			Evidence: Evidence{
-				Addresses: addrs,
-				Signals:   sigs,
-				Source:    src,
-				Key:       keyEv,
+				Addresses:     addrs,
+				Signals:       sigs,
+				Source:        src,
+				Key:           keyEv,
+				PurposeSource: el.Evidence.PurposeSource,
 			},
 		}
 		rid := hmacDigest(key, "e", hashedEl.canonicalKey())

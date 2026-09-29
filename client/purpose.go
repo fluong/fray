@@ -16,6 +16,13 @@ var Purposes = []string{
 	"other",
 }
 
+// PurposeSource values record how purpose was set (evidence.purpose_source).
+const (
+	PurposeSourceType     = "type"
+	PurposeSourceRelation = "relation"
+	PurposeSourceDeclared = "declared"
+)
+
 // ValidPurpose reports whether p is a dfd/v1 purpose enum value.
 func ValidPurpose(p string) bool {
 	for _, v := range Purposes {
@@ -26,57 +33,140 @@ func ValidPurpose(p string) bool {
 	return false
 }
 
-// InferPurpose guesses a purpose enum from a local display name.
-// Only the enum is kept; the name itself is never written onto the element
-// beyond what the parser already stored in Name (stripped on redact).
-func InferPurpose(name string) string {
-	n := strings.ToLower(strings.TrimSpace(name))
-	if n == "" {
-		return ""
-	}
-	switch {
-	case strings.Contains(n, "backup"):
-		return "backups"
-	case strings.Contains(n, "upload"):
-		return "customer_uploads"
-	case strings.Contains(n, "audit") || strings.Contains(n, "archive"):
-		return "audit_archive"
-	case strings.Contains(n, "static") || strings.Contains(n, "asset") || strings.Contains(n, "cdn"):
-		return "static_assets"
-	case strings.Contains(n, "secret"):
-		return "secrets"
-	case strings.Contains(n, "log"):
-		return "logs"
-	case strings.Contains(n, "public") && strings.Contains(n, "api"):
-		return "public_api"
-	case strings.Contains(n, "internal") && strings.Contains(n, "api"):
-		return "internal_api"
-	// Do not match bare "api" — "GitHub API" is an external control plane, not
-	// an internal_api process. Require "internal"/"public" or an annotation.
+func validPurposeSource(s string) bool {
+	switch s {
+	case PurposeSourceType, PurposeSourceRelation, PurposeSourceDeclared:
+		return true
 	default:
-		return ""
+		return false
 	}
 }
 
-// ApplyPurposeInference sets Purpose from Name when unset. Declared annotations win.
-func ApplyPurposeInference(elements []Element) {
-	for i := range elements {
-		if elements[i].Purpose != "" {
-			continue
-		}
-		if p := InferPurpose(elements[i].Name); p != "" {
-			elements[i].Purpose = p
-		}
+// setPurpose sets purpose and its evidence provenance when unset, or when
+// force is true (declared annotations overwrite). Relation may upgrade logs →
+// audit_archive when a CloudTrail target is also an access-log target.
+func setPurpose(el *Element, purpose, source string, force bool) {
+	if purpose == "" || !ValidPurpose(purpose) || !validPurposeSource(source) {
+		return
 	}
+	if el.Purpose != "" && !force {
+		// CloudTrail audit_archive wins over a prior logs relation.
+		if el.Purpose == "logs" && purpose == "audit_archive" && source == PurposeSourceRelation {
+			el.Purpose = purpose
+			el.Evidence.PurposeSource = source
+		}
+		return
+	}
+	el.Purpose = purpose
+	el.Evidence.PurposeSource = source
 }
 
-func applyPurposeInferencePtrs(elements []*Element) {
+// applyPurposeFromType sets purpose from resource kind (secret managers only).
+func applyPurposeFromType(elements []*Element) {
 	for _, el := range elements {
 		if el.Purpose != "" {
 			continue
 		}
-		if p := InferPurpose(el.Name); p != "" {
-			el.Purpose = p
+		if el.Kind == "secret_store" {
+			setPurpose(el, "secrets", PurposeSourceType, false)
 		}
 	}
+}
+
+// applyPurposeFromRelations sets purpose from plan relationships:
+// CloudTrail s3_bucket_name → audit_archive; S3 server-access-logging
+// target_bucket → logs; GCS logging sink destination → logs.
+func applyPurposeFromRelations(elements []*Element, resources []planResource, idx configIndex) {
+	byAddr := map[string]*Element{}
+	byBucketName := map[string]*Element{}
+	for _, el := range elements {
+		for _, a := range el.Evidence.Addresses {
+			byAddr[a] = el
+		}
+	}
+	// Index object_storage elements by plan bucket/name values for string refs.
+	for _, r := range resources {
+		el, ok := byAddr[r.address]
+		if !ok || el.Kind != "object_storage" {
+			continue
+		}
+		for _, key := range []string{"bucket", "bucket_prefix", "name"} {
+			if n, _ := r.values[key].(string); n != "" {
+				byBucketName[n] = el
+			}
+		}
+	}
+
+	resolveBucket := func(refs []string, name string) *Element {
+		for _, ref := range refs {
+			for addr, el := range byAddr {
+				if el.Kind != "object_storage" {
+					continue
+				}
+				if containsResource(ref, "aws_s3_bucket", localTypeName(addr)) ||
+					containsResource(ref, "google_storage_bucket", localTypeName(addr)) {
+					return el
+				}
+			}
+		}
+		if name != "" {
+			return byBucketName[name]
+		}
+		return nil
+	}
+
+	for _, r := range resources {
+		switch r.typ {
+		case "aws_cloudtrail":
+			name, _ := r.values["s3_bucket_name"].(string)
+			el := resolveBucket(idx.attrRefs(r.address, "s3_bucket_name"), name)
+			if el != nil {
+				setPurpose(el, "audit_archive", PurposeSourceRelation, false)
+			}
+		case "aws_s3_bucket_logging":
+			name, _ := r.values["target_bucket"].(string)
+			el := resolveBucket(idx.attrRefs(r.address, "target_bucket"), name)
+			if el != nil {
+				setPurpose(el, "logs", PurposeSourceRelation, false)
+			}
+		case "google_logging_project_sink", "google_logging_folder_sink", "google_logging_organization_sink":
+			dest, _ := r.values["destination"].(string)
+			if el := gcsSinkDestination(dest, byAddr, byBucketName); el != nil {
+				setPurpose(el, "logs", PurposeSourceRelation, false)
+			}
+		}
+	}
+}
+
+func gcsSinkDestination(dest string, byAddr, byBucketName map[string]*Element) *Element {
+	// storage.googleapis.com/bucket-name or …/projects/_/buckets/name
+	const prefix = "storage.googleapis.com/"
+	if !strings.HasPrefix(dest, prefix) {
+		return nil
+	}
+	rest := strings.TrimPrefix(dest, prefix)
+	name := rest
+	const bucketsPrefix = "projects/_/buckets/"
+	if strings.HasPrefix(rest, bucketsPrefix) {
+		name = strings.TrimPrefix(rest, bucketsPrefix)
+	}
+	if name == "" {
+		return nil
+	}
+	if el := byBucketName[name]; el != nil {
+		return el
+	}
+	for addr, el := range byAddr {
+		if el.Kind == "object_storage" && localTypeName(addr) == name {
+			return el
+		}
+	}
+	return nil
+}
+
+// applyPurpose runs type then relation inference. Call before annotations so
+// declared purpose can overwrite with PurposeSourceDeclared.
+func applyPurpose(elements []*Element, resources []planResource, idx configIndex) {
+	applyPurposeFromType(elements)
+	applyPurposeFromRelations(elements, resources, idx)
 }

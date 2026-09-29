@@ -24,11 +24,17 @@
   absent; GCS `is_locked=true` → true; unlocked retention → absent; GCS no retention
   policy → `false`. Cloudflare R2 omits `object_lock` until lock/retention is parsed
   (FR-027 stays unverified on R2 archives).
-- Purpose inference no longer maps bare `"api"` → `internal_api` (avoids labeling
-  external control planes like "GitHub API").
+- **Breaking:** purpose is no longer inferred from resource names. It is set from
+  resource type (secret managers → `secrets`), plan relations (CloudTrail
+  `s3_bucket_name` → `audit_archive`; S3 server-access-logging `target_bucket` /
+  GCS logging sink destination → `logs`), or declared in `fray.yaml` — declare
+  `purpose: audit_archive` (etc.) for buckets you want FR-027 to cover. Evidence
+  records `purpose_source` as `type` | `relation` | `declared`.
 - Authz grants remain multi-valued (`authz_grants`); effective scope stays on `authz_scope`.
 - R2 service→bucket mechanical flows record `authz_scope=resource` when R2 key envs
-  are present (so inbound_writer / FR-027 can see the writer).
+  are present (so inbound_writer / FR-027 can see the writer). Prior to v0.5.0 that
+  flow omitted `authz_scope` entirely; `resource` is correct because R2 access keys
+  are bucket-scoped credentials, not project/account IAM.
 
 ### Notes for fray-server
 After this tag is published, bump every `github.com/fluong/fray` require to `v0.5.0`

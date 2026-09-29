@@ -197,6 +197,21 @@ Minimal `fray.yaml` (redaction on by default — omit `redaction`):
 schema_version: fray-config/v1
 ```
 
+**Breaking (v0.5.0):** purpose is no longer inferred from resource names. It is set
+from resource type, plan relations (CloudTrail / S3 access-log / GCS sink targets),
+or declared in `fray.yaml` — declare `purpose: audit_archive` etc. for buckets you
+want FR-027 to cover:
+
+```yaml
+schema_version: fray-config/v1
+annotations:
+  elements:
+    - address: cloudflare_r2_bucket.archive
+      purpose: audit_archive
+    - address: module.uploads.aws_s3_bucket.this[0]
+      purpose: customer_uploads
+```
+
 Minimal `mitigations.yaml`:
 
 ```yaml

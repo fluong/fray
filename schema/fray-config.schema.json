@@ -93,6 +93,9 @@
           "type": "string",
           "minLength": 1
         },
+        "purpose": {
+          "$ref": "#/$defs/purpose"
+        },
         "attributes": {
           "type": "object"
         }

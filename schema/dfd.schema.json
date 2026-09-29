@@ -319,6 +319,9 @@
                 "items": {
                   "$ref": "#/$defs/token"
                 }
+              },
+              "purpose_source": {
+                "$ref": "#/$defs/purpose_source"
               }
             }
           }
@@ -355,6 +358,9 @@
                 "items": {
                   "$ref": "#/$defs/hashed"
                 }
+              },
+              "purpose_source": {
+                "$ref": "#/$defs/purpose_source"
               }
             }
           }
@@ -390,6 +396,9 @@
                 "items": {
                   "$ref": "#/$defs/signal"
                 }
+              },
+              "purpose_source": {
+                "$ref": "#/$defs/purpose_source"
               }
             }
           }
@@ -425,6 +434,9 @@
                 "items": {
                   "$ref": "#/$defs/signal_redacted"
                 }
+              },
+              "purpose_source": {
+                "$ref": "#/$defs/purpose_source"
               }
             }
           }
@@ -461,6 +473,9 @@
               },
               "key": {
                 "$ref": "#/$defs/token"
+              },
+              "purpose_source": {
+                "$ref": "#/$defs/purpose_source"
               }
             }
           }
@@ -496,6 +511,9 @@
               },
               "key": {
                 "$ref": "#/$defs/hashed"
+              },
+              "purpose_source": {
+                "$ref": "#/$defs/purpose_source"
               }
             }
           }
@@ -832,6 +850,14 @@
         "other"
       ],
       "description": "Non-identifying role of the element. Declared or inferred locally; only the enum value is sent."
+    },
+    "purpose_source": {
+      "enum": [
+        "type",
+        "relation",
+        "declared"
+      ],
+      "description": "How purpose was assigned: resource type (e.g. secret manager), plan relation (e.g. CloudTrail target bucket), or fray.yaml declaration."
     }
   }
 }
