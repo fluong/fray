@@ -12,7 +12,12 @@
    `scripts/check-internal-identifiers.sh` (same script as CI) and **refuses the
    push** on a hit. The denylist scans the whole tree, including `*_test.go`.
 
-2. Or run the checks yourself:
+2. Provide the denylist patterns (not stored in this public repo). Locally:
+   `FRAY_DENYLIST` env, else `~/.config/fray/denylist` (one ripgrep pattern per
+   line). CI reads the repository secret `FRAY_DENYLIST` only and **fails
+   closed** if it is missing or empty.
+
+3. Or run the checks yourself:
 
    ```bash
    gitleaks detect --source . --log-opts='--all' --verbose --no-banner

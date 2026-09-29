@@ -26,6 +26,9 @@ jobs:
         run: gitleaks detect --source . --log-opts='--all' --verbose --no-banner
 
       - name: Internal identifier denylist
+        env:
+          # Fail closed: missing/empty secret → script exits non-zero.
+          FRAY_DENYLIST: ${{ secrets.FRAY_DENYLIST }}
         run: |
           chmod +x scripts/check-internal-identifiers.sh
           ./scripts/check-internal-identifiers.sh
