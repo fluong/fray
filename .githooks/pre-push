@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install: git config core.hooksPath .githooks
+# Install: ./scripts/install-hooks.sh  (sets core.hooksPath=.githooks)
+# Refuses the push on gitleaks or denylist hits. Same denylist script as CI.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"

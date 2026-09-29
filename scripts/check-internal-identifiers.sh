@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Fail if fray-server internal identifiers appear in the public tree.
+#
+# One script for CI and local hooks — scans the whole working tree, including
+# *_test.go and other fixtures. Do not narrow the path set for a "local" check.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,6 +17,8 @@ patterns=(
   'r2\.cloudflarestorage'
 )
 
+# Exclude only the denylist itself and hook/CI plumbing that cite the patterns.
+# Never exclude *_test.go, testdata/, or goldens.
 exclude=(
   --glob '!.git/**'
   --glob '!scripts/check-internal-identifiers.sh'

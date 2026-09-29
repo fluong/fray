@@ -26,8 +26,8 @@ Related:
 | `cmd/fray/` | CLI that parses a plan and calls the hosted API (`-remote`) |
 | `action.yml` + `action/` | Composite Action — OIDC-authenticated scan from GitHub Actions |
 | `testdata/` | Public AWS fixture, synthetic DFDs, PR-comment goldens |
-| `scripts/` | Internal-identifier denylist for the public tree |
-| `.githooks/` | Optional pre-push (gitleaks + denylist) |
+| `scripts/` | Internal-identifier denylist + `install-hooks.sh` |
+| `.githooks/` | Pre-push (gitleaks + denylist); install via `scripts/install-hooks.sh` |
 
 ## What leaves your CI
 
@@ -227,12 +227,13 @@ elements/flows/boundaries and annotate inferred ones; use mitigations to accept
 ## Development
 
 ```bash
+./scripts/install-hooks.sh   # once per clone; pre-push = gitleaks + denylist
 go test ./...
 ```
 
-CI (`.github/workflows/guardrails.yml`) and the optional pre-push hook
-(`git config core.hooksPath .githooks`) run gitleaks plus
-`scripts/check-internal-identifiers.sh`.
+CI (`.github/workflows/guardrails.yml`) and the pre-push hook both run gitleaks
+plus the same `scripts/check-internal-identifiers.sh` (whole tree, including
+`*_test.go`). See [docs/release.md](docs/release.md).
 
 ## Contributing
 
