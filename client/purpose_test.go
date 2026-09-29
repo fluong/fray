@@ -109,7 +109,7 @@ func TestPurposeFromTypeAndDeclared(t *testing.T) {
 	plan := []byte(`{
 	  "resource_changes": [
 	    {"address":"google_secret_manager_secret.db","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"db-url","rotation":[]}}},
-	    {"address":"cloudflare_r2_bucket.archive","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"fray-scan-archive"}}},
+	    {"address":"cloudflare_r2_bucket.archive","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"demo-scan-archive"}}},
 	    {"address":"aws_s3_bucket.logs","mode":"managed","type":"aws_s3_bucket","change":{"after":{"bucket":"app-access-logs"}}},
 	    {"address":"aws_s3_bucket_logging.src","mode":"managed","type":"aws_s3_bucket_logging","change":{"after":{"bucket":"src","target_bucket":"app-access-logs"}}}
 	  ],
