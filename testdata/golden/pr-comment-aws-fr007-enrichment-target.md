@@ -9,7 +9,8 @@ Before this change it could read only the 1 secret it uses.
 Why this matters here: ecs_service already has a resource-scoped grant to db_password
 secret alongside this account-wide path.
 
-Fix: Drop the account-wide grant; the secret-scoped grant already authorizes this flow.
+Fix: Drop the account-wide grant; the scoped grant already gives ecs_service access to
+db_password secret.
 
 <details><summary>Accept this risk instead</summary>
 

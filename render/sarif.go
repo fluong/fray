@@ -15,6 +15,10 @@ const sarifSchema = "https://json.schemastore.org/sarif-2.1.0.json"
 // Locations come from CauseAddress looked up in locs. GitHub Code Scanning
 // rejects results with zero locations, so unknown causes fall back to line 1
 // of the cause address string as a URI (still one physicalLocation).
+//
+// properties.security-severity follows GitHub's CVSS-style scale so the Code
+// Scanning "check run failure" threshold (default High or higher) aligns with
+// Fray's high-severity gate: high→7.5, medium→5.0, low→3.0, critical→9.0.
 func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation) ([]byte, error) {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
@@ -40,10 +44,14 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 		if msg == "" {
 			msg = f.RuleID
 		}
+		sev := sarifSecuritySeverity(f.Severity)
 		r := sarifResult{
 			RuleID: f.RuleID,
 			Level:  sarifLevel(f.Severity),
 			Message: sarifMessage{Text: msg},
+			Properties: &sarifProperties{
+				SecuritySeverity: sev,
+			},
 		}
 		cause := CauseAddress(f, rule, byID, flows)
 		phys := sarifPhysical{
@@ -84,7 +92,7 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 
 func sarifLevel(severity string) string {
 	switch strings.ToLower(severity) {
-	case "high":
+	case "critical", "high":
 		return "error"
 	case "medium":
 		return "warning"
@@ -95,15 +103,33 @@ func sarifLevel(severity string) string {
 	}
 }
 
+// sarifSecuritySeverity maps Fray severity to GitHub Code Scanning's
+// properties.security-severity (CVSS-style 0.0–10.0 string).
+func sarifSecuritySeverity(severity string) string {
+	switch strings.ToLower(severity) {
+	case "critical":
+		return "9.0"
+	case "high":
+		return "7.5"
+	case "medium":
+		return "5.0"
+	case "low":
+		return "3.0"
+	default:
+		return "5.0"
+	}
+}
+
 func sarifRules(open []apiv1.Finding, texts map[string]apiv1.RuleText) []sarifReportingDescriptor {
 	seen := map[string]bool{}
 	var ids []string
+	severityByRule := map[string]string{}
 	for _, f := range open {
-		if seen[f.RuleID] {
-			continue
+		if !seen[f.RuleID] {
+			seen[f.RuleID] = true
+			ids = append(ids, f.RuleID)
+			severityByRule[f.RuleID] = f.Severity
 		}
-		seen[f.RuleID] = true
-		ids = append(ids, f.RuleID)
 	}
 	slices.Sort(ids)
 	out := make([]sarifReportingDescriptor, 0, len(ids))
@@ -117,6 +143,9 @@ func sarifRules(open []apiv1.Finding, texts map[string]apiv1.RuleText) []sarifRe
 			ID:               id,
 			Name:             name,
 			ShortDescription: sarifMessage{Text: name},
+			Properties: &sarifProperties{
+				SecuritySeverity: sarifSecuritySeverity(severityByRule[id]),
+			},
 		})
 	}
 	return out
@@ -138,21 +167,27 @@ type sarifTool struct {
 }
 
 type sarifDriver struct {
-	Name  string                      `json:"name"`
-	Rules []sarifReportingDescriptor  `json:"rules,omitempty"`
+	Name  string                     `json:"name"`
+	Rules []sarifReportingDescriptor `json:"rules,omitempty"`
 }
 
 type sarifReportingDescriptor struct {
-	ID               string       `json:"id"`
-	Name             string       `json:"name,omitempty"`
-	ShortDescription sarifMessage `json:"shortDescription,omitempty"`
+	ID               string           `json:"id"`
+	Name             string           `json:"name,omitempty"`
+	ShortDescription sarifMessage     `json:"shortDescription,omitempty"`
+	Properties       *sarifProperties `json:"properties,omitempty"`
 }
 
 type sarifResult struct {
-	RuleID    string          `json:"ruleId"`
-	Level     string          `json:"level"`
-	Message   sarifMessage    `json:"message"`
-	Locations []sarifLocation `json:"locations,omitempty"`
+	RuleID     string           `json:"ruleId"`
+	Level      string           `json:"level"`
+	Message    sarifMessage     `json:"message"`
+	Locations  []sarifLocation  `json:"locations,omitempty"`
+	Properties *sarifProperties `json:"properties,omitempty"`
+}
+
+type sarifProperties struct {
+	SecuritySeverity string `json:"security-severity,omitempty"`
 }
 
 type sarifMessage struct {

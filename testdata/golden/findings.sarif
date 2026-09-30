@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Fray",
+          "rules": [
+            {
+              "id": "FR-001",
+              "name": "Example medium",
+              "shortDescription": {
+                "text": "Example medium"
+              },
+              "properties": {
+                "security-severity": "5.0"
+              }
+            },
+            {
+              "id": "FR-003",
+              "name": "Example low",
+              "shortDescription": {
+                "text": "Example low"
+              },
+              "properties": {
+                "security-severity": "3.0"
+              }
+            },
+            {
+              "id": "FR-010",
+              "name": "Object storage is not public",
+              "shortDescription": {
+                "text": "Object storage is not public"
+              },
+              "properties": {
+                "security-severity": "7.5"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "FR-001",
+          "level": "warning",
+          "message": {
+            "text": "Example medium"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "fray.yaml"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "5.0"
+          }
+        },
+        {
+          "ruleId": "FR-003",
+          "level": "note",
+          "message": {
+            "text": "Example low"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "fray.yaml"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "3.0"
+          }
+        },
+        {
+          "ruleId": "FR-010",
+          "level": "error",
+          "message": {
+            "text": "Object storage is not public"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "fray.yaml"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "7.5"
+          }
+        }
+      ]
+    }
+  ]
+}

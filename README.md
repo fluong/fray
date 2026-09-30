@@ -116,7 +116,7 @@ jobs:
   fray:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -146,7 +146,10 @@ On each run the Action:
 1. `terraform init` + `plan` + `show -json` in `working-directory`
 2. Scans via OIDC (`aud=fray`)
 3. Updates a single PR comment in place (hidden `<!-- fray -->` marker)
-4. Uploads SARIF via `github/codeql-action/upload-sarif` (category `fray`)
+4. Uploads SARIF via `github/codeql-action/upload-sarif` (category `fray`,
+   tool name `Fray`). Results include `properties.security-severity` (high 7.5,
+   medium 5.0, low 3.0) so GitHub Code Scanning’s “check run failure” threshold
+   (default High or higher) agrees with Fray’s high-severity gate.
 5. Exits non-zero when the merge gate blocks
 
 `mitigations.yaml` at the repo root is used when present; otherwise the Action
@@ -227,13 +230,14 @@ elements/flows/boundaries and annotate inferred ones; use mitigations to accept
 ## Development
 
 ```bash
-./scripts/install-hooks.sh   # once per clone; pre-push = gitleaks + denylist
+./scripts/install-hooks.sh   # once per clone; pre-push = gitleaks + denylist + action pins
 go test ./...
 ```
 
-CI (`.github/workflows/guardrails.yml`) and the pre-push hook both run gitleaks
-plus the same `scripts/check-internal-identifiers.sh` (whole tree, including
-`*_test.go`). Patterns come from the `FRAY_DENYLIST` secret (CI) or
+CI (`.github/workflows/guardrails.yml`) and the pre-push hook both run gitleaks,
+`scripts/check-internal-identifiers.sh` (whole tree, including `*_test.go`), and
+`scripts/check-action-pins.sh` (every `action.yml` `uses:` must be a 40-char SHA).
+Patterns come from the `FRAY_DENYLIST` secret (CI) or
 `FRAY_DENYLIST` / `~/.config/fray/denylist` locally — never from the committed
 tree; missing list fails closed. See [docs/release.md](docs/release.md).
 

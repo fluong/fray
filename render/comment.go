@@ -257,12 +257,18 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 	if line := fixHereLine(g.items, enrich, names); line != "" {
 		fix = line
 	}
+	why := whyHereLine(g.items, enrich, names)
+	// When rule context applies (why_here), drop ACL alternatives from the base
+	// sentence — context already covers that ACLs are off / irrelevant.
+	if why != "" {
+		explanation = dropACLAlternative(explanation)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s**\n", title)
 	fmt.Fprintf(&b, "%s\n\n", metaLine(g, rule, locs, mod, hasMod))
 	fmt.Fprintf(&b, "%s\n\n", wrap(pluralizeCounts(fill(explanation, repl)), 90))
-	if line := whyHereLine(g.items, enrich, names); line != "" {
-		fmt.Fprintf(&b, "%s\n\n", wrap(line, 90))
+	if why != "" {
+		fmt.Fprintf(&b, "%s\n\n", wrap(why, 90))
 	}
 	if line := findingEvidenceLine(g.items, names); line != "" {
 		fmt.Fprintf(&b, "%s\n\n", wrap(line, 90))
@@ -280,6 +286,14 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 		b.WriteString("</details>\n")
 	}
 	return b.String()
+}
+
+// dropACLAlternative removes "or ACL" wording from base explanations when
+// rule context already states that ACLs are disabled.
+func dropACLAlternative(s string) string {
+	s = strings.ReplaceAll(s, " or an ACL", "")
+	s = strings.ReplaceAll(s, " or ACL", "")
+	return s
 }
 
 func whyHereLine(items []apiv1.Finding, enrich map[findingKey]enrichmentText, names map[string]string) string {

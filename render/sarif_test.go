@@ -42,6 +42,9 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 			Results []struct {
 				RuleID    string `json:"ruleId"`
 				Level     string `json:"level"`
+				Properties *struct {
+					SecuritySeverity string `json:"security-severity"`
+				} `json:"properties"`
 				Locations []struct {
 					PhysicalLocation struct {
 						ArtifactLocation struct {
@@ -78,6 +81,9 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 	var fr010 *struct {
 		RuleID    string `json:"ruleId"`
 		Level     string `json:"level"`
+		Properties *struct {
+			SecuritySeverity string `json:"security-severity"`
+		} `json:"properties"`
 		Locations []struct {
 			PhysicalLocation struct {
 				ArtifactLocation struct {
@@ -101,6 +107,9 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 	}
 	if fr010.Level != "error" {
 		t.Fatalf("FR-010 level %s", fr010.Level)
+	}
+	if fr010.Properties == nil || fr010.Properties.SecuritySeverity != "7.5" {
+		t.Fatalf("FR-010 security-severity %+v", fr010.Properties)
 	}
 	if len(fr010.Locations) == 0 || fr010.Locations[0].PhysicalLocation.Region == nil {
 		t.Fatal("FR-010 missing region")
@@ -166,6 +175,42 @@ func TestSARIFFallbackLocationWhenUnknown(t *testing.T) {
 	}
 	if locs[0].PhysicalLocation.Region == nil || locs[0].PhysicalLocation.Region.StartLine != 1 {
 		t.Fatalf("fallback region %+v", locs[0].PhysicalLocation.Region)
+	}
+}
+
+func TestSARIFGolden(t *testing.T) {
+	doc := client.DFD{
+		Elements: []client.Element{{
+			ID:   "e1",
+			Name: "bucket",
+			Kind: "object_storage",
+			Evidence: client.Evidence{
+				Addresses: []string{"aws_s3_bucket.missing"},
+			},
+		}},
+	}
+	findings := apiv1.Findings{Findings: []apiv1.Finding{
+		{RuleID: "FR-010", Target: "e1", Status: "open", Severity: "high"},
+		{RuleID: "FR-001", Target: "e1", Status: "open", Severity: "medium"},
+		{RuleID: "FR-003", Target: "e1", Status: "open", Severity: "low"},
+	}}
+	texts := map[string]apiv1.RuleText{
+		"FR-010": {ID: "FR-010", Title: "Object storage is not public"},
+		"FR-001": {ID: "FR-001", Title: "Example medium"},
+		"FR-003": {ID: "FR-003", Title: "Example low"},
+	}
+	raw, err := SARIF(doc, findings, texts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join("..", "testdata", "golden", "findings.sarif")
+	want, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != string(want) {
+		_ = os.WriteFile("/tmp/findings.sarif", raw, 0o644)
+		t.Fatalf("SARIF drifted from golden; wrote /tmp/findings.sarif")
 	}
 }
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.1] — pending tag
+
+### Changed
+- FR-025 PR prose: when rule context (`acls_disabled`) applies, the base explanation
+  drops “or ACL” — ACLs are already covered by `why_here`.
+- FR-007 `fix_here`: customer wording (“gives {process} access to {secret}”) instead of
+  “authorizes this flow”.
+- SARIF keeps tool `Fray` / upload category `fray`; open findings set
+  `properties.security-severity` (high 7.5, medium 5.0, low 3.0) so Code Scanning’s
+  default “check run failure” threshold (High or higher) matches the gate.
+- Action third-party `uses:` pinned to full commit SHAs (Node 24 majors); CI fails
+  if any `action.yml` `uses:` is unpinned.
+
 ## [0.5.0] — 2026-09-29
 
 ### Added

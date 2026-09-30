@@ -334,7 +334,7 @@ func TestPRCommentFR007EnrichmentTarget(t *testing.T) {
 		RuleID:  "FR-007",
 		Target:  "f4545fe8f60fa981b",
 		WhyHere: "{e84ae99cb3fa981eb} already has a resource-scoped grant to {ea971486d1a0a3baf} alongside this account-wide path.",
-		FixHere: "Drop the account-wide grant; the secret-scoped grant already authorizes this flow.",
+		FixHere: "Drop the account-wide grant; the scoped grant already gives {e84ae99cb3fa981eb} access to {ea971486d1a0a3baf}.",
 	}}
 	// Duplicate advisory content must be dropped — no Advisory section.
 	advisory := &apiv1.Advisory{
@@ -342,7 +342,7 @@ func TestPRCommentFR007EnrichmentTarget(t *testing.T) {
 			Stride:     "elevation_of_privilege",
 			ElementIDs: []string{"e84ae99cb3fa981eb", "ea971486d1a0a3baf"},
 			Text:       "{e84ae99cb3fa981eb} already has a resource-scoped grant to {ea971486d1a0a3baf} alongside this account-wide path.",
-			Suggestion: "Drop the account-wide grant; the secret-scoped grant already authorizes this flow.",
+			Suggestion: "Drop the account-wide grant; the scoped grant already gives {e84ae99cb3fa981eb} access to {ea971486d1a0a3baf}.",
 		}},
 	}
 	got := PRComment(doc, cur, base, texts, locs, changed, "", advisory, enrichments)
