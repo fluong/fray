@@ -8,22 +8,25 @@
    ./scripts/install-hooks.sh
    ```
 
-   This sets `core.hooksPath=.githooks`. The pre-push hook runs **gitleaks**,
-   `scripts/check-internal-identifiers.sh`, and `scripts/check-action-pins.sh`
-   (same as CI) and **refuses the
-   push** on a hit. The denylist scans the whole tree, including `*_test.go`.
+   This sets `core.hooksPath=.githooks`. The pre-push hook runs **actionlint**,
+   **gitleaks**, `scripts/check-internal-identifiers.sh`,
+   `scripts/check-action-pins.sh`, and `scripts/check-public-docs.sh` (same as CI)
+   and **refuses the push** on a hit. The denylist scans the whole tree, including
+   `*_test.go`.
 
 2. Provide the denylist patterns (not stored in this public repo). Locally:
-   `FRAY_DENYLIST` env, else `~/.config/fray/denylist` (one ripgrep pattern per
+   `FRAY_DENYLIST` env, else `~/.config/fray/denylist` (one ERE pattern per
    line). CI reads the repository secret `FRAY_DENYLIST` only and **fails
    closed** if it is missing or empty.
 
 3. Or run the checks yourself:
 
    ```bash
+   actionlint
    gitleaks detect --source . --log-opts='--all' --verbose --no-banner
    ./scripts/check-internal-identifiers.sh
    ./scripts/check-action-pins.sh
+   ./scripts/check-public-docs.sh
    go test ./...
    ```
 
@@ -39,11 +42,11 @@
    git push origin vX.Y.Z
    ```
 
-4. In fray-server, bump every `github.com/fluong/fray` require to the new tag and
-   `go mod tidy` (see CHANGELOG notes).
+4. In the private companion, bump every `github.com/fluong/fray` require to the new
+   tag and `go mod tidy` (see that repo’s `docs/release.md`).
 
-## Copying from fray-server
+## Copying from the private companion
 
 Use an **explicit allowlist only** — never a bulk copy. Do not land private
-fixtures, plans, or goldens here. The denylist exists because of
-fray-server/docs/incidents/2026-09-28-public-fixtures.md (T28).
+fixtures, plans, or goldens here. The denylist exists because of a prior public
+fixture leak (T28 / companion `docs/incidents/`).

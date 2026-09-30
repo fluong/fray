@@ -12,7 +12,7 @@ into the module zip; see `go.mod`).
 
 Related:
 
-- Hosted API / rules — private companion (`fray-server`)
+- Hosted API / rules — private companion repository
 - [fluong/fray-demo-aws](https://github.com/fluong/fray-demo-aws) — AWS demo wired to the Action
 
 ## Layout
@@ -27,7 +27,7 @@ Related:
 | `action.yml` + `action/` | Composite Action — OIDC-authenticated scan from GitHub Actions |
 | `testdata/` | Public AWS fixture, synthetic DFDs, PR-comment goldens |
 | `scripts/` | Internal-identifier denylist + `install-hooks.sh` |
-| `.githooks/` | Pre-push (gitleaks + denylist); install via `scripts/install-hooks.sh` |
+| `.githooks/` | Pre-push (actionlint, gitleaks, denylist, pins, docs); install via `scripts/install-hooks.sh` |
 
 ## What leaves your CI
 
@@ -230,23 +230,24 @@ elements/flows/boundaries and annotate inferred ones; use mitigations to accept
 ## Development
 
 ```bash
-./scripts/install-hooks.sh   # once per clone; pre-push = gitleaks + denylist + action pins
+./scripts/install-hooks.sh   # once per clone; pre-push = actionlint + gitleaks + denylist + pins + docs
 go test ./...
 ```
 
-CI (`.github/workflows/guardrails.yml`) and the pre-push hook both run gitleaks,
-`scripts/check-internal-identifiers.sh` (whole tree, including `*_test.go`), and
-`scripts/check-action-pins.sh` (every `action.yml` `uses:` must be a 40-char SHA).
-Patterns come from the `FRAY_DENYLIST` secret (CI) or
-`FRAY_DENYLIST` / `~/.config/fray/denylist` locally — never from the committed
-tree; missing list fails closed. See [docs/release.md](docs/release.md).
+CI (`.github/workflows/guardrails.yml`) and the pre-push hook both run actionlint,
+gitleaks, `scripts/check-internal-identifiers.sh` (whole tree, including
+`*_test.go`), `scripts/check-action-pins.sh` (every `action.yml` `uses:` must be
+a 40-char SHA), and `scripts/check-public-docs.sh` (CHANGELOG/README must not
+name the private companion repository). Patterns come from the `FRAY_DENYLIST`
+secret (CI) or `FRAY_DENYLIST` / `~/.config/fray/denylist` locally — never from
+the committed tree; missing list fails closed. See [docs/release.md](docs/release.md).
 
 ## Contributing
 
 Copy paths from the private companion into this repo with an **explicit
 allowlist only** — never a bulk `cp -R`. Do not commit a hosted API URL into
 this repository; pass it as the Action `api-url` input (or `vars.FRAY_API_URL`
-in consumers). Do not land fray-server fixtures, plans, or goldens here. The
+in consumers). Do not land private-companion fixtures, plans, or goldens here. The
 guardrails denylist job fails on pull requests from forks (secrets are not
 exposed to them); a maintainer re-runs the check from a trusted context.
 

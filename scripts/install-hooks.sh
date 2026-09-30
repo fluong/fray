@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Point this clone at .githooks so pre-push runs gitleaks, denylist, and action.yml SHA pins.
+# Point this clone at .githooks so pre-push runs actionlint, gitleaks, denylist,
+# action.yml SHA pins, and the public-docs companion-name check.
 # Same checks as .github/workflows/guardrails.yml.
 set -euo pipefail
 
@@ -13,5 +14,5 @@ fi
 
 git config core.hooksPath .githooks
 echo "Installed: core.hooksPath=.githooks"
-echo "pre-push will refuse the push on gitleaks or denylist hits."
-echo "Requires gitleaks on PATH (brew install gitleaks)."
+echo "pre-push will refuse the push on actionlint, gitleaks, denylist, pin, or public-docs hits."
+echo "Requires actionlint and gitleaks on PATH (brew install actionlint gitleaks)."

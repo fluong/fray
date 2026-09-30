@@ -11,14 +11,30 @@ jobs:
   secrets-and-denylist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - name: Install tools
+      - name: actionlint
         run: |
-          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin gitleaks
+          set -euo pipefail
+          ver=1.7.12
+          archive="actionlint_${ver}_linux_amd64.tar.gz"
+          curl -fsSL -o "/tmp/${archive}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ver}/${archive}"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/${archive}" | sha256sum -c -
+          tar -xz -C /tmp -f "/tmp/${archive}" actionlint
+          /tmp/actionlint -color
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          ver=8.21.2
+          archive="gitleaks_${ver}_linux_x64.tar.gz"
+          curl -fsSL -o "/tmp/${archive}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/${archive}"
+          echo "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba  /tmp/${archive}" | sha256sum -c -
+          sudo tar -xz -C /usr/local/bin -f "/tmp/${archive}" gitleaks
 
       - name: gitleaks
         run: gitleaks detect --source . --log-opts='--all' --verbose --no-banner
@@ -35,3 +51,8 @@ jobs:
         run: |
           chmod +x scripts/check-action-pins.sh
           ./scripts/check-action-pins.sh
+
+      - name: Public docs must not name companion repo
+        run: |
+          chmod +x scripts/check-public-docs.sh
+          ./scripts/check-public-docs.sh

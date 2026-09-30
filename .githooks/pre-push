@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Install: ./scripts/install-hooks.sh  (sets core.hooksPath=.githooks)
-# Refuses the push on gitleaks, denylist, or unpinned action.yml uses.
-# Missing tools or script errors fail the push (never pass open).
+# Refuses the push on actionlint, gitleaks, denylist, unpinned uses, or
+# companion-repo names in public docs. Missing tools fail the push (never open).
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
+if ! command -v actionlint >/dev/null 2>&1; then
+  echo "actionlint is required for pre-push (brew install actionlint)" >&2
+  exit 2
+fi
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "gitleaks is required for pre-push (brew install gitleaks)" >&2
   exit 2
@@ -18,7 +22,8 @@ fi
 
 denylist="$root/scripts/check-internal-identifiers.sh"
 pins="$root/scripts/check-action-pins.sh"
-for script in "$denylist" "$pins"; do
+docs="$root/scripts/check-public-docs.sh"
+for script in "$denylist" "$pins" "$docs"; do
   if [[ ! -f "$script" ]]; then
     echo "missing guardrail script: $script" >&2
     exit 2
@@ -29,7 +34,9 @@ for script in "$denylist" "$pins"; do
   fi
 done
 
+actionlint
 gitleaks protect --staged --verbose --no-banner
 gitleaks detect --source . --log-opts='--all' --verbose --no-banner
 "$denylist"
 "$pins"
+"$docs"
