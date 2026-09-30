@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install: ./scripts/install-hooks.sh  (sets core.hooksPath=.githooks)
-# Refuses the push on gitleaks or denylist hits. Same denylist script as CI.
+# Refuses the push on gitleaks, denylist, or unpinned action.yml uses.
+# Missing tools or script errors fail the push (never pass open).
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -8,9 +9,27 @@ cd "$root"
 
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "gitleaks is required for pre-push (brew install gitleaks)" >&2
-  exit 1
+  exit 2
 fi
+if ! command -v grep >/dev/null 2>&1; then
+  echo "grep is required for pre-push denylist check" >&2
+  exit 2
+fi
+
+denylist="$root/scripts/check-internal-identifiers.sh"
+pins="$root/scripts/check-action-pins.sh"
+for script in "$denylist" "$pins"; do
+  if [[ ! -f "$script" ]]; then
+    echo "missing guardrail script: $script" >&2
+    exit 2
+  fi
+  if [[ ! -x "$script" ]]; then
+    echo "guardrail script not executable: $script" >&2
+    exit 2
+  fi
+done
 
 gitleaks protect --staged --verbose --no-banner
 gitleaks detect --source . --log-opts='--all' --verbose --no-banner
-"$root/scripts/check-internal-identifiers.sh"
+"$denylist"
+"$pins"

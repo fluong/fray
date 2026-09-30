@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Point this clone at .githooks so pre-push runs gitleaks + the denylist.
-# Same checks as .github/workflows/guardrails.yml (via scripts/check-internal-identifiers.sh).
+# Point this clone at .githooks so pre-push runs gitleaks, denylist, and action.yml SHA pins.
+# Same checks as .github/workflows/guardrails.yml.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

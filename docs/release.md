@@ -8,8 +8,9 @@
    ./scripts/install-hooks.sh
    ```
 
-   This sets `core.hooksPath=.githooks`. The pre-push hook runs **gitleaks** and
-   `scripts/check-internal-identifiers.sh` (same script as CI) and **refuses the
+   This sets `core.hooksPath=.githooks`. The pre-push hook runs **gitleaks**,
+   `scripts/check-internal-identifiers.sh`, and `scripts/check-action-pins.sh`
+   (same as CI) and **refuses the
    push** on a hit. The denylist scans the whole tree, including `*_test.go`.
 
 2. Provide the denylist patterns (not stored in this public repo). Locally:
@@ -22,6 +23,7 @@
    ```bash
    gitleaks detect --source . --log-opts='--all' --verbose --no-banner
    ./scripts/check-internal-identifiers.sh
+   ./scripts/check-action-pins.sh
    go test ./...
    ```
 
