@@ -1,6 +1,16 @@
 # Changelog
 
-## [0.5.1] — pending tag
+## [0.5.2] — pending tag
+
+### Fixed
+- Module-input findings (the `·` attribute list) locate on the HCL attribute lines
+  in both the PR comment and SARIF (span + relatedLocations), not the module header —
+  so Code Scanning “new alerts in this PR” agrees with the gate.
+- SARIF rules include `properties.tags: ["security"]` so `security-severity` counts.
+- Composite Action: stage `go.sum` under `${{ runner.temp }}` before `setup-go` cache
+  (Action path is outside `GITHUB_WORKSPACE`).
+
+## [0.5.1] — 2026-09-30
 
 ### Security
 - Fail-closed internal-identifier denylist (missing tool or search error fails CI/hook;
