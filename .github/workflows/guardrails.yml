@@ -31,7 +31,7 @@ jobs:
           chmod +x scripts/check-internal-identifiers.sh
           ./scripts/check-internal-identifiers.sh
 
-      - name: Action uses: SHA pins
+      - name: "Action uses: SHA pins"
         run: |
           chmod +x scripts/check-action-pins.sh
           ./scripts/check-action-pins.sh
