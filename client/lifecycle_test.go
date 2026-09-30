@@ -129,6 +129,66 @@ data "aws_iam_policy_document" "task_exec" {
 	}
 }
 
+func TestModuleCallAttributeLocation(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "infra")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+module "uploads" {
+  source = "./uploads"
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket" "local" {
+  bucket = "local"
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	locs, err := ResourceLocations(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := []string{
+		"block_public_acls",
+		"block_public_policy",
+		"ignore_public_acls",
+		"restrict_public_buckets",
+	}
+	for i, name := range inputs {
+		loc, ok := LookupModuleInput(locs, "module.uploads", name)
+		if !ok {
+			t.Fatalf("missing input %s", name)
+		}
+		wantLine := 5 + i // lines 5–8 in the fixture above
+		if loc.Line != wantLine {
+			t.Fatalf("%s line %d want %d", name, loc.Line, wantLine)
+		}
+		if loc.EndLine != wantLine {
+			t.Fatalf("%s endLine %d want %d", name, loc.EndLine, wantLine)
+		}
+	}
+	region, ok := ModuleInputRegion(locs, "module.uploads", inputs)
+	if !ok {
+		t.Fatal("missing region")
+	}
+	if region.Line != 5 || region.EndLine != 8 {
+		t.Fatalf("region %d-%d want 5-8", region.Line, region.EndLine)
+	}
+	// Nested resource cause still resolves; attribute region is preferred by callers.
+	call, ok := LookupCauseLocation(locs, "module.uploads.aws_s3_bucket_public_access_block.this[0]", "")
+	if !ok || call.Line != 2 {
+		t.Fatalf("module call site %+v", call)
+	}
+}
+
 func TestModuleCallLocation(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "infra")

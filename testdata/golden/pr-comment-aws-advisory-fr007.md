@@ -1,7 +1,7 @@
 Not blocking: 1 new issue
 
 **Secret access widened to the whole account**
-`module.ecs_service` · `task_exec_secret_arns` · aws-web-app/main.tf:112 · medium · elevation of privilege
+`module.ecs_service` · `task_exec_secret_arns` · aws-web-app/main.tf:152 · medium · elevation of privilege
 
 ecs_service can now read every secret in the account, including secrets created later.
 Before this change it could read only the 1 secret it uses.

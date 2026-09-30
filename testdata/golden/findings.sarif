@@ -14,7 +14,10 @@
                 "text": "Example medium"
               },
               "properties": {
-                "security-severity": "5.0"
+                "security-severity": "5.0",
+                "tags": [
+                  "security"
+                ]
               }
             },
             {
@@ -24,7 +27,10 @@
                 "text": "Example low"
               },
               "properties": {
-                "security-severity": "3.0"
+                "security-severity": "3.0",
+                "tags": [
+                  "security"
+                ]
               }
             },
             {
@@ -34,7 +40,10 @@
                 "text": "Object storage is not public"
               },
               "properties": {
-                "security-severity": "7.5"
+                "security-severity": "7.5",
+                "tags": [
+                  "security"
+                ]
               }
             }
           ]

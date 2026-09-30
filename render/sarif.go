@@ -12,14 +12,16 @@ import (
 const sarifSchema = "https://json.schemastore.org/sarif-2.1.0.json"
 
 // SARIF encodes open findings as SARIF 2.1.0 for github/codeql-action/upload-sarif.
-// Locations come from CauseAddress looked up in locs. GitHub Code Scanning
-// rejects results with zero locations, so unknown causes fall back to line 1
-// of the cause address string as a URI (still one physicalLocation).
+// Locations come from CauseAddress looked up in locs. When changedInputs names
+// module arguments for a finding's cause, the primary region spans those
+// attribute lines (and relatedLocations lists each attribute) so Code Scanning
+// attributes the alert to the PR diff, not the module header.
 //
 // properties.security-severity follows GitHub's CVSS-style scale so the Code
 // Scanning "check run failure" threshold (default High or higher) aligns with
 // Fray's high-severity gate: high→7.5, medium→5.0, low→3.0, critical→9.0.
-func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation) ([]byte, error) {
+// Rule properties.tags always includes "security" so security-severity counts.
+func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string) ([]byte, error) {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
 
@@ -58,17 +60,49 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 			ArtifactLocation: sarifArtifact{URI: "fray.yaml"},
 			Region:           &sarifRegion{StartLine: 1},
 		}
-		field := ""
-		if len(rule.Pass) > 0 {
-			field = rule.Pass[0].Field
-		}
-		if loc, ok := client.LookupCauseLocation(locs, cause, field); ok && loc.Path != "" {
-			phys.ArtifactLocation.URI = loc.Path
-			if loc.Line > 0 {
-				phys.Region = &sarifRegion{StartLine: loc.Line}
+		var related []sarifLocation
+		if mc, ok := client.LookupModuleCause(locs, cause); ok {
+			inputs := changedInputs[mc.Call]
+			if len(inputs) > 0 {
+				if region, ok := client.ModuleInputRegion(locs, mc.Call, inputs); ok && region.Path != "" {
+					phys.ArtifactLocation.URI = region.Path
+					phys.Region = sarifRegionFromLoc(region)
+					for _, loc := range client.ModuleInputLocations(locs, mc.Call, inputs) {
+						related = append(related, sarifLocation{
+							PhysicalLocation: sarifPhysical{
+								ArtifactLocation: sarifArtifact{URI: loc.Path},
+								Region:           sarifRegionFromLoc(loc),
+							},
+						})
+					}
+				} else if mc.Location.Path != "" {
+					phys.ArtifactLocation.URI = mc.Location.Path
+					if mc.Location.Line > 0 {
+						phys.Region = sarifRegionFromLoc(mc.Location)
+					}
+				}
+			} else if mc.Location.Path != "" {
+				phys.ArtifactLocation.URI = mc.Location.Path
+				if mc.Location.Line > 0 {
+					phys.Region = sarifRegionFromLoc(mc.Location)
+				}
+			}
+		} else {
+			field := ""
+			if len(rule.Pass) > 0 {
+				field = rule.Pass[0].Field
+			}
+			if loc, ok := client.LookupCauseLocation(locs, cause, field); ok && loc.Path != "" {
+				phys.ArtifactLocation.URI = loc.Path
+				if loc.Line > 0 {
+					phys.Region = sarifRegionFromLoc(loc)
+				}
 			}
 		}
 		r.Locations = []sarifLocation{{PhysicalLocation: phys}}
+		if len(related) > 0 {
+			r.RelatedLocations = related
+		}
 		results = append(results, r)
 	}
 
@@ -88,6 +122,14 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 		return nil, err
 	}
 	return append(raw, '\n'), nil
+}
+
+func sarifRegionFromLoc(loc client.SourceLocation) *sarifRegion {
+	r := &sarifRegion{StartLine: loc.Line}
+	if loc.EndLine > loc.Line {
+		r.EndLine = loc.EndLine
+	}
+	return r
 }
 
 func sarifLevel(severity string) string {
@@ -145,6 +187,7 @@ func sarifRules(open []apiv1.Finding, texts map[string]apiv1.RuleText) []sarifRe
 			ShortDescription: sarifMessage{Text: name},
 			Properties: &sarifProperties{
 				SecuritySeverity: sarifSecuritySeverity(severityByRule[id]),
+				Tags:             []string{"security"},
 			},
 		})
 	}
@@ -179,15 +222,17 @@ type sarifReportingDescriptor struct {
 }
 
 type sarifResult struct {
-	RuleID     string           `json:"ruleId"`
-	Level      string           `json:"level"`
-	Message    sarifMessage     `json:"message"`
-	Locations  []sarifLocation  `json:"locations,omitempty"`
-	Properties *sarifProperties `json:"properties,omitempty"`
+	RuleID           string          `json:"ruleId"`
+	Level            string          `json:"level"`
+	Message          sarifMessage    `json:"message"`
+	Locations        []sarifLocation `json:"locations,omitempty"`
+	RelatedLocations []sarifLocation `json:"relatedLocations,omitempty"`
+	Properties       *sarifProperties `json:"properties,omitempty"`
 }
 
 type sarifProperties struct {
-	SecuritySeverity string `json:"security-severity,omitempty"`
+	SecuritySeverity string   `json:"security-severity,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
 }
 
 type sarifMessage struct {
@@ -209,4 +254,5 @@ type sarifArtifact struct {
 
 type sarifRegion struct {
 	StartLine int `json:"startLine"`
+	EndLine   int `json:"endLine,omitempty"`
 }

@@ -1,7 +1,7 @@
 Blocked: 1 new high-severity issue
 
 **Uploads bucket no longer blocks public access**
-`module.uploads` · `block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets` · aws-web-app/main.tf:253 · high · information disclosure
+`module.uploads` · `block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets` · aws-web-app/main.tf:268 · high · information disclosure
 
 Nothing in the bucket is public yet, but nothing now prevents a bucket policy from making
 it public.

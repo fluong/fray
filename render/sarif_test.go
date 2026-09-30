@@ -23,7 +23,7 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw, err := SARIF(doc, findings, texts, locs)
+	raw, err := SARIF(doc, findings, texts, locs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestSARIFFallbackLocationWhenUnknown(t *testing.T) {
 		Severity: "high",
 	}}}
 	texts := map[string]apiv1.RuleText{"FR-010": {ID: "FR-010", Title: "Object storage is not public"}}
-	raw, err := SARIF(doc, findings, texts, nil)
+	raw, err := SARIF(doc, findings, texts, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestSARIFGolden(t *testing.T) {
 		"FR-001": {ID: "FR-001", Title: "Example medium"},
 		"FR-003": {ID: "FR-003", Title: "Example low"},
 	}
-	raw, err := SARIF(doc, findings, texts, nil)
+	raw, err := SARIF(doc, findings, texts, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +211,104 @@ func TestSARIFGolden(t *testing.T) {
 	if string(raw) != string(want) {
 		_ = os.WriteFile("/tmp/findings.sarif", raw, 0o644)
 		t.Fatalf("SARIF drifted from golden; wrote /tmp/findings.sarif")
+	}
+}
+
+func TestSARIFFR025AttributeRegion(t *testing.T) {
+	// PR #2 shape: FR-025 attributed to block_public_* module inputs — SARIF
+	// primary region must cover those lines (not the module "uploads" header).
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.dfd.json"))
+	injectElementCause(doc, "e269fe54ebe835ad4", "public_access_blocked", "module.uploads.aws_s3_bucket.this[0]")
+	findings := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.findings.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := map[string][]string{
+		"module.uploads": {
+			"block_public_acls",
+			"block_public_policy",
+			"ignore_public_acls",
+			"restrict_public_buckets",
+		},
+	}
+	raw, err := SARIF(doc, findings, texts, locs, changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(root, "golden", "findings-fr025.sarif")
+	want, err := os.ReadFile(wantPath)
+	if err != nil {
+		_ = os.WriteFile("/tmp/findings-fr025.sarif", raw, 0o644)
+		t.Fatalf("missing golden (wrote /tmp/findings-fr025.sarif): %v", err)
+	}
+	if string(raw) != string(want) {
+		_ = os.WriteFile("/tmp/findings-fr025.sarif", raw, 0o644)
+		t.Fatalf("FR-025 SARIF drifted from golden; wrote /tmp/findings-fr025.sarif")
+	}
+
+	var docSARIF struct {
+		Runs []struct {
+			Tool struct {
+				Driver struct {
+					Rules []struct {
+						ID         string `json:"id"`
+						Properties *struct {
+							Tags []string `json:"tags"`
+						} `json:"properties"`
+					} `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results []struct {
+				RuleID string `json:"ruleId"`
+				Locations []struct {
+					PhysicalLocation struct {
+						Region *struct {
+							StartLine int `json:"startLine"`
+							EndLine   int `json:"endLine"`
+						} `json:"region"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(raw, &docSARIF); err != nil {
+		t.Fatal(err)
+	}
+	if len(docSARIF.Runs) != 1 {
+		t.Fatal("want one run")
+	}
+	for _, rule := range docSARIF.Runs[0].Tool.Driver.Rules {
+		if rule.Properties == nil || len(rule.Properties.Tags) == 0 || rule.Properties.Tags[0] != "security" {
+			t.Fatalf("rule %s missing tags [security]: %+v", rule.ID, rule.Properties)
+		}
+	}
+	var fr025 *struct {
+		RuleID string `json:"ruleId"`
+		Locations []struct {
+			PhysicalLocation struct {
+				Region *struct {
+					StartLine int `json:"startLine"`
+					EndLine   int `json:"endLine"`
+				} `json:"region"`
+			} `json:"physicalLocation"`
+		} `json:"locations"`
+	}
+	for i := range docSARIF.Runs[0].Results {
+		r := &docSARIF.Runs[0].Results[i]
+		if r.RuleID == "FR-025" {
+			fr025 = r
+			break
+		}
+	}
+	if fr025 == nil || len(fr025.Locations) == 0 || fr025.Locations[0].PhysicalLocation.Region == nil {
+		t.Fatal("missing FR-025 region")
+	}
+	reg := fr025.Locations[0].PhysicalLocation.Region
+	if reg.StartLine != 268 || reg.EndLine != 271 {
+		t.Fatalf("FR-025 region want 268-271, got %d-%d", reg.StartLine, reg.EndLine)
 	}
 }
 

@@ -172,10 +172,13 @@ func literalPreventDestroy(block *hclsyntax.Block) (bool, error) {
 	return false, nil
 }
 
-// SourceLocation is the resource block in the Terraform module.
+// SourceLocation is an HCL range in the Terraform module (path relative display
+// form such as infra/main.tf). Line is the start line; EndLine is set for
+// attribute ranges (0 means unset / single-line).
 type SourceLocation struct {
-	Path string
-	Line int
+	Path    string
+	Line    int
+	EndLine int
 }
 
 func (s SourceLocation) String() string {
@@ -244,11 +247,15 @@ func indexLocations(out map[string]SourceLocation, root, moduleAddr, dir string)
 				out[call] = SourceLocation{Path: display, Line: line}
 				if block.Body != nil {
 					for name, attr := range block.Body.Attributes {
-						argLine := attr.Expr.Range().Start.Line
-						if argLine == 0 {
-							argLine = attr.NameRange.Start.Line
+						start := attr.NameRange.Start.Line
+						if start == 0 {
+							start = attr.Expr.Range().Start.Line
 						}
-						out[call+"."+name] = SourceLocation{Path: display, Line: argLine}
+						end := attr.Expr.Range().End.Line
+						if end == 0 {
+							end = start
+						}
+						out[call+"."+name] = SourceLocation{Path: display, Line: start, EndLine: end}
 					}
 				}
 			case !vendored && (block.Type == "resource" || block.Type == "data") && len(block.Labels) == 2:
@@ -340,6 +347,58 @@ func LookupModuleCause(idx map[string]SourceLocation, address string) (ModuleCau
 		return ModuleCause{}, false
 	}
 	return ModuleCause{Call: call, Location: loc}, true
+}
+
+// LookupModuleInput returns the HCL location of a single argument on a module call.
+func LookupModuleInput(idx map[string]SourceLocation, call, input string) (SourceLocation, bool) {
+	if idx == nil || call == "" || input == "" {
+		return SourceLocation{}, false
+	}
+	loc, ok := idx[call+"."+input]
+	if !ok || loc.Path == "" || loc.Line <= 0 {
+		return SourceLocation{}, false
+	}
+	return loc, true
+}
+
+// ModuleInputRegion spans the HCL ranges of the given module-call inputs (in
+// declaration order of inputs). Line is the first attribute start line; EndLine
+// is the last attribute end line. Returns false when no input resolves.
+func ModuleInputRegion(idx map[string]SourceLocation, call string, inputs []string) (SourceLocation, bool) {
+	locs := ModuleInputLocations(idx, call, inputs)
+	if len(locs) == 0 {
+		return SourceLocation{}, false
+	}
+	start := locs[0].Line
+	end := locs[0].EndLine
+	if end == 0 {
+		end = start
+	}
+	for _, loc := range locs[1:] {
+		if loc.Line < start {
+			start = loc.Line
+		}
+		e := loc.EndLine
+		if e == 0 {
+			e = loc.Line
+		}
+		if e > end {
+			end = e
+		}
+	}
+	return SourceLocation{Path: locs[0].Path, Line: start, EndLine: end}, true
+}
+
+// ModuleInputLocations returns one location per input that resolves, preserving
+// the order of inputs.
+func ModuleInputLocations(idx map[string]SourceLocation, call string, inputs []string) []SourceLocation {
+	var out []SourceLocation
+	for _, name := range inputs {
+		if loc, ok := LookupModuleInput(idx, call, name); ok {
+			out = append(out, loc)
+		}
+	}
+	return out
 }
 
 // ModuleArguments maps "module.name.arg" to the HCL expression source of that

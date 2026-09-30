@@ -1,7 +1,7 @@
 Blocked: 1 new high-severity issue
 
 **Uploads bucket made public**
-`module.uploads` · `block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets` · aws-web-app/main.tf:253 · high · information disclosure
+`module.uploads` · `block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets` · aws-web-app/main.tf:268 · high · information disclosure
 
 uploads bucket is public, so anyone who knows an object name can read it.
 

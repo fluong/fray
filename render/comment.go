@@ -571,6 +571,10 @@ func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLo
 	if hasMod {
 		where := mod.Location.String()
 		if len(mod.Inputs) > 0 {
+			// Agree with SARIF: point at the first attributed input line, not the module header.
+			if region, ok := client.ModuleInputRegion(locs, mod.Call, mod.Inputs); ok {
+				where = region.String()
+			}
 			return fmt.Sprintf("`%s` · %s · %s · %s · %s", mod.Call, formatInputs(mod.Inputs), where, sev, stride)
 		}
 		return fmt.Sprintf("`%s` · %s · %s · %s", mod.Call, where, sev, stride)

@@ -1,0 +1,391 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Fray",
+          "rules": [
+            {
+              "id": "FR-001",
+              "name": "Network entry is not anonymous",
+              "shortDescription": {
+                "text": "Network entry is not anonymous"
+              },
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "FR-003",
+              "name": "Credentials are not injected through the environment",
+              "shortDescription": {
+                "text": "Credentials are not injected through the environment"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "FR-005",
+              "name": "Container image is pinned by digest",
+              "shortDescription": {
+                "text": "Container image is pinned by digest"
+              },
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "FR-009",
+              "name": "Secrets are rotated",
+              "shortDescription": {
+                "text": "Secrets are rotated"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "FR-012",
+              "name": "Object storage cannot be destroyed by the tool",
+              "shortDescription": {
+                "text": "Object storage cannot be destroyed by the tool"
+              },
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "FR-014",
+              "name": "Object storage keeps prior versions",
+              "shortDescription": {
+                "text": "Object storage keeps prior versions"
+              },
+              "properties": {
+                "security-severity": "5.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "FR-025",
+              "name": "Object storage blocks public access",
+              "shortDescription": {
+                "text": "Object storage blocks public access"
+              },
+              "properties": {
+                "security-severity": "7.5",
+                "tags": [
+                  "security"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "FR-001",
+          "level": "warning",
+          "message": {
+            "text": "Network entry is not anonymous"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 59
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "5.0"
+          }
+        },
+        {
+          "ruleId": "FR-003",
+          "level": "note",
+          "message": {
+            "text": "Credentials are not injected through the environment"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 112
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "3.0"
+          }
+        },
+        {
+          "ruleId": "FR-005",
+          "level": "warning",
+          "message": {
+            "text": "Container image is pinned by digest"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 112
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "5.0"
+          }
+        },
+        {
+          "ruleId": "FR-009",
+          "level": "note",
+          "message": {
+            "text": "Secrets are rotated"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 282
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "3.0"
+          }
+        },
+        {
+          "ruleId": "FR-012",
+          "level": "warning",
+          "message": {
+            "text": "Object storage cannot be destroyed by the tool"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 268,
+                  "endLine": 271
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 268
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 269
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 270
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 271
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "5.0"
+          }
+        },
+        {
+          "ruleId": "FR-014",
+          "level": "warning",
+          "message": {
+            "text": "Object storage keeps prior versions"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 268,
+                  "endLine": 271
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 268
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 269
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 270
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 271
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "5.0"
+          }
+        },
+        {
+          "ruleId": "FR-025",
+          "level": "error",
+          "message": {
+            "text": "Object storage blocks public access"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 268,
+                  "endLine": 271
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 268
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 269
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 270
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "aws-web-app/main.tf"
+                },
+                "region": {
+                  "startLine": 271
+                }
+              }
+            }
+          ],
+          "properties": {
+            "security-severity": "7.5"
+          }
+        }
+      ]
+    }
+  ]
+}
