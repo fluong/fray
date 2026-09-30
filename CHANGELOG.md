@@ -2,6 +2,12 @@
 
 ## [0.5.1] — pending tag
 
+### Security
+- Fail-closed internal-identifier denylist (missing tool or search error fails CI/hook;
+  never reports clean on error). CI hit output is masked to file:line + entry index
+  only (no pattern or matched text).
+- Pre-push hook runs gitleaks, denylist, and `action.yml` SHA-pin check (same as CI).
+
 ### Changed
 - FR-025 PR prose: when rule context (`acls_disabled`) applies, the base explanation
   drops “or ACL” — ACLs are already covered by `why_here`.
@@ -49,9 +55,3 @@
   (`com.cloudflare.edge.r2.bucket.…`) → `resource`; account keys
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
-
-### Notes for fray-server
-After this tag is published, bump every `github.com/fluong/fray` require to `v0.5.0`
-(`server/go.mod`, `schema/eval/go.mod`, `schema/check/go.mod`, `client/go.mod`) and
-`go mod tidy`. Image builds copy `server/go.mod` only (no `go.work`); do not commit a
-`replace` for the public module.
