@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.4] — pending tag
+
+### Changed
+- Go language version in `go.mod` is **1.26** (was 1.22). Composite Action reads
+  it via `setup-go` `go-version-file` and builds with `GOTOOLCHAIN=local` (no
+  toolchain download at Action runtime).
+- CI: `.github/workflows/test.yml` runs `go vet` + `go test` on push/PR
+  (`workflow_dispatch` `runner` input for ubuntu-26.04 soak). Tag only when both
+  **guardrails** and **test** are green.
+
 ## [0.5.3] — pending tag
 
 ### Fixed
