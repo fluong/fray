@@ -34,7 +34,8 @@
 
 1. Date the `[x.y.z]` section in `CHANGELOG.md`; drop any “(pending tag)” wording
    in `README.md`.
-2. Push `main`; wait for the **guardrails** workflow to pass.
+2. Push `main`; wait for both the **guardrails** and **test** workflows to pass
+   on that commit.
 3. Annotated tag and push:
 
    ```bash
