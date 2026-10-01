@@ -3,13 +3,20 @@ name: guardrails
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: GitHub-hosted runner label (e.g. ubuntu-latest, ubuntu-26.04)
+        required: false
+        default: ubuntu-latest
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   secrets-and-denylist:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
