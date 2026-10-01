@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3] — pending tag
+
+### Fixed
+- Composite Action: `setup-go` with `cache: false`. A `cache-dependency-path` under
+  the Action checkout (outside `GITHUB_WORKSPACE`) is ignored, so the module cache
+  never ran; dropping the go.sum staging step is not a speed regression.
+
 ## [0.5.2] — pending tag
 
 ### Fixed

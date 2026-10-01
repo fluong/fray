@@ -65,22 +65,14 @@ runs:
           echo "$msg"
         } >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Stage Action go.sum for setup-go cache
-      if: steps.fork.outputs.is_fork != 'true'
-      shell: bash
-      run: |
-        set -euo pipefail
-        # Composite Action checkout lives outside GITHUB_WORKSPACE; setup-go's
-        # cache glob may miss ${{ github.action_path }}/go.sum. Stage a copy
-        # under runner.temp (absolute path) so the cache key hashes Action deps.
-        cp "${{ github.action_path }}/go.sum" "${{ runner.temp }}/fray-action.go.sum"
-
     - name: Setup Go
       if: steps.fork.outputs.is_fork != 'true'
       uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
       with:
         go-version: "1.22.x"
-        cache-dependency-path: ${{ runner.temp }}/fray-action.go.sum
+        # Action checkout is outside GITHUB_WORKSPACE; setup-go ignores
+        # cache-dependency-path there, so caching never worked. Explicit off.
+        cache: false
 
     - name: Setup Terraform
       if: steps.fork.outputs.is_fork != 'true'
