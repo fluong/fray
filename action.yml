@@ -69,9 +69,9 @@ runs:
       if: steps.fork.outputs.is_fork != 'true'
       uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
       with:
-        go-version: "1.22.x"
-        # Action checkout is outside GITHUB_WORKSPACE; setup-go ignores
-        # cache-dependency-path there, so caching never worked. Explicit off.
+        # Absolute path: setup-go reads the file via existsSync (works outside
+        # GITHUB_WORKSPACE). Module cache still does not — keep cache off.
+        go-version-file: ${{ github.action_path }}/go.mod
         cache: false
 
     - name: Setup Terraform
@@ -84,6 +84,9 @@ runs:
       if: steps.fork.outputs.is_fork != 'true'
       id: build
       shell: bash
+      env:
+        # Use only the Go installed by setup-go; never download a toolchain at runtime.
+        GOTOOLCHAIN: local
       run: |
         set -euo pipefail
         out="${RUNNER_TEMP}/fray-bin"
