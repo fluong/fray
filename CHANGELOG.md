@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Public docs and Action examples use **`https://api.getfray.dev`** as the hosted
+  API URL. Guardrail (`scripts/check-public-docs.sh`) fails if a `*.run.app` URL
+  appears in `README.md`, `docs/`, or `action.yml`.
+
 ## [0.5.4] — pending tag
 
 ### Changed

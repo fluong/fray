@@ -59,7 +59,7 @@ jobs:
           chmod +x scripts/check-action-pins.sh
           ./scripts/check-action-pins.sh
 
-      - name: Public docs must not name companion repo
+      - name: Public docs (no companion name; no run.app URLs)
         run: |
           chmod +x scripts/check-public-docs.sh
           ./scripts/check-public-docs.sh

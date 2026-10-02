@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Point this clone at .githooks so pre-push runs actionlint, gitleaks, denylist,
-# action.yml SHA pins, and the public-docs companion-name check.
+# action.yml SHA pins, and the public-docs check (companion name + no run.app).
 # Same checks as .github/workflows/guardrails.yml.
 set -euo pipefail
 

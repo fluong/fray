@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Install: ./scripts/install-hooks.sh  (sets core.hooksPath=.githooks)
 # Refuses the push on actionlint, gitleaks, denylist, unpinned uses, or
-# companion-repo names in public docs. Missing tools fail the push (never open).
+# public-docs hits (companion repo name / *.run.app URL). Missing tools fail
+# the push (never open).
 # Pushing refs/tags/v* also requires guardrails + test CI both "success" on that
 # commit (gh run list); missing/unauthenticated gh fails closed.
 set -euo pipefail

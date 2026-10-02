@@ -11,8 +11,8 @@ branding:
 inputs:
   api-url:
     description: >
-      Fray API base URL (for example https://api.example.com).
-      Required — never commit a production URL into the Action repository.
+      Fray API base URL (https://api.getfray.dev). Required — do not use a
+      *.run.app URL in workflows or docs.
     required: true
   working-directory:
     description: Terraform root module directory (contains .tf sources).

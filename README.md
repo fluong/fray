@@ -122,7 +122,7 @@ jobs:
 
       - uses: fluong/fray@v0.4.0
         with:
-          api-url: ${{ vars.FRAY_API_URL }}   # required; do not hardcode in this repo
+          api-url: https://api.getfray.dev
           working-directory: infra
           config: fray.yaml
           redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}
@@ -131,7 +131,7 @@ jobs:
 
 | Input | Default | Notes |
 |-------|---------|-------|
-| `api-url` | — | Required. Pass via `vars.FRAY_API_URL` in consumers. |
+| `api-url` | — | Required. Hosted API: `https://api.getfray.dev` (never a `*.run.app` URL). |
 | `working-directory` | `.` | Terraform root (contains `.tf` sources). |
 | `config` | `fray.yaml` | Path relative to the workspace. |
 | `redaction-key` | `""` | Required unless `fray.yaml` sets `redaction: off`. |
@@ -161,6 +161,7 @@ writes an empty dispositions file for the CLI.
 go install github.com/fluong/fray/cmd/fray@v0.4.0
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
+export FRAY_API_URL=https://api.getfray.dev
 
 fray \
   -plan plan.json \
@@ -183,7 +184,7 @@ fray ... -dry-run -payload-out payload.json
 
 | Flag / env | Role |
 |------------|------|
-| `-remote` | API base URL (required) |
+| `-remote` | API base URL (required; `https://api.getfray.dev`) |
 | `-oidc-token` / `FRAY_OIDC_TOKEN` | Actions OIDC JWT (preferred in CI) |
 | `-api-key` / `FRAY_API_KEY` | Org API key (local smoke only; cannot write default-branch baseline) |
 | `-default-branch` / `-branch` | Local only — POST body carries `is_default_branch`, not names |
@@ -238,18 +239,21 @@ CI (`.github/workflows/guardrails.yml`) and the pre-push hook both run actionlin
 gitleaks, `scripts/check-internal-identifiers.sh` (whole tree, including
 `*_test.go`), `scripts/check-action-pins.sh` (every `action.yml` `uses:` must be
 a 40-char SHA), and `scripts/check-public-docs.sh` (CHANGELOG/README must not
-name the private companion repository). Patterns come from the `FRAY_DENYLIST`
+name the private companion repository; README/`docs/`/`action.yml` must not
+contain a Cloud Run `*.run.app` hostname). Patterns come from the `FRAY_DENYLIST`
 secret (CI) or `FRAY_DENYLIST` / `~/.config/fray/denylist` locally — never from
 the committed tree; missing list fails closed. See [docs/release.md](docs/release.md).
 
 ## Contributing
 
 Copy paths from the private companion into this repo with an **explicit
-allowlist only** — never a bulk `cp -R`. Do not commit a hosted API URL into
-this repository; pass it as the Action `api-url` input (or `vars.FRAY_API_URL`
-in consumers). Do not land private-companion fixtures, plans, or goldens here. The
-guardrails denylist job fails on pull requests from forks (secrets are not
-exposed to them); a maintainer re-runs the check from a trusted context.
+allowlist only** — never a bulk `cp -R`. Public docs and Action examples use
+`https://api.getfray.dev`; never publish a Cloud Run `*.run.app` hostname
+(`scripts/check-public-docs.sh` fails the build if one appears in README,
+`docs/`, or `action.yml`). Do not land private-companion fixtures, plans, or
+goldens here. The guardrails denylist job fails on pull requests from forks
+(secrets are not exposed to them); a maintainer re-runs the check from a
+trusted context.
 
 ## License
 
