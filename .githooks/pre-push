@@ -57,6 +57,12 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         continue # tag delete
       fi
       tag="${local_ref#refs/tags/}"
+      # Annotated tags: local_sha is the tag object; peel to the commit CI ran on.
+      if ! commit="$(git rev-parse "${local_sha}^{commit}" 2>/dev/null)"; then
+        echo "error: cannot peel ${tag} (${local_sha}) to a commit (fail closed)" >&2
+        exit 2
+      fi
+      echo "tag object ${local_sha} → commit ${commit}"
       if ! command -v gh >/dev/null 2>&1; then
         echo "error: gh is required to push ${tag} (fail closed)" >&2
         exit 2
@@ -65,8 +71,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         echo "error: gh must be authenticated to push ${tag} (fail closed)" >&2
         exit 2
       fi
-      runs_json="$(gh run list --commit "$local_sha" --json name,conclusion --limit 50)" || {
-        echo "error: gh run list failed for ${local_sha} (fail closed)" >&2
+      runs_json="$(gh run list --commit "$commit" --json name,conclusion --limit 50)" || {
+        echo "error: gh run list failed for ${commit} (fail closed)" >&2
         exit 2
       }
       if ! printf '%s' "$runs_json" | python3 -c '
@@ -85,10 +91,10 @@ if missing:
     print("refusing: need success for:", ", ".join(missing), file=sys.stderr)
     sys.exit(1)
 '; then
-        echo "error: refusing push of ${tag} (${local_sha}): guardrails and test must both be success" >&2
+        echo "error: refusing push of ${tag} (tag object ${local_sha} → commit ${commit}): guardrails and test must both be success" >&2
         exit 1
       fi
-      echo "ok: ${tag} → ${local_sha}: guardrails + test success"
+      echo "ok: ${tag} (tag object ${local_sha} → commit ${commit}): guardrails + test success"
       ;;
   esac
 done <<<"$push_refs"

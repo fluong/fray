@@ -11,6 +11,7 @@ dist/
 build/
 tmp/
 temp/
+.tmp-tag-gate.*/
 coverage/
 node_modules/
 vendor/
