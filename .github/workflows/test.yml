@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: GitHub-hosted runner label (e.g. ubuntu-latest, ubuntu-26.04)
+        description: GitHub-hosted runner label (e.g. ubuntu-26.04, ubuntu-latest)
         required: false
-        default: ubuntu-latest
+        default: ubuntu-26.04
         type: string
 
 permissions:
@@ -16,14 +16,20 @@ permissions:
 
 jobs:
   test:
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner || 'ubuntu-26.04' }}
+    env:
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+        env:
+          GOTOOLCHAIN: local
 
       - name: go vet
         run: go vet ./...

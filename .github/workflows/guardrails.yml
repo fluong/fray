@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: GitHub-hosted runner label (e.g. ubuntu-latest, ubuntu-26.04)
+        description: GitHub-hosted runner label (e.g. ubuntu-26.04, ubuntu-latest)
         required: false
-        default: ubuntu-latest
+        default: ubuntu-26.04
         type: string
 
 permissions:
@@ -16,11 +16,12 @@ permissions:
 
 jobs:
   secrets-and-denylist:
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner || 'ubuntu-26.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: actionlint
         run: |
