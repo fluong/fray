@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,11 @@ import (
 	"github.com/fluong/fray/client"
 	"github.com/fluong/fray/render"
 )
+
+// errEnrollmentRejected is returned when fail-on-unenrolled is true and the
+// API rejected the scan with a known enrollment code. Annotations are already
+// written; main exits 1 without printing the error again.
+var errEnrollmentRejected = errors.New("enrollment rejected")
 
 func runRemote(opt options) (bool, error) {
 	if opt.OIDCToken == "" {
@@ -164,11 +170,25 @@ func runRemote(opt options) (bool, error) {
 		return false, err
 	}
 	defer httpResp.Body.Close()
-	respBody, err := io.ReadAll(httpResp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, maxEnrollmentBody+1))
 	if err != nil {
 		return false, err
 	}
+	if len(respBody) > maxEnrollmentBody {
+		return false, fmt.Errorf("remote scan: response body too large")
+	}
 	if httpResp.StatusCode != http.StatusOK {
+		if code, serverMsg, ok := parseEnrollmentRejection(httpResp.StatusCode, httpResp.Header.Get("Content-Type"), respBody); ok {
+			reportEnrollment(code, serverMsg, opt.FailOnUnenrolled)
+			if err := writeEnrollmentMarker(opt.Out, code, opt.FailOnUnenrolled); err != nil {
+				return false, err
+			}
+			if opt.FailOnUnenrolled {
+				return false, errEnrollmentRejected
+			}
+			// Skip: no SARIF, no PR comment — marker tells scan.sh to set skipped.
+			return false, nil
+		}
 		return false, fmt.Errorf("remote scan: %s: %s", httpResp.Status, truncate(respBody, 200))
 	}
 

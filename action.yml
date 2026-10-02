@@ -35,6 +35,14 @@ inputs:
       (fray-payload) so you can audit what Fray received.
     required: false
     default: "false"
+  fail-on-unenrolled:
+    description: >
+      When true, fail the job if the Fray GitHub App is not installed, this
+      repository is not selected, or the installation is over the free-plan
+      repo cap. Default false: emit a warning, write the job summary, and
+      skip the scan (no SARIF, no PR comment) with exit 0.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -131,11 +139,13 @@ runs:
         FRAY_OUT: ${{ runner.temp }}/fray-out
         FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
         FRAY_SHOW_PAYLOAD: ${{ inputs.show-payload }}
+        FRAY_FAIL_ON_UNENROLLED: ${{ inputs.fail-on-unenrolled }}
       run: bash "${{ github.action_path }}/action/scan.sh"
 
     - name: Upload sent payload
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
+        steps.scan.outputs.skipped != 'true' &&
         inputs.show-payload == 'true' &&
         steps.scan.outputs.has_payload == 'true'
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -147,6 +157,7 @@ runs:
     - name: Update PR comment
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
+        steps.scan.outputs.skipped != 'true' &&
         github.event_name == 'pull_request' &&
         steps.scan.outputs.has_comment == 'true'
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
@@ -176,6 +187,7 @@ runs:
     - name: Upload SARIF
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
+        steps.scan.outputs.skipped != 'true' &&
         steps.scan.outputs.has_sarif == 'true'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
@@ -184,7 +196,9 @@ runs:
         category: fray
 
     - name: Gate
-      if: steps.fork.outputs.is_fork != 'true'
+      if: >-
+        steps.fork.outputs.is_fork != 'true' &&
+        steps.scan.outputs.skipped != 'true'
       shell: bash
       env:
         FRAY_BLOCKED: ${{ steps.scan.outputs.blocked }}

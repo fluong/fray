@@ -11,7 +11,7 @@ type options struct {
 	Repo, Commit, Declared, Branch, DefaultBranch, Remote string
 	BaseCommit, BaseSource, APIKey, OIDCToken             string
 	PayloadOut                                            string
-	DryRun, ShowPayload                                   bool
+	DryRun, ShowPayload, FailOnUnenrolled                 bool
 }
 
 type mitigationFile struct {

@@ -2,10 +2,24 @@
 
 ## [Unreleased]
 
+## [0.5.5] — pending tag
+
+### Added
+- Action input **`fail-on-unenrolled`** (default `false`): when the hosted API
+  rejects a scan because the GitHub App is not installed, this repository is
+  not selected, or the installation is over the free-plan repo cap
+  (`installation_inactive` / `repo_not_enrolled` / `installation_over_cap`),
+  the Action emits a warning, writes the job summary, writes
+  `enrollment.json`, sets `skipped=true` / `skip_reason=<code>` on the scan
+  step, and skips SARIF / PR comment / payload artifact with exit 0.
+  Set `fail-on-unenrolled: true` to fail the job instead.
+
 ### Changed
 - Public docs and Action examples use **`https://api.getfray.dev`** as the hosted
   API URL. Guardrail (`scripts/check-public-docs.sh`) fails if a `*.run.app` URL
   appears in `README.md`, `docs/`, or `action.yml`.
+- Composite Action `setup-go` pin: **v7.0.0** (was v6.5.0). CI workflows run on
+  `ubuntu-26.04`; action pin-check covers workflows as well as `action.yml`.
 
 ## [0.5.4] — pending tag
 

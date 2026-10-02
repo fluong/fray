@@ -94,6 +94,11 @@ args=(
 if [[ "${FRAY_SHOW_PAYLOAD:-false}" == "true" ]]; then
   args+=(-payload-out "${FRAY_OUT}/payload.json")
 fi
+case "${FRAY_FAIL_ON_UNENROLLED:-false}" in
+  true|True|TRUE|1|yes|YES)
+    args+=(-fail-on-unenrolled)
+    ;;
+esac
 if [[ -n "$base_commit" ]]; then
   args+=(-base-commit "$base_commit")
   # Materialize the base-commit sources so Fray can compare module call
@@ -116,10 +121,89 @@ rc=$?
 set -e
 echo "::endgroup::"
 
+# Exit codes from fray (cmd/fray), decided with ${FRAY_OUT}/enrollment.json:
+#   0 + marker(failed=false)       → skipped (enrollment soft-skip)
+#   0 + no marker + findings.sarif → success
+#   0 + no marker + no SARIF       → error
+#   1 + marker(failed=true)        → fail-on-unenrolled (exit 1)
+#   1 + no marker + findings.sarif → gate blocked
+#   1 + no marker + no SARIF       → error
+#   0/1 + bad marker / mismatch    → error
+#   >=2                            → propagate
+skipped=false
+skip_reason=""
 blocked=false
+marker="${FRAY_OUT}/enrollment.json"
+has_marker=false
+marker_code=""
+marker_failed=""
+
+if [[ -f "$marker" ]]; then
+  if ! parsed="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(2)
+code = d.get("code")
+failed = d.get("failed")
+if not isinstance(code, str) or not isinstance(failed, bool):
+    sys.exit(2)
+print(code)
+print("true" if failed else "false")
+' "$marker")"; then
+    echo "::error::invalid enrollment.json"
+    exit 1
+  fi
+  has_marker=true
+  marker_code="$(printf '%s\n' "$parsed" | sed -n '1p')"
+  marker_failed="$(printf '%s\n' "$parsed" | sed -n '2p')"
+fi
+
+known_enrollment_code() {
+  case "$1" in
+    installation_inactive|repo_not_enrolled|installation_over_cap) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 case "$rc" in
-  0) blocked=false ;;
-  1) blocked=true ;;
+  0|1)
+    if [[ "$has_marker" == "true" ]]; then
+      if ! known_enrollment_code "$marker_code"; then
+        echo "::error::invalid enrollment marker code"
+        exit 1
+      fi
+      if [[ "$rc" -eq 0 ]]; then
+        if [[ "$marker_failed" != "false" ]]; then
+          echo "::error::enrollment marker/rc mismatch"
+          exit 1
+        fi
+        skipped=true
+        skip_reason="$marker_code"
+      else
+        if [[ "$marker_failed" != "true" ]]; then
+          echo "::error::enrollment marker/rc mismatch"
+          exit 1
+        fi
+        exit 1
+      fi
+    elif [[ "$rc" -eq 0 ]]; then
+      if [[ -f "${FRAY_OUT}/findings.sarif" ]]; then
+        :
+      else
+        echo "::error::fray exited 0 without results"
+        exit 1
+      fi
+    else
+      if [[ -f "${FRAY_OUT}/findings.sarif" ]]; then
+        blocked=true
+      else
+        echo "::error::fray exited 1 without findings.sarif"
+        exit 1
+      fi
+    fi
+    ;;
   *)
     echo "::error::fray exited with status ${rc}"
     exit "$rc"
@@ -127,6 +211,8 @@ case "$rc" in
 esac
 
 {
+  echo "skipped=${skipped}"
+  echo "skip_reason=${skip_reason}"
   echo "blocked=${blocked}"
   echo "out=${FRAY_OUT}"
   if [[ -f "${FRAY_OUT}/pr-comment.md" ]]; then
@@ -146,4 +232,8 @@ esac
   fi
 } >> "$GITHUB_OUTPUT"
 
-echo "Fray scan complete (blocked=${blocked})"
+if [[ "$skipped" == "true" ]]; then
+  echo "Fray scan skipped (enrollment: ${skip_reason})"
+else
+  echo "Fray scan complete (blocked=${blocked})"
+fi

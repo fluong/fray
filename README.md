@@ -136,10 +136,25 @@ jobs:
 | `config` | `fray.yaml` | Path relative to the workspace. |
 | `redaction-key` | `""` | Required unless `fray.yaml` sets `redaction: off`. |
 | `show-payload` | `false` | Upload `payload.json` as the `fray-payload` artifact. |
+| `fail-on-unenrolled` | `false` | Fail the job when the GitHub App install does not cover this repo (see below). |
 
 Auth is GitHub Actions OIDC with audience `fray` — there is no API-key input.
 Fork pull requests cannot mint that token: the Action emits a warning annotation
 and a job-summary line stating Fray did not run (never a silent pass).
+
+When the API returns **403** with an enrollment code (only once App enrollment
+is required server-side), the Action handles three outcomes:
+
+| Code | Default (`fail-on-unenrolled: false`) | `fail-on-unenrolled: true` |
+|------|----------------------------------------|------------------------------|
+| `installation_inactive` | Warning + summary; skip scan (exit 0) | Error annotation; exit 1 |
+| `repo_not_enrolled` | Warning + summary; skip scan (exit 0) | Error annotation; exit 1 |
+| `installation_over_cap` | Warning + summary; skip scan (exit 0) | Error annotation; exit 1 |
+
+Skipped enrollment runs set `steps.scan.outputs.skipped=true` and
+`skip_reason` to the enrollment code, and do not upload SARIF, update the PR
+comment, or upload the payload artifact. Any other auth failure (401,
+plain-text 403, unknown JSON `error`) still fails the job.
 
 On each run the Action:
 
@@ -187,6 +202,7 @@ fray ... -dry-run -payload-out payload.json
 | `-remote` | API base URL (required; `https://api.getfray.dev`) |
 | `-oidc-token` / `FRAY_OIDC_TOKEN` | Actions OIDC JWT (preferred in CI) |
 | `-api-key` / `FRAY_API_KEY` | Org API key (local smoke only; cannot write default-branch baseline) |
+| `-fail-on-unenrolled` | Exit 1 on enrollment rejection codes (default: warn + exit 0) |
 | `-default-branch` / `-branch` | Local only — POST body carries `is_default_branch`, not names |
 | `-base-commit` / `-base-source` | PR base sha + sources for module-arg attribution |
 | `-out` | Writes `findings.json`, `findings.sarif`, `threat-model.md`, `pr-comment.md` |

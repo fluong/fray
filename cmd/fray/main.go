@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"errors"
 	"fmt"
 	"os"
 )
@@ -26,6 +27,7 @@ func main() {
 	flag.StringVar(&opt.PayloadOut, "payload-out", "", "write the exact POST body to this path")
 	flag.BoolVar(&opt.DryRun, "dry-run", false, "build the scan payload but do not POST")
 	flag.BoolVar(&opt.ShowPayload, "show-payload", false, "print the exact JSON that would be sent")
+	flag.BoolVar(&opt.FailOnUnenrolled, "fail-on-unenrolled", false, "exit non-zero when the GitHub App install does not cover this repo")
 	flag.Parse()
 
 	if opt.Plan == "" || opt.Source == "" || opt.Config == "" || opt.Mitigations == "" || opt.Remote == "" {
@@ -38,6 +40,10 @@ func main() {
 
 	fail, err := runRemote(opt)
 	if err != nil {
+		if errors.Is(err, errEnrollmentRejected) {
+			// Annotation + summary already emitted.
+			os.Exit(1)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
