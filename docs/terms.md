@@ -8,6 +8,15 @@ at `https://api.getfray.dev`, and the public Action and client in this
 repository. How we handle data is described in
 [Trust and data handling](trust.md) and the [Privacy policy](privacy.md).
 
+## Legal notice
+
+| | |
+|---|---|
+| Operator | `<OPERATOR_NAME>` |
+| Country | France |
+| Address / registration | `<ADDRESS_OR_REGISTRATION>` |
+| Contact | [privacy@getfray.dev](mailto:privacy@getfray.dev) |
+
 ## Beta / as-is
 
 Fray is provided **as a beta / early service, “as is”**, without warranties of
@@ -59,9 +68,9 @@ When enabled, additional terms in [trust.md](trust.md) and the
 
 ## Governing law
 
-These terms are governed by the laws of `<GOVERNING_LAW>`, without regard to
-conflict-of-law rules. Courts of that jurisdiction have exclusive venue,
-except where consumer or mandatory local law says otherwise.
+These terms are governed by **French law**, without regard to conflict-of-law
+rules. Courts of France have exclusive venue, except where consumer or
+mandatory local law says otherwise.
 
 ## Changes
 

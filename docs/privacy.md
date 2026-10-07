@@ -11,16 +11,25 @@ policy summarizes for privacy purposes.
 
 Hosted API: `https://api.getfray.dev`.
 
+## Legal notice
+
+| | |
+|---|---|
+| Operator | `<OPERATOR_NAME>` |
+| Country | France |
+| Address / registration | `<ADDRESS_OR_REGISTRATION>` |
+| Privacy contact | [privacy@getfray.dev](mailto:privacy@getfray.dev) |
+
 ## Controller and contact
 
 | | |
 |---|---|
-| Controller | `<OPERATOR_NAME>`, `<COUNTRY>` |
-| Privacy contact | `<PRIVACY_CONTACT>` |
+| Controller | `<OPERATOR_NAME>`, France |
+| Privacy contact | [privacy@getfray.dev](mailto:privacy@getfray.dev) |
 
-Until the placeholders are filled, use
+You may also use
 [GitHub private vulnerability reporting](../SECURITY.md) on this repository for
-privacy requests that cannot wait (there is no email inbox on `getfray.dev`).
+security issues (security and privacy inboxes may differ).
 
 ## Personal data we process
 
@@ -57,13 +66,14 @@ for opt-in enrichment only).
 
 Some processing occurs outside the EEA:
 
-- **United Kingdom** — database (Neon), as described in [trust.md](trust.md)
+- **United Kingdom** — database (Neon), as described in [trust.md](trust.md).
+  Transfers rely on the European Commission’s **adequacy decision for the UK**
+  (renewed 19 December 2025, valid until 27 December 2031).
 - **United States** — optional Anthropic enrichment only, when an organization
-  opts in ([trust.md](trust.md))
-
-Transfers rely on the providers’ data processing terms.
-`<TRANSFER_MECHANISM_TO_VERIFY>` (for example Standard Contractual Clauses or
-another lawful mechanism) — to be confirmed before paid plans.
+  opts in ([trust.md](trust.md)). Transfers rely on the **EU Standard
+  Contractual Clauses (Module 2)** incorporated in Anthropic’s Data Processing
+  Addendum under its Commercial Terms. We do **not** claim EU–US Data Privacy
+  Framework certification for this path.
 
 ## Retention
 
@@ -90,11 +100,11 @@ Depending on where you live, you may have the right to:
 - Objection to processing based on legitimate interests  
 - Data portability  
 
-You may also lodge a complaint with a supervisory authority:
-`<SUPERVISORY_AUTHORITY>`.
+You may also lodge a complaint with a supervisory authority: the French
+**CNIL** (Commission nationale de l'informatique et des libertés),
+[cnil.fr](https://www.cnil.fr).
 
-To exercise rights, contact `<PRIVACY_CONTACT>` (or use
-[private vulnerability reporting](../SECURITY.md) until that address is set).
+To exercise rights, contact [privacy@getfray.dev](mailto:privacy@getfray.dev).
 
 ## What we do not do
 
