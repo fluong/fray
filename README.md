@@ -16,6 +16,83 @@ Related:
 - [fluong/fray-demo-aws](https://github.com/fluong/fray-demo-aws) — AWS demo wired to the Action
 - [Trust and data handling](docs/trust.md) — what is sent, where it lives, retention, subprocessors
 
+## Install
+
+### 1. Install the GitHub App
+
+Install **Fray (getfray.dev)** on your GitHub account or organization and
+**select repositories** (do not grant all-repos access unless you intend to).
+
+The free plan covers **3 repositories per installation**. If you select more,
+Fray enrolls none of the extras until you are under the cap (scans for those
+repos skip with `installation_over_cap`).
+
+The App has **metadata read** only. It does not get code access. Fray never
+clones repositories. Scans authenticate with **GitHub Actions OIDC** from your
+CI.
+
+### 2. Add a redaction key
+
+```bash
+openssl rand -hex 32 | gh secret set FRAY_REDACTION_KEY
+```
+
+### 3. Add the workflow
+
+Pin third-party actions by commit SHA (same shape as the post-install setup
+page). Look up the current `fluong/fray` release tag and pin that commit:
+
+```yaml
+name: fray
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write        # OIDC token with audience "fray"
+  contents: read
+  pull-requests: write   # create/update the Fray PR comment
+  security-events: write # upload SARIF to the Security tab
+
+jobs:
+  fray:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: fluong/fray@23947633d771e9bb74f9262809a424673886651d # v0.5.5
+        with:
+          api-url: https://api.getfray.dev
+          working-directory: infra   # Terraform root; omit if plans live at repo root
+          redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}
+```
+
+See [GitHub Action](#github-action) for every input.
+
+### When a repo is not enrolled
+
+If the App install does not cover the repository (inactive install, repo not
+selected, or over the free-tier cap), the Action **skips the scan** by default:
+warning annotation + job summary, exit 0. Set `fail-on-unenrolled: true` to
+fail the job instead.
+
+| API code | Default | `fail-on-unenrolled: true` |
+|---|---|---|
+| `installation_inactive` | Skip + warning | Fail |
+| `repo_not_enrolled` | Skip + warning | Fail |
+| `installation_over_cap` | Skip + warning | Fail |
+
+### Uninstall
+
+Uninstalling the App (or removing a repository from it) soft-disables access
+immediately. After **30 days**, Fray hard-deletes that organization’s (or
+repository’s) scan data and archive objects. Details:
+[docs/trust.md](docs/trust.md).
+
 ## Layout
 
 | Path | Purpose |
