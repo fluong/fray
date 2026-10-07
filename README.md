@@ -23,9 +23,9 @@ Related:
 Install **Fray (getfray.dev)** on your GitHub account or organization and
 **select repositories** (do not grant all-repos access unless you intend to).
 
-The free plan covers **3 repositories per installation**. If you select more,
-Fray enrolls none of the extras until you are under the cap (scans for those
-repos skip with `installation_over_cap`).
+The free plan covers **3 repositories per installation**. If an installation
+selects more than 3 repositories, scans for **all** of its repositories are
+skipped (`installation_over_cap`) until you narrow the selection.
 
 The App has **metadata read** only. It does not get code access. Fray never
 clones repositories. Scans authenticate with **GitHub Actions OIDC** from your

@@ -8,13 +8,21 @@ Hosted API: `https://api.getfray.dev`.
 ## What is sent
 
 Each scan POSTs a **data-flow diagram (DFD)** derived from your Terraform plan,
-plus findings context needed for the merge gate. With redaction on (the default):
+plus findings context needed for the merge gate.
+
+**Redaction is on by default** (omit `redaction` in `fray.yaml`). When it is on,
+you must set `FRAY_REDACTION_KEY` in CI — if the key is unset, the client fails
+before posting (it does not fall back to plaintext). With redaction on:
 
 - Resource names, Terraform addresses, signal names, and similar identifiers are
-  replaced with HMAC digests under a key **you** hold (`FRAY_REDACTION_KEY`).
-- The key never leaves your CI.
+  replaced with HMAC digests under that key. The key never leaves your CI.
 - Optional closed-enum `purpose` values (for example `customer_uploads`) may be
   sent in the clear — they are roles, not names.
+
+You can set `redaction: off` in `fray.yaml` to send plaintext identifiers. That
+is client-side only and prints a loud warning. The hosted API still **rejects
+unredacted payloads** for orgs with `require_redaction` (the default for every
+new org, including App installs) unless an operator disables that flag.
 
 Fray also learns **which GitHub repository and ref** ran the scan from the
 GitHub Actions OIDC token used to authenticate. Redaction does not hide that
@@ -29,15 +37,24 @@ repository identity from Fray.
 
 Fray never clones your repositories. The GitHub App has **metadata read** only.
 
-## Where data lives (EU/UK)
+## What the GitHub App stores
+
+From install and webhook events (not from your source tree):
+
+- Account login, account id, and installation id  
+- Repository ids and enrollment state (which repos are selected / active)  
+- Install audit events, including the GitHub **user id of the actor**, retained
+  for **12 months**
+
+## Where data lives
+
+Data is stored in the EU and UK.
 
 | Component | Provider | Region |
 |---|---|---|
 | API | Google Cloud Run | europe-west1 (Belgium) |
 | Database | Neon Postgres | AWS eu-west-2 (London, UK) |
 | Scan archive | Cloudflare R2 | EU jurisdiction |
-
-Say **EU/UK**, not “EU only” — the database is in the UK.
 
 ## Retention
 
@@ -74,11 +91,14 @@ Enrichment is **per-organization opt-in** and off by default. When enabled:
 
 - Only neighborhoods for findings that are **new versus your default-branch
   baseline** may be sent — not every scan, and never source code.
+- The payload is the **same redacted DFD structure** used for scans
+  (identifiers as HMAC digests when redaction is on).
 - Processing is in the **US** (Anthropic Messages API for the current Haiku
   model; no EU inference option for that model).
 - Anthropic deletes API inputs/outputs within **30 days** and does **not** use
   them for training. Flagged content may be retained for Trust & Safety for up
-  to **2 years**.
+  to **2 years**. Source:
+  [Anthropic — How long do you store my organization’s data?](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data)
 - Fray logs model id, token counts, latency, and HTTP status only — never
   prompts or completions.
 
@@ -89,15 +109,18 @@ Scans and the merge gate work with enrichment left off (rules-only).
 - **CI auth:** GitHub Actions OIDC (`aud` = `fray`). No customer API keys for CI.
 - **GitHub App:** metadata read-only; App signing key held in Cloud KMS
   (non-exportable). Fray does not clone repos.
-- **Least privilege:** separate database roles for the API runtime and the
-  customer-data purge path; purge cannot use the normal app credentials.
-- **Redaction:** customer-held key; hosted API rejects unredacted payloads
-  unless an org explicitly allows them.
+- **Least privilege:** The API’s database role cannot delete customer data;
+  deletion runs only as a separate purge role, nightly, with its own
+  credentials.
+- **Redaction:** customer-held key when redaction is on; hosted API rejects
+  unredacted payloads unless an org explicitly allows them
+  (`require_redaction` defaults on).
 
 ## Free plan
 
-**3 repositories** per GitHub App installation. Selecting more does not enroll
-extra repos until you are under the cap (or on a higher plan later).
+**3 repositories** per GitHub App installation. If an installation selects more
+than 3 repositories, scans for **all** of its repositories are skipped
+(`installation_over_cap`) until you narrow the selection.
 
 ## Related
 
