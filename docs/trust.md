@@ -22,7 +22,7 @@ before posting (it does not fall back to plaintext). With redaction on:
 You can set `redaction: off` in `fray.yaml` to send plaintext identifiers. That
 is client-side only and prints a loud warning. The hosted API still **rejects
 unredacted payloads** for orgs with `require_redaction` (the default for every
-new org, including App installs) unless an operator disables that flag.
+new org, including App installs) unless Fray disables it at your request.
 
 Fray also learns **which GitHub repository and ref** ran the scan from the
 GitHub Actions OIDC token used to authenticate. Redaction does not hide that
@@ -61,6 +61,7 @@ Data is stored in the EU and UK.
 | Data | Retention |
 |---|---|
 | Scan records, findings, archived DFD/findings objects | Until you uninstall the App or remove a repository; then **hard-deleted after 30 days** (database rows and archive objects). Archive deletes are final — no object lock. |
+| AI enrichment results (if opted in) | Deleted when the organization is purged (uninstall + 30 days or on request); not deleted on single-repository removal. |
 | Webhook delivery IDs | 30 days |
 | Install audit events | 12 months |
 | Platform logs | ~30 days |
@@ -113,7 +114,7 @@ Scans and the merge gate work with enrichment left off (rules-only).
   deletion runs only as a separate purge role, nightly, with its own
   credentials.
 - **Redaction:** customer-held key when redaction is on; hosted API rejects
-  unredacted payloads unless an org explicitly allows them
+  unredacted payloads unless Fray disables it at your request
   (`require_redaction` defaults on).
 
 ## Free plan
