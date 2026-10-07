@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- Action input **`fail-on-rate-limit`** (default `false`): when the hosted API
+  returns HTTP 429 with `error: rate_limited`, the CLI writes `enrollment.json`
+  (`status: rate_limited`, message, `retry_after`), exits like an enrollment
+  soft-skip, and the Action emits a warning (or error when the input is true),
+  a short job-summary note, and sets `skipped=true` / `skip_reason=rate_limited`.
+  Independent of `fail-on-unenrolled`. No automatic retries.
+- README **Limits** note: 30 scans per repository per hour and 100 per
+  organization per day on the free plan.
+
 ## [0.5.5] — pending tag
 
 ### Added

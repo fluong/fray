@@ -178,7 +178,8 @@ func runRemote(opt options) (bool, error) {
 		return false, fmt.Errorf("remote scan: response body too large")
 	}
 	if httpResp.StatusCode != http.StatusOK {
-		if code, serverMsg, ok := parseEnrollmentRejection(httpResp.StatusCode, httpResp.Header.Get("Content-Type"), respBody); ok {
+		ct := httpResp.Header.Get("Content-Type")
+		if code, serverMsg, ok := parseEnrollmentRejection(httpResp.StatusCode, ct, respBody); ok {
 			reportEnrollment(code, serverMsg, opt.FailOnUnenrolled)
 			if err := writeEnrollmentMarker(opt.Out, code, opt.FailOnUnenrolled); err != nil {
 				return false, err
@@ -187,6 +188,15 @@ func runRemote(opt options) (bool, error) {
 				return false, errEnrollmentRejected
 			}
 			// Skip: no SARIF, no PR comment — marker tells scan.sh to set skipped.
+			return false, nil
+		}
+		if msg, retryAfter, ok := parseRateLimited(httpResp.StatusCode, ct, respBody, httpResp.Header.Get("Retry-After")); ok {
+			reportRateLimitedStderr(msg, retryAfter)
+			if err := writeRateLimitedMarker(opt.Out, msg, retryAfter); err != nil {
+				return false, err
+			}
+			// Soft-skip (same exit class as enrollment skip): marker tells
+			// scan.sh to warn or fail based on fail-on-rate-limit.
 			return false, nil
 		}
 		return false, fmt.Errorf("remote scan: %s: %s", httpResp.Status, truncate(respBody, 200))

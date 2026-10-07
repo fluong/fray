@@ -43,6 +43,14 @@ inputs:
       skip the scan (no SARIF, no PR comment) with exit 0.
     required: false
     default: "false"
+  fail-on-rate-limit:
+    description: >
+      When true, fail the job if the hosted API returns HTTP 429 rate_limited.
+      Default false: emit a warning (with retry-after), write the job summary,
+      and skip the scan (no SARIF, no PR comment) with exit 0. Independent of
+      fail-on-unenrolled.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -140,6 +148,7 @@ runs:
         FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
         FRAY_SHOW_PAYLOAD: ${{ inputs.show-payload }}
         FRAY_FAIL_ON_UNENROLLED: ${{ inputs.fail-on-unenrolled }}
+        FRAY_FAIL_ON_RATE_LIMIT: ${{ inputs.fail-on-rate-limit }}
       run: bash "${{ github.action_path }}/action/scan.sh"
 
     - name: Upload sent payload

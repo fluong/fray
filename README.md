@@ -88,6 +88,14 @@ fail the job instead.
 | `repo_not_enrolled` | Skip + warning | Fail |
 | `installation_over_cap` | Skip + warning | Fail |
 
+### Limits
+
+On the free plan the hosted API allows **30 scans per repository per hour** and
+**100 scans per organization per day**. When a run is rate-limited (HTTP 429
+`rate_limited`), the Action **skips the scan** by default: warning annotation
+(with retry-after), job summary, exit 0. Set `fail-on-rate-limit: true` to fail
+the job instead. This is independent of `fail-on-unenrolled`.
+
 ### Uninstall
 
 Uninstalling the App (or removing a repository from it) soft-disables access
@@ -217,6 +225,7 @@ jobs:
 | `redaction-key` | `""` | Required unless `fray.yaml` sets `redaction: off`. |
 | `show-payload` | `false` | Upload `payload.json` as the `fray-payload` artifact. |
 | `fail-on-unenrolled` | `false` | Fail the job when the GitHub App install does not cover this repo (see below). |
+| `fail-on-rate-limit` | `false` | Fail the job when the API returns HTTP 429 `rate_limited` (see [Limits](#limits)). |
 
 Auth is GitHub Actions OIDC with audience `fray` — there is no API-key input.
 Fork pull requests cannot mint that token: the Action emits a warning annotation
