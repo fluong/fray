@@ -15,6 +15,8 @@ Related:
 - Hosted API / rules — private companion repository
 - [fluong/fray-demo-aws](https://github.com/fluong/fray-demo-aws) — AWS demo wired to the Action
 - [Trust and data handling](docs/trust.md) — what is sent, where it lives, retention, subprocessors
+- [Privacy policy](docs/privacy.md) — draft GDPR-shaped privacy notice
+- [Terms of service](docs/terms.md) — draft terms (beta / as-is)
 
 ## Install
 

@@ -126,4 +126,6 @@ than 3 repositories, scans for **all** of its repositories are skipped
 ## Related
 
 - [Install](../README.md#install) — App install and workflow
+- [Privacy policy](privacy.md) — draft (not legal advice; review before paid plans)
+- [Terms of service](terms.md) — draft (not legal advice; review before paid plans)
 - [SECURITY.md](../SECURITY.md) — how to report a vulnerability
