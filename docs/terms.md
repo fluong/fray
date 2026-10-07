@@ -12,9 +12,9 @@ repository. How we handle data is described in
 
 | | |
 |---|---|
-| Operator | `<OPERATOR_NAME>` |
+| Operator | Francis Luong |
 | Country | France |
-| Address / registration | `<ADDRESS_OR_REGISTRATION>` |
+| Address / registration | 15, rue Jules Lamant et ses Fils, 93330 Neuilly sur Marne |
 | Contact | [privacy@getfray.dev](mailto:privacy@getfray.dev) |
 
 ## Beta / as-is

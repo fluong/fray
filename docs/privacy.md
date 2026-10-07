@@ -15,16 +15,16 @@ Hosted API: `https://api.getfray.dev`.
 
 | | |
 |---|---|
-| Operator | `<OPERATOR_NAME>` |
+| Operator | Francis Luong |
 | Country | France |
-| Address / registration | `<ADDRESS_OR_REGISTRATION>` |
+| Address / registration | 15, rue Jules Lamant et ses Fils, 93330 Neuilly sur Marne |
 | Privacy contact | [privacy@getfray.dev](mailto:privacy@getfray.dev) |
 
 ## Controller and contact
 
 | | |
 |---|---|
-| Controller | `<OPERATOR_NAME>`, France |
+| Controller | Francis Luong, France |
 | Privacy contact | [privacy@getfray.dev](mailto:privacy@getfray.dev) |
 
 You may also use
