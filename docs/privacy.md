@@ -4,12 +4,14 @@
 **Last updated:** 2026-10-08
 
 This policy describes how Fray processes personal data when you install the
-GitHub App **Fray (getfray.dev)** and run scans. Technical detail on what is
-sent, where it is stored, and how long it is kept lives in
-[Trust and data handling](trust.md) — that page is the source of facts; this
-policy summarizes for privacy purposes.
+GitHub App **Fray (getfray.dev)**, run scans, or use the read-only dashboard.
+Technical detail on what is sent, where it is stored, and how long it is kept
+lives in [Trust and data handling](trust.md) — that page is the source of
+facts; this policy summarizes for privacy purposes.
 
-Hosted API: `https://api.getfray.dev`.
+Hosted API: `https://api.getfray.dev`.  
+Hosted dashboard: `https://app.getfray.dev` (limited preview — see
+[Dashboard](#dashboard)).
 
 ## Legal notice
 
@@ -39,6 +41,9 @@ security issues (security and privacy inboxes may differ).
 | Repository enrollment | Repository ids and whether a repo is selected / active |
 | Install audit | Event metadata, including the GitHub **user id of the actor** (retained 12 months — see [trust.md](trust.md)) |
 | Scan authentication | Repository identity and ref from GitHub Actions **OIDC** tokens |
+| Dashboard session | GitHub numeric user id, GitHub login, visible repository ids, creation / expiry / last-seen times, and a keyed hash of the session identifier (see [Dashboard](#dashboard)) |
+| Dashboard not-admitted log | GitHub numeric user id only (when sign-in succeeds but the user is not admitted) |
+| Operator dashboard page views | Operator GitHub id and login, page path, and organisation (retained 12 months) |
 
 **Scan content** is infrastructure metadata derived from your Terraform plan
 (a data-flow diagram and findings). With redaction on (the default), identifying
@@ -53,7 +58,9 @@ redaction key. Fray never clones your repositories.
 | Purpose | Legal basis (GDPR-shaped) |
 |---|---|
 | Provide the scanning and merge-gate service you install | Performance of a contract (or steps prior to contract) |
+| Provide the read-only dashboard (limited preview) to Fray operators and allowlisted design-partner organisations | Performance of a contract (or steps prior to contract) |
 | Security, abuse prevention, and install audit | Legitimate interests |
+| Operator dashboard page-view logging and not-admitted sign-in operational logs | Legitimate interests |
 | Optional advisory LLM enrichment | Only if your organization **opts in**; otherwise not processed for this purpose |
 
 ## Processors
@@ -82,7 +89,11 @@ We keep data only as long as needed for the purposes above. Summary:
 - Scan and archive data: until uninstall or repo removal, then hard-deleted
   after **30 days** (or earlier on request)
 - Install audit events: **12 months**
-- Platform logs: about **30 days**
+- Dashboard sessions: **8 hours** active; expired session records are deleted by
+  a daily cleanup (kept at most about one day after expiry)
+- Operator dashboard page views: **12 months**
+- Platform logs: about **30 days** (includes the not-admitted sign-in
+  operational log described under [Dashboard](#dashboard))
 - Database point-in-time history: **6 hours**
 - Opt-in AI enrichment results: deleted when the **organization** is purged
   (not on single-repository removal)
@@ -102,6 +113,57 @@ ever restored, deletions made since that backup was taken are applied again
 before the service resumes normal operation.
 
 Full table: [trust.md — Retention](trust.md#retention).
+
+## Dashboard
+
+The dashboard at `https://app.getfray.dev` is **read-only** and in **limited
+preview**: only Fray operators and allowlisted design-partner organisations can
+sign in.
+
+**What is processed.** Sign-in uses the Fray GitHub App’s user authorization
+(OAuth with PKCE). GitHub is the only third party contacted during sign-in:
+GitHub’s OAuth authorize and token endpoints, and the API endpoints for the
+signed-in user, their app installations, and the repositories of those
+installations. The GitHub user access token is used only during sign-in to list
+the installations and repositories the user can access, then discarded — it is
+never stored.
+
+Visible repositories are those the user can access through the Fray GitHub App
+installation **and** that are actively enrolled in Fray, restricted to
+allowlisted organisations. That list is computed at sign-in. Access removed on
+GitHub takes effect at the next sign-in or when the session expires (at most
+**8 hours**). Repository scoping is enforced in the database queries that serve
+each page, not only in the user interface.
+
+Per session Fray stores: the GitHub numeric user id, GitHub login, the list of
+visible repository ids, creation, expiry and last-seen times, and a keyed hash
+of the session identifier (the raw identifier exists only in the user’s
+cookie).
+
+If a user signs in but is not admitted, no session is created and no session
+cookie is kept. Fray logs a single event containing only their GitHub numeric
+user id. That is an operational log, retained as described under
+[Retention](#retention) (platform logs).
+
+**Purpose.** Limited-preview dashboard access for Fray operators and allowlisted
+design-partner organisations, including Fray operator operations and support.
+
+**Cookies.** Fray sets only strictly necessary, host-only cookies on
+`app.getfray.dev`, each HttpOnly, Secure, and SameSite=Lax: one session cookie
+(**8 hours**) and two short-lived sign-in cookies for OAuth state and PKCE
+(**10 minutes**). There are no analytics, advertising, or tracking cookies.
+
+**Third parties.** During dashboard sign-in, only GitHub is contacted (as
+above). Dashboard pages load no third-party scripts, fonts, images, or
+analytics; the Content-Security-Policy restricts everything to the dashboard’s
+own origin.
+
+**Operator access.** Fray operators can view all organisations’ dashboard data
+for operations and support. Operator page views are recorded (operator GitHub
+id and login, page path, organisation) and kept **12 months**. Customer page
+views are not recorded.
+
+Technical summary: [trust.md — Dashboard](trust.md#dashboard).
 
 ## Your rights
 
@@ -138,6 +200,6 @@ except where law requires a different process.
 
 ## Related
 
-- [Trust and data handling](trust.md)  
+- [Trust and data handling](trust.md) — including [Dashboard](trust.md#dashboard)  
 - [Terms of service](terms.md)  
 - [Security policy](../SECURITY.md)  

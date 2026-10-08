@@ -1,11 +1,14 @@
 # Trust and data handling
 
-How Fray handles data when you install the GitHub App and run scans from your
-CI. Plain facts — no marketing claims beyond what the product does today.
+How Fray handles data when you install the GitHub App, run scans from your CI,
+or use the read-only dashboard. Plain facts — no marketing claims beyond what
+the product does today.
 
 **Last updated:** 2026-10-08
 
-Hosted API: `https://api.getfray.dev`.
+Hosted API: `https://api.getfray.dev`.  
+Hosted dashboard: `https://app.getfray.dev` (limited preview — see
+[Dashboard](#dashboard)).
 
 ## What is sent
 
@@ -67,7 +70,9 @@ Data is stored in the EU and UK.
 | AI enrichment results (if opted in) | Deleted when the organization is purged (uninstall + 30 days or on request); not deleted on single-repository removal. |
 | Webhook delivery IDs | 30 days |
 | Install audit events | 12 months |
-| Platform logs | ~30 days |
+| Dashboard sessions | **8 hours** active; expired session records deleted by a daily cleanup (kept at most about one day after expiry) |
+| Operator dashboard page views | 12 months |
+| Platform logs | ~30 days (includes not-admitted dashboard sign-in events that record only a GitHub numeric user id) |
 | Database point-in-time history | **6 hours** (after a live delete, rows may still be restoreable for that window) |
 | Encrypted database backups | **30 days**, then deleted automatically. Data removed from the live service (including after uninstall/purge) may remain in these backups until that window ends. |
 
@@ -76,10 +81,10 @@ within 30 days keeps existing scan history for that organization.
 
 ### Request deletion earlier
 
-Contact us via [GitHub private vulnerability reporting](../SECURITY.md) on this
-repository (or open a private security advisory) and ask for an early purge of
-your organization or repository. There is no public email inbox on
-`getfray.dev` (null MX).
+For privacy and data-protection requests — including an early purge of your
+organization or repository — contact
+[privacy@getfray.dev](mailto:privacy@getfray.dev). That is the only monitored
+address on `getfray.dev`.
 
 ## Subprocessors
 
@@ -138,9 +143,38 @@ since the backup are re-applied.
 than 3 repositories, scans for **all** of its repositories are skipped
 (`installation_over_cap`) until you narrow the selection.
 
+## Dashboard
+
+Read-only dashboard at `https://app.getfray.dev` (limited preview):
+
+- **Read-only limited preview** — only Fray operators and allowlisted
+  design-partner organisations can sign in.
+- **Access scope** — visible repositories are those the user can access through
+  the Fray GitHub App installation and that are actively enrolled in Fray,
+  restricted to allowlisted organisations. The list is computed at sign-in;
+  access removed on GitHub takes effect at the next sign-in or when the session
+  expires (**at most 8 hours**).
+- **Token not stored** — the GitHub user access token is used only during
+  sign-in to list installations and repositories, then discarded.
+- **Scoping in queries** — repository scoping is enforced in the database
+  queries that serve each page, not only in the user interface.
+- **Session cookies** — strictly necessary, host-only on `app.getfray.dev`,
+  HttpOnly, Secure, SameSite=Lax: one session cookie (**8 hours**) and two
+  short-lived sign-in cookies for OAuth state and PKCE (**10 minutes**). No
+  analytics, advertising, or tracking cookies.
+- **No third-party assets** — dashboard pages load no third-party scripts,
+  fonts, images, or analytics; the Content-Security-Policy restricts everything
+  to the dashboard’s own origin.
+- **Operator access logged** — Fray operators can view all organisations’
+  dashboard data for operations and support. Operator page views (operator
+  GitHub id and login, page path, organisation) are kept **12 months**.
+  Customer page views are not recorded.
+
+Privacy wording: [privacy.md — Dashboard](privacy.md#dashboard).
+
 ## Related
 
 - [Install](../README.md#install) — App install and workflow
-- [Privacy policy](privacy.md) — draft (not legal advice; review before paid plans)
+- [Privacy policy](privacy.md) — draft (not legal advice; review before paid plans), including [Dashboard](privacy.md#dashboard)
 - [Terms of service](terms.md) — draft (not legal advice; review before paid plans)
 - [SECURITY.md](../SECURITY.md) — how to report a vulnerability

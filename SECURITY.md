@@ -12,8 +12,9 @@ or the link above once private reporting is enabled.)
 
 Do **not** open a public issue for vulnerabilities.
 
-There is **no email security inbox** on `getfray.dev` (the domain publishes a
-null MX). Private vulnerability reporting on this repo is the intake channel.
+Private vulnerability reporting on this repository is the intake channel for
+security issues. For privacy and data-protection requests, use
+[privacy@getfray.dev](mailto:privacy@getfray.dev) (see [docs/privacy.md](docs/privacy.md)).
 
 Please include enough detail to reproduce (affected version or Action SHA,
 workflow context, and a minimal PoC when possible). We will acknowledge and
