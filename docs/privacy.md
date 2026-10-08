@@ -1,7 +1,7 @@
 # Privacy policy
 
 **Draft — not legal advice; to be reviewed before paid plans.**  
-**Last updated:** 2026-10-08
+**Last updated:** 2026-10-09
 
 This policy describes how Fray processes personal data when you install the
 GitHub App **Fray (getfray.dev)**, run scans, or use the read-only dashboard.
@@ -44,6 +44,7 @@ security issues (security and privacy inboxes may differ).
 | Dashboard session | GitHub numeric user id, GitHub login, visible repository ids, creation / expiry / last-seen times, and a keyed hash of the session identifier (see [Dashboard](#dashboard)) |
 | Dashboard not-admitted log | GitHub numeric user id only (when sign-in succeeds but the user is not admitted) |
 | Operator dashboard page views | Operator GitHub id and login, page path, and organisation (retained 12 months) |
+| Platform request logs | Request path, IP address, user agent for API and dashboard requests (about 30 days) |
 
 **Scan content** is infrastructure metadata derived from your Terraform plan
 (a data-flow diagram and findings). With redaction on (the default), identifying
@@ -121,9 +122,10 @@ preview**: only Fray operators and allowlisted design-partner organisations can
 sign in.
 
 **What is processed.** Sign-in uses the Fray GitHub App’s user authorization
-(OAuth with PKCE). GitHub is the only third party contacted during sign-in:
-GitHub’s OAuth authorize and token endpoints, and the API endpoints for the
-signed-in user, their app installations, and the repositories of those
+(OAuth with PKCE). Apart from Fray’s hosting and database providers listed under
+[Processors](#processors), the only external service contacted during sign-in
+is GitHub: GitHub’s OAuth authorize and token endpoints, and the API endpoints
+for the signed-in user, their app installations, and the repositories of those
 installations. The GitHub user access token is used only during sign-in to list
 the installations and repositories the user can access, then discarded — it is
 never stored.
@@ -153,15 +155,19 @@ design-partner organisations, including Fray operator operations and support.
 (**8 hours**) and two short-lived sign-in cookies for OAuth state and PKCE
 (**10 minutes**). There are no analytics, advertising, or tracking cookies.
 
-**Third parties.** During dashboard sign-in, only GitHub is contacted (as
-above). Dashboard pages load no third-party scripts, fonts, images, or
-analytics; the Content-Security-Policy restricts everything to the dashboard’s
-own origin.
+**Third parties.** Apart from Fray’s hosting and database providers listed under
+[Processors](#processors), the only external service contacted during sign-in
+is GitHub (as above). Dashboard pages load no third-party scripts, fonts,
+images, or analytics; the Content-Security-Policy restricts everything to the
+dashboard’s own origin.
 
 **Operator access.** Fray operators can view all organisations’ dashboard data
 for operations and support. Operator page views are recorded (operator GitHub
 id and login, page path, organisation) and kept **12 months**. Customer page
-views are not recorded.
+views are not added to the operator page-view log. Like all requests to Fray’s
+hosted services, dashboard requests appear in platform request logs (request
+path, IP address, user agent), kept about **30 days** — see
+[Retention](#retention).
 
 Technical summary: [trust.md — Dashboard](trust.md#dashboard).
 

@@ -4,7 +4,7 @@ How Fray handles data when you install the GitHub App, run scans from your CI,
 or use the read-only dashboard. Plain facts — no marketing claims beyond what
 the product does today.
 
-**Last updated:** 2026-10-08
+**Last updated:** 2026-10-09
 
 Hosted API: `https://api.getfray.dev`.  
 Hosted dashboard: `https://app.getfray.dev` (limited preview — see
@@ -168,7 +168,10 @@ Read-only dashboard at `https://app.getfray.dev` (limited preview):
 - **Operator access logged** — Fray operators can view all organisations’
   dashboard data for operations and support. Operator page views (operator
   GitHub id and login, page path, organisation) are kept **12 months**.
-  Customer page views are not recorded.
+  Customer page views are not added to the operator page-view log. Like all
+  requests to Fray’s hosted services, dashboard requests appear in platform
+  request logs (request path, IP address, user agent), kept about **30 days** —
+  see [Retention](#retention).
 
 Privacy wording: [privacy.md — Dashboard](privacy.md#dashboard).
 
