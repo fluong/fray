@@ -104,8 +104,11 @@ Enrichment is **per-organization opt-in** and off by default. When enabled:
   them for training. Flagged content may be retained for Trust & Safety for up
   to **2 years**. Source:
   [Anthropic — How long do you store my organization’s data?](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data)
-- Fray logs model id, token counts, latency, and HTTP status only — never
-  prompts or completions.
+- Fray's logs record model id, token counts, latency, and HTTP status only —
+  never prompts or completions.
+- The advisory text returned for a scan is stored with that scan and deleted
+  with it, including on uninstall/purge. Copies in encrypted backups expire
+  within 30 days (see Backups).
 
 Scans and the merge gate work with enrichment left off (rules-only).
 
