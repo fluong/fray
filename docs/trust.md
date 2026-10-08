@@ -3,6 +3,8 @@
 How Fray handles data when you install the GitHub App and run scans from your
 CI. Plain facts — no marketing claims beyond what the product does today.
 
+**Last updated:** 2026-10-08
+
 Hosted API: `https://api.getfray.dev`.
 
 ## What is sent
@@ -55,6 +57,7 @@ Data is stored in the EU and UK.
 | API | Google Cloud Run | europe-west1 (Belgium) |
 | Database | Neon Postgres | AWS eu-west-2 (London, UK) |
 | Scan archive | Cloudflare R2 | EU jurisdiction |
+| Database backups | Cloudflare R2 | EU jurisdiction (encrypted; see [Backups](#backups)) |
 
 ## Retention
 
@@ -66,6 +69,7 @@ Data is stored in the EU and UK.
 | Install audit events | 12 months |
 | Platform logs | ~30 days |
 | Database point-in-time history | **6 hours** (after a live delete, rows may still be restoreable for that window) |
+| Encrypted database backups | **30 days**, then deleted automatically. Data removed from the live service (including after uninstall/purge) may remain in these backups until that window ends. |
 
 Access is soft-disabled immediately on uninstall or repo removal. Re-installing
 within 30 days keeps existing scan history for that organization.
@@ -83,7 +87,7 @@ your organization or repository. There is no public email inbox on
 |---|---|---|
 | Google Cloud | Hosts the API and platform logs | europe-west1 (Belgium) |
 | Neon | Postgres for orgs, scans, findings, install linkage | AWS eu-west-2 (London, UK) |
-| Cloudflare | Private R2 archive of redacted DFD/findings JSON | EU jurisdiction |
+| Cloudflare | Private R2 archive of redacted DFD/findings JSON; encrypted database backups | EU jurisdiction |
 | Anthropic | Optional advisory LLM enrichment only | Processing in the **United States** for the current model; see below |
 
 ## Advisory LLM (optional, off by default)
@@ -104,6 +108,14 @@ Enrichment is **per-organization opt-in** and off by default. When enabled:
   prompts or completions.
 
 Scans and the merge gate work with enrichment left off (rules-only).
+
+## Backups
+
+The service database is backed up **twice daily**. Backups are encrypted before
+they leave the processing environment (key held offline by the operator), stored
+in Cloudflare R2 (EU jurisdiction), and deleted automatically after **30 days**.
+Backups are used only for disaster recovery; after any restore, deletions made
+since the backup are re-applied.
 
 ## Security controls (summary)
 

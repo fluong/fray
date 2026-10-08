@@ -1,7 +1,7 @@
 # Privacy policy
 
 **Draft — not legal advice; to be reviewed before paid plans.**  
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-08
 
 This policy describes how Fray processes personal data when you install the
 GitHub App **Fray (getfray.dev)** and run scans. Technical detail on what is
@@ -86,6 +86,20 @@ We keep data only as long as needed for the purposes above. Summary:
 - Database point-in-time history: **6 hours**
 - Opt-in AI enrichment results: deleted when the **organization** is purged
   (not on single-repository removal)
+
+### Database backups
+
+The service database is backed up **twice daily**. Backups are **encrypted
+before they leave** the processing environment, with a key held **offline** by
+the operator. Encrypted backups are stored with **Cloudflare R2** in the **EU**
+jurisdiction and are **deleted automatically after 30 days**.
+
+**Consequence:** data deleted from the live service (including after uninstall
+or purge) may still exist in those encrypted backups for **up to 30 days**
+before it is permanently removed. Backups are used only to recover the service
+after an incident and are not accessed for any other purpose. If a backup is
+ever restored, deletions made since that backup was taken are applied again
+before the service resumes normal operation.
 
 Full table: [trust.md — Retention](trust.md#retention).
 
