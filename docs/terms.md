@@ -1,7 +1,7 @@
 # Terms of service
 
 **Draft — not legal advice; to be reviewed before paid plans.**  
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-08
 
 These terms cover use of the GitHub App **Fray (getfray.dev)**, the hosted API
 at `https://api.getfray.dev`, and the public Action and client in this
@@ -49,6 +49,15 @@ We may suspend or terminate access for abuse or material breach.
 The free plan allows **3 repositories per GitHub App installation**. If an
 installation selects more than 3, scans for **all** of its repositories are
 skipped until you narrow the selection. Details: [trust.md](trust.md).
+
+## Fair use and limits
+
+The hosted service applies usage limits to protect availability for everyone.
+Current free-plan limits are documented in the README
+[Limits](../README.md#limits) section and may change. Requests that exceed a
+limit are rejected with HTTP 429. By default the GitHub Action skips the scan
+with a warning instead of failing the job. We may suspend installations that
+attempt to circumvent limits or otherwise abuse the service.
 
 ## Suspension and termination
 
