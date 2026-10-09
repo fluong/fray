@@ -226,6 +226,12 @@ jobs:
 | `show-payload` | `false` | Upload `payload.json` as the `fray-payload` artifact. |
 | `fail-on-unenrolled` | `false` | Fail the job when the GitHub App install does not cover this repo (see below). |
 | `fail-on-rate-limit` | `false` | Fail the job when the API returns HTTP 429 `rate_limited` (see [Limits](#limits)). |
+| `upload-sarif` | `true` | Upload `findings.sarif` to Code Scanning. Requires `security-events: write`. Set `false` to keep the file without uploading. |
+
+| Output | Notes |
+|--------|-------|
+| `has-sarif` | `true` when `findings.sarif` was written. |
+| `sarif-file` | Absolute path to `findings.sarif` when present; empty otherwise. |
 
 Auth is GitHub Actions OIDC with audience `fray` — there is no API-key input.
 Fork pull requests cannot mint that token: the Action emits a warning annotation
@@ -251,9 +257,14 @@ On each run the Action:
 2. Scans via OIDC (`aud=fray`)
 3. Updates a single PR comment in place (hidden `<!-- fray -->` marker)
 4. Uploads SARIF via `github/codeql-action/upload-sarif` (category `fray`,
-   tool name `Fray`). Results include `properties.security-severity` (high 7.5,
-   medium 5.0, low 3.0) so GitHub Code Scanning’s “check run failure” threshold
-   (default High or higher) agrees with Fray’s high-severity gate.
+   tool name `Fray`) when `upload-sarif` is true (default). The workflow must
+   grant **`security-events: write`**; private repos also need Code Scanning
+   enabled. Upload failures are non-fatal (`continue-on-error`) and emit a
+   warning. Results include `properties.security-severity` (high 7.5, medium
+   5.0, low 3.0) so Code Scanning’s “check run failure” threshold (default High
+   or higher) agrees with Fray’s high-severity gate. **Waived** findings appear
+   as dismissed alerts (`suppressions` with the waiver id); **mitigated**
+   findings are omitted from SARIF so Code Scanning closes them as fixed.
 5. Exits non-zero when the merge gate blocks
 
 Optional waivers live at `.fray/waivers.yml` (Action input `waivers-file`). See
@@ -262,7 +273,7 @@ Optional waivers live at `.fray/waivers.yml` (Action input `waivers-file`). See
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.7.0
+go install github.com/fluong/fray/cmd/fray@v0.8.0
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 export FRAY_API_URL=https://api.getfray.dev

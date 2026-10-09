@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.8.0] — pending tag
+
+### Added
+- SARIF **`partialFingerprints["fray/v1"]`**: sha256 hex of
+  `<rule_id>|<cause Terraform address>` (falls back to `<rule_id>|<DFD id>`),
+  stable across HCL line moves.
+- SARIF driver metadata: `version` / `semanticVersion` (`0.8.0`) and
+  `informationUri` (`https://github.com/fluong/fray`). Per-rule `helpUri` is
+  omitted until public docs have rule anchors.
+- Action input **`upload-sarif`** (default `true`): set `false` to skip
+  `github/codeql-action/upload-sarif` while still writing `findings.sarif`.
+- Composite Action outputs **`has-sarif`** and **`sarif-file`**.
+- After a failed SARIF upload (`continue-on-error`), a follow-up step emits
+  `::warning::` reminding workflows to grant `security-events: write` and enable
+  code scanning on private repos.
+
+### Changed
+- SARIF includes **`waived`** findings with
+  `suppressions: [{kind: external, status: accepted, justification: ...}]`
+  (waiver id + expires only — never reason/owner). Mitigated / unverified /
+  legacy `accepted` findings remain omitted so Code Scanning closes them as
+  fixed when they leave the open set.
+
 ## [0.7.0] — pending tag
 
 ### Added
