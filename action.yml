@@ -22,6 +22,12 @@ inputs:
     description: Path to fray.yaml (relative to the GitHub workspace).
     required: false
     default: "fray.yaml"
+  waivers-file:
+    description: >
+      Path to .fray/waivers.yml (relative to the GitHub workspace). Missing file
+      means no waivers. See README Waivers section.
+    required: false
+    default: ".fray/waivers.yml"
   redaction-key:
     description: >
       32-byte hex HMAC key (from secrets.FRAY_REDACTION_KEY). Required unless
@@ -144,6 +150,7 @@ runs:
         FRAY_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         FRAY_WORKDIR: ${{ inputs.working-directory }}
         FRAY_CONFIG: ${{ inputs.config }}
+        FRAY_WAIVERS_FILE: ${{ inputs.waivers-file }}
         FRAY_OUT: ${{ runner.temp }}/fray-out
         FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
         FRAY_SHOW_PAYLOAD: ${{ inputs.show-payload }}

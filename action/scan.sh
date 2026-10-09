@@ -148,6 +148,7 @@ esac
 root="${GITHUB_WORKSPACE:?}"
 workdir="${root}/${FRAY_WORKDIR}"
 config="${root}/${FRAY_CONFIG}"
+waivers="${root}/${FRAY_WAIVERS_FILE:-.fray/waivers.yml}"
 mitigations="${root}/mitigations.yaml"
 
 if [[ ! -d "$workdir" ]]; then
@@ -157,13 +158,6 @@ fi
 if [[ ! -f "$config" ]]; then
   echo "::error::fray.yaml not found: ${FRAY_CONFIG}"
   exit 2
-fi
-if [[ ! -f "$mitigations" ]]; then
-  # Empty dispositions file — CLI still requires the path.
-  cat >"$mitigations" <<'YAML'
-schema_version: mitigation/v1
-entries: []
-YAML
 fi
 
 mkdir -p "$FRAY_OUT"
@@ -218,7 +212,7 @@ args=(
   -plan "$plan_json"
   -source "$workdir"
   -config "$config"
-  -mitigations "$mitigations"
+  -waivers "$waivers"
   -remote "$FRAY_API_URL"
   -repo "$repo"
   -commit "$sha"
@@ -227,6 +221,10 @@ args=(
   -out "$FRAY_OUT"
   -oidc-token "$FRAY_OIDC_TOKEN"
 )
+# Deprecated path: pass through so the CLI can emit the migration error when non-empty.
+if [[ -f "$mitigations" ]]; then
+  args+=(-mitigations "$mitigations")
+fi
 if is_true "${FRAY_SHOW_PAYLOAD:-false}"; then
   args+=(-payload-out "${FRAY_OUT}/payload.json")
 fi
