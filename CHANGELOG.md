@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.9.0] — pending tag
+
+### Added
+- **[Getting started](docs/getting-started.md)** — shortest path to a first green
+  scan; linked from the README.
+- README **Troubleshooting** table (OIDC, enrollment, rate limits, redaction,
+  Terraform, API, waivers, fork PRs, SARIF, gate, soft-skips).
+- Action input **`fail-on-skip`** (default `false`): fail on any enrollment or
+  rate-limit soft-skip. Soft-skips emit `::warning::` plus a prominent job
+  summary; `fail-on-rate-limit` still works (also covered when `fail-on-skip`
+  is true).
+- First scan without a baseline always writes a PR comment in absolute mode
+  with: `No baseline yet — comparison against the default branch starts after
+  its first Fray scan.`
+
+### Changed
+- User-facing errors name the fix and link
+  `https://github.com/fluong/fray#troubleshooting` (OIDC, workdir / missing
+  `.tf` / `fray.yaml`, terraform init/plan wrapper, API failures, gate blocked,
+  rate-limit free-plan limits).
+
 ## [0.8.1] — pending tag
 
 ### Fixed

@@ -1,0 +1,101 @@
+# Getting started
+
+Shortest path to a **first green Fray scan** in GitHub Actions.
+
+## Checklist
+
+1. [ ] Install the **Fray (getfray.dev)** GitHub App and **select this repository**
+2. [ ] Add `fray.yaml` at the repo root (minimal example below)
+3. [ ] Create secret `FRAY_REDACTION_KEY` (`openssl rand -hex 32 | gh secret set FRAY_REDACTION_KEY`)
+4. [ ] Ensure the job can run `terraform plan` (provider + backend credentials — see below)
+5. [ ] Add the workflow with the permissions below
+6. [ ] Push to the **default branch** once (establishes the merge baseline)
+7. [ ] Open a PR from a branch **in this repository** (not a fork)
+
+Free plan: **3 repositories** per App install; **30 scans/repo/hour** and **100 scans/org/day**.  
+Troubleshooting: [README § Troubleshooting](../README.md#troubleshooting).
+
+## 1. Install the App and select the repo
+
+Install **[Fray (getfray.dev)](https://github.com/apps/fray-getfray-dev)** on your user or org account and select the repository under Repository access. Do not grant all-repos unless you intend to — the free plan covers **3 repositories**; selecting more skips scans with `installation_over_cap`.
+
+The App has **metadata read** only. Fray never clones your code. Scans authenticate with **GitHub Actions OIDC** (`aud=fray`).
+
+## 2. Workflow permissions
+
+| Permission | Required? | Without it |
+|------------|-----------|------------|
+| `id-token: write` | **Required** | OIDC fails; scan never runs |
+| `contents: read` | **Required** | Checkout / reading sources fails |
+| `pull-requests: write` | Recommended | Scan runs, but **no PR comment** |
+| `security-events: write` | Optional | Scan/gate still run; **SARIF upload** to Code Scanning fails (warning only). Set Action input `upload-sarif: false` if you do not want upload |
+
+## 3. Minimal `fray.yaml`
+
+At the repository root (or the path you pass as `config`):
+
+```yaml
+schema_version: fray-config/v1
+```
+
+Redaction is **on by default**. Keep `FRAY_REDACTION_KEY` set unless you deliberately use `redaction: off` (hosted API still rejects unredacted payloads for most orgs).
+
+## 4. Copy-paste workflow
+
+Pin `fluong/fray` to a release commit SHA (look up the current tag on GitHub). Example:
+
+```yaml
+name: fray
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write        # required — OIDC audience "fray"
+  contents: read         # required
+  pull-requests: write   # PR comment
+  security-events: write # SARIF → Code Scanning (optional; see table above)
+
+jobs:
+  fray:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: fluong/fray@v0.9.0
+        with:
+          api-url: https://api.getfray.dev
+          working-directory: .   # Terraform root (directory with .tf files)
+          redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}
+```
+
+Set `working-directory` to your Terraform root if it is not the repo root (for example `infra`).
+
+Optional: `fail-on-skip: true` fails the job on enrollment or rate-limit soft-skips (default is warn + exit 0). See [README](../README.md#github-action).
+
+## 5. What `terraform plan` needs today
+
+The Action runs **`terraform init`**, **`plan`**, and **`show -json`** inside `working-directory`. There is **no** bring-your-own-plan input yet (**coming later**).
+
+Give the job the **same provider and backend credentials** you use for a normal plan in CI (for example cloud provider keys/OIDC roles, and remote-state access). If `plan` cannot run locally in CI, Fray cannot scan.
+
+## 6. What to expect on the first PR
+
+- **Default-branch push first:** Fray stores a baseline from the default branch. Until that exists, PR comments still appear, but findings are shown in **absolute** mode with:
+
+  > No baseline yet — comparison against the default branch starts after its first Fray scan.
+
+- After the default branch has been scanned once, PR comments show **new vs baseline** and the merge gate can block on new high-severity findings.
+- Soft enrollment / rate-limit skips emit a **warning** on the checks page and a job-summary block (exit 0 unless `fail-on-skip` / `fail-on-unenrolled` / `fail-on-rate-limit`).
+- Fork PRs cannot mint OIDC for audience `fray` — open the PR from a branch in this repository.
+
+## Next
+
+- [README — Install & Action inputs](../README.md#install)
+- [README — Troubleshooting](../README.md#troubleshooting)
+- [Waivers](../README.md#waivers)
+- [Trust and data handling](trust.md)

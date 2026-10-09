@@ -7,7 +7,10 @@ scan API, and get STRIDE findings plus a merge gate back. Rule evaluation and
 the hosted service live in a private companion repository — this repo never
 ships rules.
 
-Latest release: **v0.5.0**. `v0.1.0` is retracted (non-public fixtures leaked
+**New here?** → [Getting started](docs/getting-started.md) (shortest path to a
+first green scan). Stuck? → [Troubleshooting](#troubleshooting).
+
+Latest release: **v0.9.0**. `v0.1.0` is retracted (non-public fixtures leaked
 into the module zip; see `go.mod`).
 
 Related:
@@ -19,6 +22,8 @@ Related:
 - [Terms of service](docs/terms.md) — draft terms (beta / as-is)
 
 ## Install
+
+Prefer the checklist in [Getting started](docs/getting-started.md). Summary:
 
 ### 1. Install the GitHub App
 
@@ -225,7 +230,8 @@ jobs:
 | `redaction-key` | `""` | Required unless `fray.yaml` sets `redaction: off`. |
 | `show-payload` | `false` | Upload `payload.json` as the `fray-payload` artifact. |
 | `fail-on-unenrolled` | `false` | Fail the job when the GitHub App install does not cover this repo (see below). |
-| `fail-on-rate-limit` | `false` | Fail the job when the API returns HTTP 429 `rate_limited` (see [Limits](#limits)). |
+| `fail-on-rate-limit` | `false` | Fail the job when the API returns HTTP 429 `rate_limited` (see [Limits](#limits)). Also covered by `fail-on-skip`. |
+| `fail-on-skip` | `false` | Fail the job on **any** soft-skip (enrollment or rate limit). Default: warn + exit 0. Supersedes soft-skip for rate limit when true (`fail-on-rate-limit` still works alone). |
 | `upload-sarif` | `true` | Upload `findings.sarif` to Code Scanning. Requires `security-events: write`. Set `false` to keep the file without uploading. |
 
 | Output | Notes |
@@ -275,7 +281,7 @@ Optional waivers live at `.fray/waivers.yml` (Action input `waivers-file`). See
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.8.1
+go install github.com/fluong/fray/cmd/fray@v0.9.0
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 export FRAY_API_URL=https://api.getfray.dev
@@ -386,6 +392,29 @@ Recommend protecting `.fray/` with **CODEOWNERS** so waiver changes get review
 drop `status: accepted`. Empty or missing `mitigations.yaml` is ignored. The
 `-mitigations` CLI flag remains for one release only and errors with the same
 migration message when the file has entries.
+
+## Troubleshooting
+
+Symptom → typical cause → fix. Full setup path: [Getting started](docs/getting-started.md).
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Missing Actions ID token endpoints` / empty OIDC token | Workflow lacks `id-token: write`, or fork PR | Add `permissions: id-token: write`. Open PRs from a branch in this repo, not a fork. |
+| App not installed / suspended (`installation_inactive`) | GitHub App missing or suspended | Install [Fray (getfray.dev)](https://github.com/apps/fray-getfray-dev). |
+| `repo_not_enrolled` | Repo not selected in the App | Add the repo under [installation Repository access](https://github.com/settings/installations). |
+| `installation_over_cap` | More than 3 repos selected (free plan) | Narrow Repository access to ≤3 repos you want scanned. |
+| Rate limited (`rate_limited`, retry-after) | Free-plan scan quota | Wait for retry-after. Free plan: **30 scans/repo/hour**, **100/org/day**. Or set `fail-on-rate-limit` / `fail-on-skip` if you want the job red. |
+| `FRAY_REDACTION_KEY is required` / must be 64 hex chars | Missing or bad redaction secret | `openssl rand -hex 32 \| gh secret set FRAY_REDACTION_KEY` and pass `redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}`. |
+| `working-directory not found` / no `.tf` files | Wrong Terraform root | Set `working-directory` to the directory that contains your `.tf` files. |
+| `fray.yaml not found` | Config file missing | Add `schema_version: fray-config/v1` (see [Config](#config)). |
+| `terraform init/plan failed` | Provider/backend credentials or TF error | Give the job the same credentials as your normal plan workflow. Fray runs `terraform init` + `plan` in CI (bring-your-own-plan coming later). |
+| `Fray API request failed` / 5xx | Network or API error | Confirm `api-url: https://api.getfray.dev`, retry. If it persists, open an issue on `fluong/fray`. |
+| Waivers / `mitigations.yaml` errors | Invalid `.fray/waivers.yml` or legacy file | Fix schema/expires; migrate mitigations → [Waivers](#waivers). |
+| Fork PR: Fray did not run | Forks cannot mint OIDC `aud=fray` | Open the PR from a branch in this repository. |
+| SARIF upload warning | Missing `security-events: write` or Code Scanning off | Grant `security-events: write`; enable Code Scanning on private repos — or set `upload-sarif: false`. |
+| Gate blocked | New high-severity findings vs baseline | Read the Fray PR comment / `findings.sarif`. Waive via `.fray/waivers.yml` if accepting the risk. Push/merge to the default branch to set the baseline. |
+| Soft-skip exit 0 (enrollment / rate limit) | Default soft-skip | Check the **warning** on the checks page and the job summary. Set `fail-on-skip: true` (or `fail-on-unenrolled` / `fail-on-rate-limit`) to fail instead. |
+| No “new vs baseline” on first PR | No default-branch scan yet | Expected: comment still posts in absolute mode with a “No baseline yet” line. Scan the default branch once. |
 
 ## Development
 
