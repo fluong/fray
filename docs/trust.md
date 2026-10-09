@@ -33,12 +33,18 @@ Fray also learns **which GitHub repository and ref** ran the scan from the
 GitHub Actions OIDC token used to authenticate. Redaction does not hide that
 repository identity from Fray.
 
+**Waivers** (from `.fray/waivers.yml`, sent in the existing `accepted_mitigations`
+field) include only the customer waiver **id**, rule id, redacted/hashed target
+id, and expiry date. Waiver **ids must not contain personal data**. Reason,
+owner, and the resource address stay in your repository and are never posted.
+
 ## What is not sent
 
 - Source code or git history  
 - Terraform state  
 - Secret values or environment variable contents  
 - Your redaction key  
+- Waiver reason, owner, or plaintext resource address  
 
 Fray never clones your repositories. The GitHub App has **metadata read** only.
 

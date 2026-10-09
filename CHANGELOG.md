@@ -2,7 +2,19 @@
 
 ## [Unreleased]
 
+## [0.7.0] — pending tag
+
 ### Added
+- **Waivers** (`.fray/waivers.yml`, `schema/waivers.schema.json`): accepted-risk
+  register with `id` / `rule` / `address` / `reason` / `owner` / `expires`.
+  Action input **`waivers-file`** (default `.fray/waivers.yml`). Client validates
+  JSON Schema, 64 KiB / 200-entry caps, and the 365-day horizon; server remains
+  authoritative (including the 90-day high-severity horizon). Wire uses the
+  existing `accepted_mitigations` field with `{id, rule_id, target_id, expires}`
+  only — reason, owner, and address never leave CI. PR comment and job summary
+  render applied / new-in-PR / expiring-soon / expired / stale outcomes (or
+  “server did not report waiver outcomes” on older APIs). Finding status enum
+  includes **`waived`**.
 - Action input **`fail-on-rate-limit`** (default `false`): when the hosted API
   returns HTTP 429 with `error: rate_limited`, the CLI writes `enrollment.json`
   (`status: rate_limited`, message, `retry_after`), exits like an enrollment
@@ -11,6 +23,14 @@
   Independent of `fail-on-unenrolled`. No automatic retries.
 - README **Limits** note: 30 scans per repository per hour and 100 per
   organization per day on the free plan.
+
+### Changed
+- **`mitigations.yaml` deprecated.** Non-empty files fail with a migration
+  message (copy entries to `.fray/waivers.yml`, add `id`/`owner`/`expires`, drop
+  `status: accepted`). Empty or missing files are ignored. `-mitigations` remains
+  for one release as an alias that errors the same way when non-empty.
+- PR comment “Accept this risk” snippet shows `.fray/waivers.yml` instead of
+  `mitigations.yaml`.
 
 ## [0.5.5] — pending tag
 

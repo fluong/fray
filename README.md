@@ -110,7 +110,7 @@ repository’s) scan data and archive objects. Details:
 | `client/` | Terraform plan → DFD parser (default-on HMAC redaction) |
 | `render/` | Threat-model, PR-comment, and SARIF renderers |
 | `api/v1/` | Request/response types for `POST /v1/scans` |
-| `schema/` | DFD / finding / config / mitigations JSON Schemas and validation |
+| `schema/` | DFD / finding / config / waivers JSON Schemas and validation |
 | `cmd/fray/` | CLI that parses a plan and calls the hosted API (`-remote`) |
 | `action.yml` + `action/` | Composite Action — OIDC-authenticated scan from GitHub Actions |
 | `testdata/` | Public AWS fixture, synthetic DFDs, PR-comment goldens |
@@ -256,13 +256,13 @@ On each run the Action:
    (default High or higher) agrees with Fray’s high-severity gate.
 5. Exits non-zero when the merge gate blocks
 
-`mitigations.yaml` at the repo root is used when present; otherwise the Action
-writes an empty dispositions file for the CLI.
+Optional waivers live at `.fray/waivers.yml` (Action input `waivers-file`). See
+[Waivers](#waivers).
 
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.4.0
+go install github.com/fluong/fray/cmd/fray@v0.7.0
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 export FRAY_API_URL=https://api.getfray.dev
@@ -271,7 +271,7 @@ fray \
   -plan plan.json \
   -source infra \
   -config fray.yaml \
-  -mitigations mitigations.yaml \
+  -waivers .fray/waivers.yml \
   -remote "$FRAY_API_URL" \
   -default-branch main \
   -repo org/repo \
@@ -289,6 +289,7 @@ fray ... -dry-run -payload-out payload.json
 | Flag / env | Role |
 |------------|------|
 | `-remote` | API base URL (required; `https://api.getfray.dev`) |
+| `-waivers` | Path to `.fray/waivers.yml` (missing file = no waivers) |
 | `-oidc-token` / `FRAY_OIDC_TOKEN` | Actions OIDC JWT (preferred in CI) |
 | `-api-key` / `FRAY_API_KEY` | Org API key (local smoke only; cannot write default-branch baseline) |
 | `-fail-on-unenrolled` | Exit 1 on enrollment rejection codes (default: warn + exit 0) |
@@ -321,17 +322,57 @@ annotations:
       purpose: customer_uploads
 ```
 
-Minimal `mitigations.yaml`:
+Schemas live under `schema/` (`fray-config.schema.json`, `waivers.schema.json`,
+`dfd.schema.json`, `finding.schema.json`). Use `fray.yaml` to declare extra
+elements/flows/boundaries and annotate inferred ones; use
+[Waivers](#waivers) to accept exact `(rule, address)` pairs that should not gate.
+
+## Waivers
+
+Accepted risks are recorded in **`.fray/waivers.yml`** (schema
+`schema/waivers.schema.json`). The Action reads this file by default (`waivers-file`
+input). A missing file means no waivers.
 
 ```yaml
-schema_version: mitigation/v1
-entries: []
+version: 1
+waivers:
+  - id: public-assets-s3
+    rule: FR-001
+    address: aws_s3_bucket.assets
+    reason: "CDN origin; WAF and bucket policy reviewed 2026-10."
+    owner: "@security-eng"
+    expires: "2027-01-15"
 ```
 
-Schemas live under `schema/` (`fray-config.schema.json`, `mitigations.schema.json`,
-`dfd.schema.json`, `finding.schema.json`). Use `fray.yaml` to declare extra
-elements/flows/boundaries and annotate inferred ones; use mitigations to accept
-`(rule_id, target)` pairs that should not gate.
+| Rule | Detail |
+|------|--------|
+| `id` | `^[a-z0-9][a-z0-9-]{0,63}$`, unique in the file. **Must not contain personal data** (no names, emails, logins). |
+| `rule` | `^FR-[0-9]{3}$` |
+| `address` | Terraform / flow address (1–512 chars; no `://`, no `=`), same language as the old mitigations file |
+| `reason` | Required (≥10 chars); **stays in the repo** — never sent to Fray |
+| `owner` | Required (team or handle as text); **stays in the repo** — never sent |
+| `expires` | `YYYY-MM-DD`. Server rejects `expires` beyond **365 days** from today (UTC), or beyond **90 days** when the matched finding is high severity. Expired entries leave the finding `open` again (not an error). Unused in-date entries are **stale** warnings. |
+
+Limits: **200** entries, file ≤ **64 KiB**. The client validates the JSON Schema
+and the 365-day horizon locally; the server is authoritative (show its HTTP 400
+message verbatim).
+
+On the wire Fray receives only `{id, rule_id, target_id, expires}` inside the
+existing `accepted_mitigations` field (address is resolved to a DFD id, then
+redacted like today). The PR comment and job summary list applied / new-in-PR /
+expiring-soon / expired / stale outcomes from the response.
+
+Recommend protecting `.fray/` with **CODEOWNERS** so waiver changes get review
+(Fray cannot enforce GitHub review rules).
+
+### Migrating from `mitigations.yaml`
+
+`mitigations.yaml` is **deprecated**. Action **v0.7.0** rejects a non-empty
+`mitigations.yaml` (and rejects having both files non-empty). Copy each entry to
+`.fray/waivers.yml`: add `id`, `owner`, and `expires`; rename `rule_id` → `rule`;
+drop `status: accepted`. Empty or missing `mitigations.yaml` is ignored. The
+`-mitigations` CLI flag remains for one release only and errors with the same
+migration message when the file has entries.
 
 ## Development
 

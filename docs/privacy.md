@@ -51,6 +51,10 @@ security issues (security and privacy inboxes may differ).
 fields are HMAC digests under a key you hold. That content is **not intended**
 to contain personal data. See [trust.md](trust.md) for what is and is not sent.
 
+Optional **waivers** may send a customer-chosen waiver id, rule id, hashed
+target id, and expiry date. Reason and owner stay in your repository; waiver ids
+must not contain personal data (see [trust.md](trust.md)).
+
 We do **not** receive your source code, Terraform state, secret values, or your
 redaction key. Fray never clones your repositories.
 
