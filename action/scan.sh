@@ -356,8 +356,10 @@ esac
   fi
   if [[ -f "${FRAY_OUT}/findings.sarif" ]]; then
     echo "has_sarif=true"
+    echo "sarif_file=${FRAY_OUT}/findings.sarif"
   else
     echo "has_sarif=false"
+    echo "sarif_file="
   fi
   if [[ -f "${FRAY_OUT}/payload.json" ]]; then
     echo "has_payload=true"

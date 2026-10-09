@@ -57,6 +57,22 @@ inputs:
       fail-on-unenrolled.
     required: false
     default: "false"
+  upload-sarif:
+    description: >
+      When true (default), upload findings.sarif to GitHub Code Scanning via
+      github/codeql-action/upload-sarif. Requires workflow permission
+      security-events: write. Set false to keep the file locally without
+      uploading.
+    required: false
+    default: "true"
+
+outputs:
+  has-sarif:
+    description: Whether findings.sarif was written (true/false).
+    value: ${{ steps.scan.outputs.has_sarif }}
+  sarif-file:
+    description: Absolute path to findings.sarif when has-sarif is true; empty otherwise.
+    value: ${{ steps.scan.outputs.sarif_file }}
 
 runs:
   using: composite
@@ -201,15 +217,23 @@ runs:
           }
 
     - name: Upload SARIF
+      id: upload-sarif
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
         steps.scan.outputs.skipped != 'true' &&
-        steps.scan.outputs.has_sarif == 'true'
+        steps.scan.outputs.has_sarif == 'true' &&
+        inputs.upload-sarif == 'true'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
       with:
         sarif_file: ${{ runner.temp }}/fray-out/findings.sarif
         category: fray
+
+    - name: Warn on SARIF upload failure
+      if: steps.upload-sarif.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::SARIF upload failed — grant \`security-events: write\` to the workflow, and enable code scanning for private repos"
 
     - name: Gate
       if: >-

@@ -43,8 +43,8 @@ func parseGitHubOutput(t *testing.T, path string) map[string]string {
 }
 
 // actionStepWouldRun evaluates the subset of composite if: expressions we use
-// after the scan step (fork + skipped + has_* + show-payload + event).
-func actionStepWouldRun(ifExpr string, outs map[string]string, showPayload bool, isPR bool) bool {
+// after the scan step (fork + skipped + has_* + show-payload + upload-sarif + event).
+func actionStepWouldRun(ifExpr string, outs map[string]string, showPayload bool, isPR bool, uploadSARIF bool) bool {
 	if strings.Contains(ifExpr, "steps.fork.outputs.is_fork != 'true'") && outs["is_fork"] == "true" {
 		return false
 	}
@@ -63,7 +63,13 @@ func actionStepWouldRun(ifExpr string, outs map[string]string, showPayload bool,
 	if strings.Contains(ifExpr, "inputs.show-payload == 'true'") && !showPayload {
 		return false
 	}
+	if strings.Contains(ifExpr, "inputs.upload-sarif == 'true'") && !uploadSARIF {
+		return false
+	}
 	if strings.Contains(ifExpr, "github.event_name == 'pull_request'") && !isPR {
+		return false
+	}
+	if strings.Contains(ifExpr, "steps.upload-sarif.outcome == 'failure'") && outs["upload_sarif_outcome"] != "failure" {
 		return false
 	}
 	return true
@@ -297,9 +303,82 @@ func TestEnrollmentSkipWritesMarkerAndGatesArtifacts(t *testing.T) {
 		if !strings.Contains(cond, "steps.scan.outputs.skipped != 'true'") {
 			t.Fatalf("step %q if: must gate on skipped != true\ngot: %s", name, cond)
 		}
-		if actionStepWouldRun(cond, outs, true, true) {
+		if actionStepWouldRun(cond, outs, true, true, true) {
 			t.Fatalf("step %q would still run on enrollment skip", name)
 		}
+	}
+}
+
+func TestUploadSARIFInputAndWarningContract(t *testing.T) {
+	yml, err := os.ReadFile(filepath.Join(repoRoot(t), "action.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(yml)
+	if !strings.Contains(text, "upload-sarif:") {
+		t.Fatal("missing upload-sarif input")
+	}
+	if !strings.Contains(text, "has-sarif:") || !strings.Contains(text, "sarif-file:") {
+		t.Fatal("missing composite outputs has-sarif / sarif-file")
+	}
+
+	blocks := strings.Split(text, "\n    - name: ")
+	stepCond := map[string]string{}
+	stepBody := map[string]string{}
+	ifMulti := regexp.MustCompile(`(?m)^      if: >-\n((?:        .+\n)+)`)
+	ifSingle := regexp.MustCompile(`(?m)^      if: (.+)\n`)
+	for _, block := range blocks[1:] {
+		name, rest, _ := strings.Cut(block, "\n")
+		name = strings.TrimSpace(name)
+		stepBody[name] = rest
+		if m := ifMulti.FindStringSubmatch(block); m != nil {
+			stepCond[name] = regexp.MustCompile(`\s+`).ReplaceAllString(strings.TrimSpace(strings.ReplaceAll(m[1], "\n", " ")), " ")
+			continue
+		}
+		if m := ifSingle.FindStringSubmatch(block); m != nil {
+			stepCond[name] = strings.TrimSpace(m[1])
+		}
+	}
+	uploadCond, ok := stepCond["Upload SARIF"]
+	if !ok {
+		t.Fatal("Upload SARIF step missing if:")
+	}
+	if !strings.Contains(uploadCond, "inputs.upload-sarif == 'true'") {
+		t.Fatalf("Upload SARIF must gate on upload-sarif input: %s", uploadCond)
+	}
+	warnCond, ok := stepCond["Warn on SARIF upload failure"]
+	if !ok {
+		t.Fatal("Warn on SARIF upload failure step missing if:")
+	}
+	if warnCond != "steps.upload-sarif.outcome == 'failure'" {
+		t.Fatalf("warn if: %q", warnCond)
+	}
+	if !strings.Contains(stepBody["Warn on SARIF upload failure"], "security-events: write") {
+		t.Fatal("warn step must mention security-events: write")
+	}
+
+	outs := map[string]string{
+		"is_fork":   "false",
+		"skipped":   "false",
+		"has_sarif": "true",
+	}
+	if actionStepWouldRun(uploadCond, outs, false, true, false) {
+		t.Fatal("Upload SARIF must not run when upload-sarif=false")
+	}
+	if !actionStepWouldRun(uploadCond, outs, false, true, true) {
+		t.Fatal("Upload SARIF should run when upload-sarif=true and has_sarif")
+	}
+	outs["upload_sarif_outcome"] = "failure"
+	if !actionStepWouldRun(warnCond, outs, false, true, true) {
+		t.Fatal("warn step should run when upload outcome is failure")
+	}
+	outs["upload_sarif_outcome"] = "success"
+	if actionStepWouldRun(warnCond, outs, false, true, true) {
+		t.Fatal("warn step must not run on upload success")
+	}
+	outs["upload_sarif_outcome"] = "skipped"
+	if actionStepWouldRun(warnCond, outs, false, true, true) {
+		t.Fatal("warn step must not run when upload was skipped")
 	}
 }
 
