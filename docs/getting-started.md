@@ -6,7 +6,7 @@ Shortest path to a **first green Fray scan** in GitHub Actions.
 
 1. [ ] Install the **Fray (getfray.dev)** GitHub App and **select this repository**
 2. [ ] Add `fray.yaml` at the repo root (minimal example below)
-3. [ ] Create secret `FRAY_REDACTION_KEY` (`openssl rand -hex 32 | gh secret set FRAY_REDACTION_KEY`)
+3. [ ] Create secret `FRAY_REDACTION_KEY` (`openssl rand -hex 32 | gh secret set FRAY_REDACTION_KEY`). **Keep this key stable** — rotating or losing it resets the baseline (findings can't be compared with earlier scans). Store a copy in your password manager. See [README — redaction key rotation](../README.md#redaction-key-rotation).
 4. [ ] Ensure the job can run `terraform plan` (provider + backend credentials — see below)
 5. [ ] Add the workflow with the permissions below
 6. [ ] Push to the **default branch** once (establishes the merge baseline)
@@ -42,7 +42,10 @@ Redaction is **on by default**. Keep `FRAY_REDACTION_KEY` set unless you deliber
 
 ## 4. Copy-paste workflow
 
-Pin `fluong/fray` to a release commit SHA (look up the current tag on GitHub). Example:
+Pin third-party actions by **commit SHA**. Use the commit SHA of the release tag
+(`git ls-remote https://github.com/fluong/fray refs/tags/v0.9.0^{}`); tags are
+immutable but SHAs are what Actions guarantees. Replace `<full-commit-sha>` below
+with that 40-character hex.
 
 ```yaml
 name: fray
@@ -62,11 +65,12 @@ jobs:
   fray:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: fluong/fray@v0.9.0
+      - uses: fluong/fray@<full-commit-sha> # v0.9.0
         with:
           api-url: https://api.getfray.dev
           working-directory: .   # Terraform root (directory with .tf files)

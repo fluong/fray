@@ -44,10 +44,17 @@ CI.
 openssl rand -hex 32 | gh secret set FRAY_REDACTION_KEY
 ```
 
+**Keep this key stable** — rotating or losing it resets the baseline (findings
+can't be compared with earlier scans). Store a copy in your password manager.
+Details: [redaction key rotation](#redaction-key-rotation).
+
 ### 3. Add the workflow
 
 Pin third-party actions by commit SHA (same shape as the post-install setup
-page). Look up the current `fluong/fray` release tag and pin that commit:
+page). Use the commit SHA of the release tag
+(`git ls-remote https://github.com/fluong/fray refs/tags/v0.9.0^{}`); tags are
+immutable but SHAs are what Actions guarantees. Replace `<full-commit-sha>` with
+that 40-character hex:
 
 ```yaml
 name: fray
@@ -70,8 +77,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: fluong/fray@23947633d771e9bb74f9262809a424673886651d # v0.5.5
+      - uses: fluong/fray@<full-commit-sha> # v0.9.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra   # Terraform root; omit if plans live at repo root
@@ -140,9 +148,12 @@ addresses, module names, file contents, or source code.
 The hosted API rejects unredacted payloads unless the org explicitly allows
 them.
 
+#### Redaction key rotation
+
 If the redaction key rotates, the server may report an incomparable baseline;
 the PR comment surfaces that note so a key change cannot silently loosen the
-gate.
+gate. Keep the key stable and back it up (for example in your password manager)
+so later scans can still compare against earlier baselines.
 
 Example of a redacted DFD fragment (scheme `hmac-sha256-v1`):
 
@@ -209,11 +220,15 @@ jobs:
   fray:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: fluong/fray@v0.4.0
+      # Use the commit SHA of the release tag
+      # (git ls-remote https://github.com/fluong/fray refs/tags/v0.9.0^{});
+      # tags are immutable but SHAs are what Actions guarantees.
+      - uses: fluong/fray@<full-commit-sha> # v0.9.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra

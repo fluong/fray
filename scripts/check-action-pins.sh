@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Fail if any uses: in .github/workflows/*.yml or action.yml is not pinned to a
-# 40-character commit SHA. Local actions (./…) and docker://…@sha256:… are allowed.
+# Fail if any uses: in action.yml, .github/workflows/*.yml, README.md, or
+# docs/*.md is not pinned to a 40-character commit SHA (or the docs placeholder
+# <full-commit-sha>). Local actions (./…) and docker://…@sha256:… are allowed.
 # Missing/unreadable inputs → exit non-zero (fail closed).
 set -euo pipefail
 
@@ -10,19 +11,27 @@ files=()
 if [[ -f "${root}/action.yml" ]]; then
   files+=("${root}/action.yml")
 fi
+if [[ -f "${root}/README.md" ]]; then
+  files+=("${root}/README.md")
+fi
 shopt -s nullglob
 for f in "${root}/.github/workflows/"*.yml "${root}/.github/workflows/"*.yaml; do
+  files+=("$f")
+done
+for f in "${root}/docs/"*.md; do
   files+=("$f")
 done
 shopt -u nullglob
 
 if [[ ${#files[@]} -eq 0 ]]; then
-  echo "no action.yml or .github/workflows/*.yml to check under ${root}" >&2
+  echo "no action.yml, workflows, README.md, or docs/*.md to check under ${root}" >&2
   exit 1
 fi
 
 # owner/name[/subdir]@<40 hex>
 sha_pin_re='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*@[0-9a-f]{40}$'
+# Docs placeholder until a release tag exists (getting-started / README examples).
+placeholder_pin_re='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*@<full-commit-sha>$'
 # docker://host/path:tag@sha256:<hex> (digest form)
 docker_digest_re='^docker://.+@sha256:[0-9a-fA-F]+$'
 
@@ -48,11 +57,12 @@ for file in "${files[@]}"; do
       if [[ "$ref" =~ $docker_digest_re ]]; then
         continue
       fi
-      if [[ ! "$ref" =~ $sha_pin_re ]]; then
-        echo "unpinned uses: $ref" >&2
-        echo "  (from ${rel}: $trimmed)" >&2
-        unpinned=1
+      if [[ "$ref" =~ $sha_pin_re || "$ref" =~ $placeholder_pin_re ]]; then
+        continue
       fi
+      echo "unpinned uses: $ref" >&2
+      echo "  (from ${rel}: $trimmed)" >&2
+      unpinned=1
     fi
   done < "$file" || {
     echo "failed reading: $file" >&2
@@ -67,7 +77,7 @@ fi
 
 if [[ "$unpinned" -ne 0 ]]; then
   echo "every uses: must be pinned to a 40-character commit SHA (e.g. owner/repo@deadbeef… # vX.Y.Z)," >&2
-  echo "or be a local ./ path, or docker://…@sha256:<digest>" >&2
+  echo "the docs placeholder owner/repo@<full-commit-sha>, a local ./ path, or docker://…@sha256:<digest>" >&2
   exit 1
 fi
 
