@@ -21,10 +21,29 @@ type Findings struct {
 }
 
 // Accepted is a customer disposition for one exact finding (rule + target id).
+// Waivers (accepted_mitigations v2) send ID and Expires; Status is omitted.
+// Reason, owner, and address never appear on the wire.
 type Accepted struct {
 	RuleID   string `json:"rule_id"`
 	TargetID string `json:"target_id"`
-	Status   string `json:"status"`
+	Status   string `json:"status,omitempty"`
+	ID       string `json:"id,omitempty"`
+	Expires  string `json:"expires,omitempty"` // YYYY-MM-DD
+}
+
+// WaiverStale is a waiver that did not mark a finding waived.
+type WaiverStale struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
+// Waivers is the server-reported overlay outcome on a scan response.
+type Waivers struct {
+	Applied      []string      `json:"applied"`
+	Expired      []string      `json:"expired"`
+	Stale        []WaiverStale `json:"stale"`
+	ExpiringSoon []string      `json:"expiring_soon"`
+	NewInPR      []string      `json:"new_in_pr"`
 }
 
 // Condition is a when/pass predicate shipped in rule_texts so clients can
@@ -137,6 +156,9 @@ type ScanResponse struct {
 	RuleTexts   map[string]RuleText `json:"rule_texts"`
 	Advisory    *Advisory           `json:"advisory,omitempty"`
 	Enrichments []FindingEnrichment `json:"enrichments,omitempty"`
+	// Waivers is omitted by older servers; clients treat a missing object as
+	// "server did not report waiver outcomes".
+	Waivers *Waivers `json:"waivers,omitempty"`
 }
 
 // MarshalFindings encodes findings as indented JSON with a trailing newline.
