@@ -182,22 +182,34 @@ fi
 mkdir -p "$FRAY_OUT"
 plan_bin="${FRAY_OUT}/tfplan"
 plan_json="${FRAY_OUT}/plan.json"
+external_plan=false
 
-echo "::group::terraform init"
-if ! terraform -chdir="$workdir" init -input=false -no-color; then
-  echo "::error::terraform init failed in ${FRAY_WORKDIR}. Fray runs terraform init/plan in CI — ensure provider and backend credentials are available to the job (same as your normal plan workflow). See ${FRAY_TROUBLESHOOT_URL}."
-  exit 1
+if [[ -n "${FRAY_PLAN_FILE:-}" ]]; then
+  # Bring-your-own plan: path is relative to working-directory.
+  src_plan="${workdir}/${FRAY_PLAN_FILE}"
+  if [[ ! -f "$src_plan" ]]; then
+    echo "::error::plan-file not found: ${FRAY_WORKDIR}/${FRAY_PLAN_FILE}. Pass a terraform show -json file relative to working-directory. See ${FRAY_TROUBLESHOOT_URL}."
+    exit 2
+  fi
+  plan_json="$src_plan"
+  external_plan=true
+else
+  echo "::group::terraform init"
+  if ! terraform -chdir="$workdir" init -input=false -no-color; then
+    echo "::error::terraform init failed in ${FRAY_WORKDIR}. Fray runs terraform init/plan in CI — ensure provider and backend credentials are available to the job (same as your normal plan workflow), or pass plan-file. See ${FRAY_TROUBLESHOOT_URL}."
+    exit 1
+  fi
+  echo "::endgroup::"
+
+  echo "::group::terraform plan"
+  if ! terraform -chdir="$workdir" plan -input=false -no-color -out="$plan_bin"; then
+    echo "::error::terraform plan failed in ${FRAY_WORKDIR}. Fray runs terraform init/plan in CI — ensure provider and backend credentials are available to the job (same as your normal plan workflow), or pass plan-file. See ${FRAY_TROUBLESHOOT_URL}."
+    exit 1
+  fi
+  echo "::endgroup::"
+
+  terraform -chdir="$workdir" show -json "$plan_bin" >"$plan_json"
 fi
-echo "::endgroup::"
-
-echo "::group::terraform plan"
-if ! terraform -chdir="$workdir" plan -input=false -no-color -out="$plan_bin"; then
-  echo "::error::terraform plan failed in ${FRAY_WORKDIR}. Fray runs terraform init/plan in CI — ensure provider and backend credentials are available to the job (same as your normal plan workflow). See ${FRAY_TROUBLESHOOT_URL}."
-  exit 1
-fi
-echo "::endgroup::"
-
-terraform -chdir="$workdir" show -json "$plan_bin" >"$plan_json"
 
 repo="${GITHUB_REPOSITORY}"
 sha="${GITHUB_SHA}"
@@ -255,6 +267,9 @@ if is_true "${FRAY_SHOW_PAYLOAD:-false}"; then
 fi
 if is_true "${FRAY_FAIL_ON_UNENROLLED:-false}" || fail_soft_skip; then
   args+=(-fail-on-unenrolled)
+fi
+if [[ "$external_plan" == "true" ]]; then
+  args+=(-external-plan)
 fi
 if [[ -n "$base_commit" ]]; then
   args+=(-base-commit "$base_commit")

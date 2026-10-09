@@ -72,6 +72,15 @@ inputs:
       uploading.
     required: false
     default: "true"
+  plan-file:
+    description: >
+      Path to a terraform show -json plan file, relative to working-directory.
+      When set, skips setup-terraform / terraform init / plan / show and scans
+      that file instead. The plan JSON contains secrets in plaintext — keep
+      artifact retention short and never upload it from fork PRs. Omit to run
+      terraform in this job (default).
+    required: false
+    default: ""
 
 outputs:
   has-sarif:
@@ -122,7 +131,7 @@ runs:
         GOTOOLCHAIN: local
 
     - name: Setup Terraform
-      if: steps.fork.outputs.is_fork != 'true'
+      if: steps.fork.outputs.is_fork != 'true' && inputs.plan-file == ''
       uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
       with:
         terraform_wrapper: false
@@ -180,6 +189,7 @@ runs:
         FRAY_FAIL_ON_UNENROLLED: ${{ inputs.fail-on-unenrolled }}
         FRAY_FAIL_ON_RATE_LIMIT: ${{ inputs.fail-on-rate-limit }}
         FRAY_FAIL_ON_SKIP: ${{ inputs.fail-on-skip }}
+        FRAY_PLAN_FILE: ${{ inputs.plan-file }}
       run: bash "${{ github.action_path }}/action/scan.sh"
 
     - name: Upload sent payload
