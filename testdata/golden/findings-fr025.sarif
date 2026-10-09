@@ -6,6 +6,9 @@
       "tool": {
         "driver": {
           "name": "Fray",
+          "version": "0.8.0",
+          "semanticVersion": "0.8.0",
+          "informationUri": "https://github.com/fluong/fray",
           "rules": [
             {
               "id": "FR-001",
@@ -120,6 +123,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "658aeec9fd85e013bb7a94daf9aef37b6559adc4f1ba09cfb46de559f8320021"
+          },
           "properties": {
             "security-severity": "5.0"
           }
@@ -142,6 +148,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "422a1dade54f20698bba0c71b1c5142b846fde85aef77e1a55554d463fad2c75"
+          },
           "properties": {
             "security-severity": "3.0"
           }
@@ -164,6 +173,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "c127012df1b9820d1b05495bfe149c8df867b85da295a51764f5f5e67cfd5554"
+          },
           "properties": {
             "security-severity": "5.0"
           }
@@ -186,6 +198,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "95d0e97262093bfbdc8f512285d389dbe9bae89304a7f2bb1cf26032566acdc5"
+          },
           "properties": {
             "security-severity": "3.0"
           }
@@ -251,6 +266,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "427cb589f464ec69e887d7e7933ffae8ff35ef269578a4145d428960118b308d"
+          },
           "properties": {
             "security-severity": "5.0"
           }
@@ -316,6 +334,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "cff6b6a6c15a939516554c2668ae9840e39fb7d0877f0873513a20f8f2fd60f6"
+          },
           "properties": {
             "security-severity": "5.0"
           }
@@ -381,6 +402,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "54a2f993cc39b08571a2ddd08d8d003545c7dac92acb22233a1f28ce44b09386"
+          },
           "properties": {
             "security-severity": "7.5"
           }

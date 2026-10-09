@@ -1,13 +1,17 @@
 package render
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	apiv1 "github.com/fluong/fray/api/v1"
 	"github.com/fluong/fray/client"
+	"github.com/fluong/fray/version"
 )
 
 func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
@@ -23,7 +27,7 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw, err := SARIF(doc, findings, texts, locs, nil)
+	raw, err := SARIF(doc, findings, texts, locs, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,14 +72,14 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 		t.Fatalf("tool %+v", docSARIF.Runs)
 	}
 
-	open := 0
+	wantN := 0
 	for _, f := range findings.Findings {
-		if f.Status == "open" {
-			open++
+		if f.Status == "open" || f.Status == "waived" {
+			wantN++
 		}
 	}
-	if len(docSARIF.Runs[0].Results) != open {
-		t.Fatalf("results %d want %d open findings", len(docSARIF.Runs[0].Results), open)
+	if len(docSARIF.Runs[0].Results) != wantN {
+		t.Fatalf("results %d want %d open/waived findings", len(docSARIF.Runs[0].Results), wantN)
 	}
 
 	var fr010 *struct {
@@ -140,7 +144,7 @@ func TestSARIFFallbackLocationWhenUnknown(t *testing.T) {
 		Severity: "high",
 	}}}
 	texts := map[string]apiv1.RuleText{"FR-010": {ID: "FR-010", Title: "Object storage is not public"}}
-	raw, err := SARIF(doc, findings, texts, nil, nil)
+	raw, err := SARIF(doc, findings, texts, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +203,7 @@ func TestSARIFGolden(t *testing.T) {
 		"FR-001": {ID: "FR-001", Title: "Example medium"},
 		"FR-003": {ID: "FR-003", Title: "Example low"},
 	}
-	raw, err := SARIF(doc, findings, texts, nil, nil)
+	raw, err := SARIF(doc, findings, texts, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +238,7 @@ func TestSARIFFR025AttributeRegion(t *testing.T) {
 			"restrict_public_buckets",
 		},
 	}
-	raw, err := SARIF(doc, findings, texts, locs, changed)
+	raw, err := SARIF(doc, findings, texts, locs, changed, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,3 +366,245 @@ resource "aws_s3_bucket_public_access_block" "this" {
 	}
 	return dst
 }
+
+func TestSARIFWaivedSuppression(t *testing.T) {
+	doc := client.DFD{
+		Elements: []client.Element{{
+			ID:   "e1",
+			Name: "bucket",
+			Kind: "object_storage",
+			Evidence: client.Evidence{
+				Addresses: []string{"aws_s3_bucket.assets"},
+			},
+		}},
+	}
+	findings := apiv1.Findings{Findings: []apiv1.Finding{
+		{RuleID: "FR-010", Target: "e1", Status: "waived", Severity: "high"},
+		{RuleID: "FR-001", Target: "e1", Status: "mitigated", Severity: "medium"},
+		{RuleID: "FR-003", Target: "e1", Status: "unverified", Severity: "low"},
+		{RuleID: "FR-005", Target: "e1", Status: "accepted", Severity: "medium"},
+		{RuleID: "FR-012", Target: "e1", Status: "open", Severity: "medium"},
+	}}
+	texts := map[string]apiv1.RuleText{
+		"FR-010": {ID: "FR-010", Title: "Object storage is not public"},
+		"FR-012": {ID: "FR-012", Title: "Object storage cannot be destroyed by the tool"},
+	}
+	waivers := []apiv1.Accepted{{
+		RuleID: "FR-010", TargetID: "e1", ID: "public-assets", Expires: "2026-12-08",
+	}}
+	raw, err := SARIF(doc, findings, texts, nil, nil, waivers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "reason") || strings.Contains(string(raw), "owner") {
+		t.Fatalf("SARIF must not include reason/owner text: %s", raw)
+	}
+
+	var docSARIF struct {
+		Runs []struct {
+			Tool struct {
+				Driver struct {
+					Name            string `json:"name"`
+					Version         string `json:"version"`
+					SemanticVersion string `json:"semanticVersion"`
+					InformationURI  string `json:"informationUri"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results []struct {
+				RuleID              string            `json:"ruleId"`
+				PartialFingerprints map[string]string `json:"partialFingerprints"`
+				Suppressions        []struct {
+					Kind          string `json:"kind"`
+					Status        string `json:"status"`
+					Justification string `json:"justification"`
+				} `json:"suppressions"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(raw, &docSARIF); err != nil {
+		t.Fatal(err)
+	}
+	drv := docSARIF.Runs[0].Tool.Driver
+	if drv.Name != "Fray" || drv.Version != version.Version || drv.SemanticVersion != version.Version {
+		t.Fatalf("driver %+v", drv)
+	}
+	if drv.InformationURI != version.InformationURI {
+		t.Fatalf("informationUri %q", drv.InformationURI)
+	}
+	if len(docSARIF.Runs[0].Results) != 2 {
+		t.Fatalf("want open+waived only, got %d results", len(docSARIF.Runs[0].Results))
+	}
+	var waived *struct {
+		RuleID              string            `json:"ruleId"`
+		PartialFingerprints map[string]string `json:"partialFingerprints"`
+		Suppressions        []struct {
+			Kind          string `json:"kind"`
+			Status        string `json:"status"`
+			Justification string `json:"justification"`
+		} `json:"suppressions"`
+	}
+	for i := range docSARIF.Runs[0].Results {
+		r := &docSARIF.Runs[0].Results[i]
+		if r.RuleID == "FR-010" {
+			waived = r
+			break
+		}
+	}
+	if waived == nil || len(waived.Suppressions) != 1 {
+		t.Fatalf("waived result %+v", waived)
+	}
+	s := waived.Suppressions[0]
+	wantJust := "Waived via .fray/waivers.yml (id public-assets, until 2026-12-08)"
+	if s.Kind != "external" || s.Status != "accepted" || s.Justification != wantJust {
+		t.Fatalf("suppression %+v", s)
+	}
+	fp := waived.PartialFingerprints["fray/v1"]
+	wantFP := Fingerprint("FR-010", "aws_s3_bucket.assets", "e1")
+	if fp != wantFP {
+		t.Fatalf("fingerprint %s want %s", fp, wantFP)
+	}
+}
+
+func TestSARIFFingerprintStableAcrossLineMove(t *testing.T) {
+	dir := t.TempDir()
+	write := func(extraBlank bool) {
+		t.Helper()
+		body := ""
+		if extraBlank {
+			body = "\n\n"
+		}
+		body += `resource "aws_s3_bucket" "assets" {
+  bucket = "assets"
+}
+
+resource "aws_s3_bucket" "logs" {
+  bucket = "logs"
+}
+`
+		if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(false)
+	locs1, err := client.ResourceLocations(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line1 := locs1["aws_s3_bucket.assets"].Line
+
+	write(true)
+	locs2, err := client.ResourceLocations(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line2 := locs2["aws_s3_bucket.assets"].Line
+	if line2 <= line1 {
+		t.Fatalf("expected line to move: before %d after %d", line1, line2)
+	}
+
+	doc := client.DFD{
+		Elements: []client.Element{
+			{ID: "e-assets", Name: "assets", Kind: "object_storage", Evidence: client.Evidence{Addresses: []string{"aws_s3_bucket.assets"}}},
+			{ID: "e-logs", Name: "logs", Kind: "object_storage", Evidence: client.Evidence{Addresses: []string{"aws_s3_bucket.logs"}}},
+		},
+	}
+	findings := apiv1.Findings{Findings: []apiv1.Finding{
+		{RuleID: "FR-010", Target: "e-assets", Status: "open", Severity: "high"},
+		{RuleID: "FR-010", Target: "e-logs", Status: "open", Severity: "high"},
+	}}
+	texts := map[string]apiv1.RuleText{"FR-010": {ID: "FR-010", Title: "Object storage is not public"}}
+
+	raw1, err := SARIF(doc, findings, texts, locs1, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw2, err := SARIF(doc, findings, texts, locs2, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Results sorted by rule then target: e-assets before e-logs.
+	parse := func(raw []byte) (assetsFP, logsFP string, assetsLine int) {
+		t.Helper()
+		var docSARIF struct {
+			Runs []struct {
+				Results []struct {
+					PartialFingerprints map[string]string `json:"partialFingerprints"`
+					Locations           []struct {
+						PhysicalLocation struct {
+							Region *struct {
+								StartLine int `json:"startLine"`
+							} `json:"region"`
+						} `json:"physicalLocation"`
+					} `json:"locations"`
+				} `json:"results"`
+			} `json:"runs"`
+		}
+		if err := json.Unmarshal(raw, &docSARIF); err != nil {
+			t.Fatal(err)
+		}
+		if len(docSARIF.Runs[0].Results) != 2 {
+			t.Fatalf("results %d", len(docSARIF.Runs[0].Results))
+		}
+		a := docSARIF.Runs[0].Results[0]
+		b := docSARIF.Runs[0].Results[1]
+		return a.PartialFingerprints["fray/v1"], b.PartialFingerprints["fray/v1"], a.Locations[0].PhysicalLocation.Region.StartLine
+	}
+	a1, l1, lineBefore := parse(raw1)
+	a2, l2, lineAfter := parse(raw2)
+	if a1 != a2 {
+		t.Fatalf("assets fingerprint changed across line move: %s vs %s", a1, a2)
+	}
+	if lineBefore == lineAfter {
+		t.Fatal("expected SARIF startLine to change when block moves")
+	}
+	if a1 == l1 {
+		t.Fatal("different resources must have different fingerprints")
+	}
+	if l1 != l2 {
+		t.Fatalf("logs fingerprint changed: %s vs %s", l1, l2)
+	}
+	wantAssets := sha256Hex("FR-010|aws_s3_bucket.assets")
+	if a1 != wantAssets {
+		t.Fatalf("assets fp %s want %s", a1, wantAssets)
+	}
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+func TestSARIFFingerprintFallbackToDFDID(t *testing.T) {
+	doc := client.DFD{
+		Elements: []client.Element{{
+			ID:   "e-no-addr",
+			Name: "bucket",
+			Kind: "object_storage",
+		}},
+	}
+	findings := apiv1.Findings{Findings: []apiv1.Finding{
+		{RuleID: "FR-010", Target: "e-no-addr", Status: "open", Severity: "high"},
+	}}
+	texts := map[string]apiv1.RuleText{"FR-010": {ID: "FR-010", Title: "Object storage is not public"}}
+	raw, err := SARIF(doc, findings, texts, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var docSARIF struct {
+		Runs []struct {
+			Results []struct {
+				PartialFingerprints map[string]string `json:"partialFingerprints"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(raw, &docSARIF); err != nil {
+		t.Fatal(err)
+	}
+	got := docSARIF.Runs[0].Results[0].PartialFingerprints["fray/v1"]
+	want := sha256Hex("FR-010|e-no-addr")
+	if got != want {
+		t.Fatalf("got %s want %s", got, want)
+	}
+}
+

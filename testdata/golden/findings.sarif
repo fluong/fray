@@ -6,6 +6,9 @@
       "tool": {
         "driver": {
           "name": "Fray",
+          "version": "0.8.0",
+          "semanticVersion": "0.8.0",
+          "informationUri": "https://github.com/fluong/fray",
           "rules": [
             {
               "id": "FR-001",
@@ -68,6 +71,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "c2cb00023134cbd3970f60057e1d28f46f69cf49c88266cc5af28650eb61b74c"
+          },
           "properties": {
             "security-severity": "5.0"
           }
@@ -90,6 +96,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "a3dcb28fc25287fc3db508e33a926aa70df270607a36f7c52b5150952d80e114"
+          },
           "properties": {
             "security-severity": "3.0"
           }
@@ -112,6 +121,9 @@
               }
             }
           ],
+          "partialFingerprints": {
+            "fray/v1": "f08674c48e5a0c9cd586783b2db57f79dea18042c51de6cccc131cfc8641e9bd"
+          },
           "properties": {
             "security-severity": "7.5"
           }
