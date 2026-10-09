@@ -10,7 +10,7 @@ ships rules.
 **New here?** → [Getting started](docs/getting-started.md) (shortest path to a
 first green scan). Stuck? → [Troubleshooting](#troubleshooting).
 
-Latest release: **v0.9.1**. `v0.1.0` is retracted (non-public fixtures leaked
+Latest release: **v0.10.0**. `v0.1.0` is retracted (non-public fixtures leaked
 into the module zip; see `go.mod`).
 
 Related:
@@ -52,7 +52,7 @@ Details: [redaction key rotation](#redaction-key-rotation).
 
 Pin third-party actions by commit SHA (same shape as the post-install setup
 page). Use the commit SHA of the release tag
-(`git ls-remote https://github.com/fluong/fray refs/tags/v0.9.1^{}`); tags are
+(`git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{}`); tags are
 immutable but SHAs are what Actions guarantees. Replace `<full-commit-sha>` with
 that 40-character hex:
 
@@ -79,7 +79,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@<full-commit-sha> # v0.9.1
+      - uses: fluong/fray@<full-commit-sha> # v0.10.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra   # Terraform root; omit if plans live at repo root
@@ -226,9 +226,9 @@ jobs:
           persist-credentials: false
 
       # Use the commit SHA of the release tag
-      # (git ls-remote https://github.com/fluong/fray refs/tags/v0.9.1^{});
+      # (git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{});
       # tags are immutable but SHAs are what Actions guarantees.
-      - uses: fluong/fray@<full-commit-sha> # v0.9.1
+      - uses: fluong/fray@<full-commit-sha> # v0.10.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra
@@ -248,6 +248,7 @@ jobs:
 | `fail-on-rate-limit` | `false` | Fail the job when the API returns HTTP 429 `rate_limited` (see [Limits](#limits)). Also covered by `fail-on-skip`. |
 | `fail-on-skip` | `false` | Fail the job on **any** soft-skip (enrollment or rate limit). Default: warn + exit 0. Supersedes soft-skip for rate limit when true (`fail-on-rate-limit` still works alone). |
 | `upload-sarif` | `true` | Upload `findings.sarif` to Code Scanning. Requires `security-events: write`. Set `false` to keep the file without uploading. |
+| `plan-file` | `""` | Optional path (relative to `working-directory`) to a `terraform show -json` plan. When set, skips `terraform init` / `plan` / `show`. See [Bring your own plan](#bring-your-own-plan). |
 
 | Output | Notes |
 |--------|-------|
@@ -274,7 +275,10 @@ plain-text 403, unknown JSON `error`) still fails the job.
 
 On each run the Action:
 
-1. `terraform init` + `plan` + `show -json` in `working-directory`
+1. Unless `plan-file` is set: `terraform init` + `plan` + `show -json` in
+   `working-directory`. With `plan-file`, that binary plan step is skipped and
+   the supplied JSON is used instead (still needs the Terraform root checked out
+   for locations / waivers).
 2. Scans via OIDC (`aud=fray`)
 3. Updates a single PR comment in place (hidden `<!-- fray -->` marker)
 4. Uploads SARIF via `github/codeql-action/upload-sarif` (category `fray`,
@@ -293,10 +297,81 @@ On each run the Action:
 Optional waivers live at `.fray/waivers.yml` (Action input `waivers-file`). See
 [Waivers](#waivers).
 
+## Bring your own plan
+
+When cloud credentials or a long `terraform plan` should stay in a separate job
+(Terraform Cloud, Atlantis, or a dedicated plan workflow), pass
+**`plan-file`** (path relative to `working-directory`) to a
+`terraform show -json` file. Fray then **skips** `setup-terraform` /
+`terraform init` / `plan` / `show` and still needs the Terraform root checked
+out for SARIF locations, `prevent_destroy`, and waivers.
+
+> **Warning — plan JSON contains secrets in plaintext.** Terraform leaves
+> sensitive values beside `after_sensitive` / `sensitive_values`. Keep artifact
+> `retention-days: 1`, never upload the plan from **fork PRs**, and delete it
+> after use when you can. Fray strips sensitive-marked values client-side before
+> the scan request; **the artifact itself is the risk**. `show-payload` uploads
+> the scan request (DFD), not the plan file.
+
+Example two-job workflow (pin every `uses:` by full commit SHA):
+
+```yaml
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # if using cloud OIDC for providers
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+      # cloud / backend credentials here
+      - run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra plan -input=false -out=tfplan
+          terraform -chdir=infra show -json tfplan > plan.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fray-plan
+          path: infra/plan.json
+          retention-days: 1
+
+  fray:
+    needs: plan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@<full-commit-sha> # pin download-artifact
+        with:
+          name: fray-plan
+          path: infra
+      - uses: fluong/fray@<full-commit-sha> # v0.10.0
+        with:
+          api-url: https://api.getfray.dev
+          working-directory: infra
+          plan-file: plan.json
+          redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}
+```
+
+Terraform Cloud / Atlantis: export with `terraform show -json` (or the platform’s
+JSON plan API) and pass that file as `plan-file`. Nested-module
+`lifecycle.prevent_destroy` is only read when `.terraform/modules` is present
+(same as a root-only checkout today).
+
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.9.1
+go install github.com/fluong/fray/cmd/fray@v0.10.0
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 export FRAY_API_URL=https://api.getfray.dev
@@ -422,7 +497,10 @@ Symptom → typical cause → fix. Full setup path: [Getting started](docs/getti
 | `FRAY_REDACTION_KEY is required` / must be 64 hex chars | Missing or bad redaction secret | `openssl rand -hex 32 \| gh secret set FRAY_REDACTION_KEY` and pass `redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}`. |
 | `working-directory not found` / no `.tf` files | Wrong Terraform root | Set `working-directory` to the directory that contains your `.tf` files. |
 | `fray.yaml not found` | Config file missing | Add `schema_version: fray-config/v1` (see [Config](#config)). |
-| `terraform init/plan failed` | Provider/backend credentials or TF error | Give the job the same credentials as your normal plan workflow. Fray runs `terraform init` + `plan` in CI (bring-your-own-plan coming later). |
+| `terraform init/plan failed` | Provider/backend credentials or TF error | Give the job the same credentials as your normal plan workflow, or use [`plan-file`](#bring-your-own-plan). |
+| `plan-file must be terraform show -json output` | Binary plan or state file passed as `plan-file` | Run `terraform show -json tfplan > plan.json` and pass that JSON path. |
+| `not a Terraform JSON plan` / `plan contains no resources` | Wrong or empty plan JSON | Ensure `format_version` is set and `resource_changes` has at least one managed resource with values Fray can analyse. |
+| `plan-file may not match this commit's working-directory` | Plan from another root/commit | Re-export the plan from this checkout’s `working-directory` (warning only; scan continues). |
 | `Fray API request failed` / 5xx | Network or API error | Confirm `api-url: https://api.getfray.dev`, retry. If it persists, open an issue on `fluong/fray`. |
 | Waivers / `mitigations.yaml` errors | Invalid `.fray/waivers.yml` or legacy file | Fix schema/expires; migrate mitigations → [Waivers](#waivers). |
 | Fork PR: Fray did not run | Forks cannot mint OIDC `aud=fray` | Open the PR from a branch in this repository. |

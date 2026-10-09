@@ -43,7 +43,7 @@ Redaction is **on by default**. Keep `FRAY_REDACTION_KEY` set unless you deliber
 ## 4. Copy-paste workflow
 
 Pin third-party actions by **commit SHA**. Use the commit SHA of the release tag
-(`git ls-remote https://github.com/fluong/fray refs/tags/v0.9.1^{}`); tags are
+(`git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{}`); tags are
 immutable but SHAs are what Actions guarantees. Replace `<full-commit-sha>` below
 with that 40-character hex.
 
@@ -70,7 +70,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@<full-commit-sha> # v0.9.1
+      - uses: fluong/fray@<full-commit-sha> # v0.10.0
         with:
           api-url: https://api.getfray.dev
           working-directory: .   # Terraform root (directory with .tf files)
@@ -81,11 +81,13 @@ Set `working-directory` to your Terraform root if it is not the repo root (for e
 
 Optional: `fail-on-skip: true` fails the job on enrollment or rate-limit soft-skips (default is warn + exit 0). See [README](../README.md#github-action).
 
-## 5. What `terraform plan` needs today
+## 5. What `terraform plan` needs (or bring your own plan)
 
-The Action runs **`terraform init`**, **`plan`**, and **`show -json`** inside `working-directory`. There is **no** bring-your-own-plan input yet (**coming later**).
+**Default:** the Action runs **`terraform init`**, **`plan`**, and **`show -json`** inside `working-directory`. Give the job the **same provider and backend credentials** you use for a normal plan in CI.
 
-Give the job the **same provider and backend credentials** you use for a normal plan in CI (for example cloud provider keys/OIDC roles, and remote-state access). If `plan` cannot run locally in CI, Fray cannot scan.
+**Bring your own plan:** if credentials or planning must live in another job, pass **`plan-file`** (path relative to `working-directory`) to a `terraform show -json` file. Fray skips terraform in the Fray job. See [README — Bring your own plan](../README.md#bring-your-own-plan).
+
+> **Warning:** plan JSON contains **secrets in plaintext**. Use artifact `retention-days: 1`, never upload plans from fork PRs, and delete after use when possible. Fray strips sensitive-marked values before the API request; the artifact is still sensitive.
 
 ## 6. What to expect on the first PR
 
