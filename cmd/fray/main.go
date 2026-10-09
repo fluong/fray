@@ -1,8 +1,8 @@
 package main
 
 import (
-	"flag"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 )
@@ -12,7 +12,8 @@ func main() {
 	flag.StringVar(&opt.Plan, "plan", "", "path to terraform show -json output")
 	flag.StringVar(&opt.Source, "source", "", "Terraform root module, read for lifecycle and block locations")
 	flag.StringVar(&opt.Config, "config", "", "path to fray.yaml")
-	flag.StringVar(&opt.Mitigations, "mitigations", "", "path to mitigations.yaml")
+	flag.StringVar(&opt.Waivers, "waivers", "", "path to .fray/waivers.yml (missing file = no waivers)")
+	flag.StringVar(&opt.Mitigations, "mitigations", "", "deprecated: path to mitigations.yaml (non-empty entries fail with a migration message)")
 	flag.StringVar(&opt.BaseCommit, "base-commit", "", "PR base commit sha (remote baseline lookup)")
 	flag.StringVar(&opt.BaseSource, "base-source", "", "Terraform root at the PR base commit (module-arg compare)")
 	flag.StringVar(&opt.Out, "out", ".", "directory for findings.json, findings.sarif, threat-model.md, and pr-comment.md")
@@ -30,8 +31,8 @@ func main() {
 	flag.BoolVar(&opt.FailOnUnenrolled, "fail-on-unenrolled", false, "exit non-zero when the GitHub App install does not cover this repo")
 	flag.Parse()
 
-	if opt.Plan == "" || opt.Source == "" || opt.Config == "" || opt.Mitigations == "" || opt.Remote == "" {
-		fmt.Fprintln(os.Stderr, "usage: fray -plan plan.json -source infra -config fray.yaml -mitigations mitigations.yaml -remote url -default-branch main [-out dir]")
+	if opt.Plan == "" || opt.Source == "" || opt.Config == "" || opt.Remote == "" {
+		fmt.Fprintln(os.Stderr, "usage: fray -plan plan.json -source infra -config fray.yaml -remote url -default-branch main [-waivers .fray/waivers.yml] [-out dir]")
 		os.Exit(2)
 	}
 	if opt.Declared == "" {

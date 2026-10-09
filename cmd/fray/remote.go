@@ -67,11 +67,15 @@ func runRemote(opt options) (bool, error) {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
 
-	entries, err := loadMitigations(opt.Mitigations)
+	now := time.Now().UTC()
+	waiverEntries, err := loadWaivers(opt.Waivers, now)
 	if err != nil {
 		return false, err
 	}
-	accepted, err := resolveAccepted(doc, entries)
+	if err := checkLegacyMitigations(opt.Mitigations, len(waiverEntries)); err != nil {
+		return false, err
+	}
+	accepted, err := resolveWaivers(doc, waiverEntries)
 	if err != nil {
 		return false, err
 	}
@@ -199,6 +203,10 @@ func runRemote(opt options) (bool, error) {
 			// scan.sh to warn or fail based on fail-on-rate-limit.
 			return false, nil
 		}
+		if msg := waiverErrorMessage(respBody); msg != "" {
+			// Server validation (horizons, schema) — show verbatim.
+			return false, errors.New(msg)
+		}
 		return false, fmt.Errorf("remote scan: %s: %s", httpResp.Status, truncate(respBody, 200))
 	}
 
@@ -206,6 +214,11 @@ func runRemote(opt options) (bool, error) {
 	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return false, err
 	}
+	var probe struct {
+		Waivers json.RawMessage `json:"waivers"`
+	}
+	_ = json.Unmarshal(respBody, &probe)
+	waiversReported := len(probe.Waivers) > 0 && string(probe.Waivers) != "null"
 
 	if !redactionOff {
 		remapFindings(&resp.Findings, idMap)
@@ -249,7 +262,7 @@ func runRemote(opt options) (bool, error) {
 	if err := os.WriteFile(filepath.Join(opt.Out, "findings.json"), body, 0o644); err != nil {
 		return false, err
 	}
-	report := render.ThreatModel(doc, resp.Findings, texts, toRenderEntries(entries), locs)
+	report := render.ThreatModel(doc, resp.Findings, texts, toRenderWaiverEntries(waiverEntries), locs)
 	if err := os.WriteFile(filepath.Join(opt.Out, "threat-model.md"), []byte(report), 0o644); err != nil {
 		return false, err
 	}
@@ -261,11 +274,13 @@ func runRemote(opt options) (bool, error) {
 		return false, err
 	}
 
+	reportWaivers(resp.Waivers, waiversReported)
+
 	var baseline apiv1.Findings
 	haveBaseline := resp.Baseline.Findings != nil
 	if haveBaseline {
 		baseline = *resp.Baseline.Findings
-		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments)
+		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
 		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 			return false, err
 		}
@@ -273,12 +288,53 @@ func runRemote(opt options) (bool, error) {
 	// Also write a comment when the server reports an incomparable baseline note
 	// with no finding delta (absolute-mode key rotation on a clean PR).
 	if !haveBaseline && resp.Baseline.Note != "" {
-		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments)
+		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
+		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
+			return false, err
+		}
+	}
+	// Waivers-only comment when there is no baseline delta but waivers were reported.
+	if !haveBaseline && resp.Baseline.Note == "" && waiversReported && resp.Waivers != nil && waiversSectionNonEmpty(resp.Waivers) {
+		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, "", resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
 		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 			return false, err
 		}
 	}
 	return resp.Gate.Blocked, nil
+}
+
+func waiverErrorMessage(body []byte) string {
+	var errBody struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &errBody) != nil || errBody.Message == "" {
+		return ""
+	}
+	return errBody.Message
+}
+
+func waiversSectionNonEmpty(w *apiv1.Waivers) bool {
+	if w == nil {
+		return false
+	}
+	return len(w.Applied) > 0 || len(w.Expired) > 0 || len(w.Stale) > 0 ||
+		len(w.ExpiringSoon) > 0 || len(w.NewInPR) > 0
+}
+
+func reportWaivers(w *apiv1.Waivers, reported bool) {
+	text := render.WaiversSummary(w, reported)
+	if text == "" {
+		return
+	}
+	fmt.Fprint(os.Stderr, text)
+	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return
+		}
+		_, _ = f.WriteString(text)
+		_ = f.Close()
+	}
 }
 
 func remapFindings(f *apiv1.Findings, m client.IDMap) {

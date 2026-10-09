@@ -8,6 +8,8 @@ import (
 	"github.com/fluong/fray/render"
 )
 
+// resolveAccepted is kept for tests of the legacy address→id path shape.
+// Production scan path uses resolveWaivers.
 func resolveAccepted(doc client.DFD, entries []mitigationEntry) ([]apiv1.Accepted, error) {
 	out := make([]apiv1.Accepted, 0, len(entries))
 	for _, e := range entries {
