@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.1] — pending tag
+
+### Security
+- **Hardening:** strip Terraform-marked sensitive plan values (`after_sensitive` /
+  `sensitive_values`) before parsing; enforce a closed Element.Attributes
+  allow-list (drop unknown keys / bad values); regression test that secrets do
+  not appear in scan requests (redaction on and off).
+
 ## [0.9.0] — pending tag
 
 ### Added

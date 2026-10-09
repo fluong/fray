@@ -43,7 +43,7 @@ Redaction is **on by default**. Keep `FRAY_REDACTION_KEY` set unless you deliber
 ## 4. Copy-paste workflow
 
 Pin third-party actions by **commit SHA**. Use the commit SHA of the release tag
-(`git ls-remote https://github.com/fluong/fray refs/tags/v0.9.0^{}`); tags are
+(`git ls-remote https://github.com/fluong/fray refs/tags/v0.9.1^{}`); tags are
 immutable but SHAs are what Actions guarantees. Replace `<full-commit-sha>` below
 with that 40-character hex.
 
@@ -70,7 +70,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@<full-commit-sha> # v0.9.0
+      - uses: fluong/fray@<full-commit-sha> # v0.9.1
         with:
           api-url: https://api.getfray.dev
           working-directory: .   # Terraform root (directory with .tf files)
