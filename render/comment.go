@@ -6,9 +6,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fluong/fray/client"
 	apiv1 "github.com/fluong/fray/api/v1"
+	"github.com/fluong/fray/client"
+	"github.com/fluong/fray/usermsg"
 )
+
+// NoBaselineNote is the PR-comment line when there is no stored baseline yet.
+const NoBaselineNote = usermsg.NoBaselineNote
 
 func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string, advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichment, waivers *apiv1.Waivers, waiversReported bool) string {
 	byID := indexElements(doc)

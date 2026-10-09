@@ -145,6 +145,41 @@ func TestPRCommentAWSBlockingHigh(t *testing.T) {
 	}
 }
 
+func TestPRCommentNoBaselineAbsolute(t *testing.T) {
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking.dfd.json"))
+	injectElementCause(doc, "e269fe54ebe835ad4", "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-high.findings.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := map[string][]string{
+		"module.uploads": {
+			"block_public_acls",
+			"block_public_policy",
+			"ignore_public_acls",
+			"restrict_public_buckets",
+		},
+	}
+	empty := apiv1.Findings{SchemaVersion: "finding/v1"}
+	got := PRComment(doc, cur, empty, texts, locs, changed, NoBaselineNote, nil, nil, nil, true)
+	wantPath := filepath.Join(root, "golden", "pr-comment-no-baseline.md")
+	want, err := os.ReadFile(wantPath)
+	if err != nil {
+		_ = os.WriteFile("/tmp/pr-comment-no-baseline.md", []byte(got), 0o644)
+		t.Fatalf("missing golden (wrote /tmp/pr-comment-no-baseline.md): %v", err)
+	}
+	if got != string(want) {
+		_ = os.WriteFile("/tmp/pr-comment-no-baseline.md", []byte(got), 0o644)
+		t.Fatalf("no-baseline comment drifted; wrote /tmp/pr-comment-no-baseline.md\n%s", got)
+	}
+	if !strings.HasPrefix(got, NoBaselineNote) {
+		t.Fatalf("want no-baseline note first: %q", got)
+	}
+}
+
 func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
 	// Redaction changes wire ids only. After mapping findings back, PR comments
 	// must match the unredacted golden output for both AWS scenarios.
