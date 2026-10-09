@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fray:mitigation:v1",
   "title": "Fray mitigations",
-  "description": "Customer overlay, kept in the customer repo. An entry accepts one engine finding. The key is rule_id plus a human-readable address. The client translates the address to an element or flow id before the graph or the findings leave CI. Accepted never gates CI. The engine does not emit accepted.",
+  "description": "DEPRECATED — use .fray/waivers.yml (schema/waivers.schema.json). Legacy customer overlay. An entry accepts one engine finding. Non-empty mitigations.yaml is rejected by Action v0.7.0+; migrate entries to waivers (add id/owner/expires, drop status: accepted).",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "entries"],

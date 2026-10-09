@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fray:finding:v1",
   "title": "Fray findings",
-  "description": "Findings cite ids only. The client maps a target id back to a name locally. status is open, mitigated, unverified, or accepted. Accepted is applied by the customer overlay after evaluation; the engine does not emit it. Severity and stride are copied from the rule. Unverified and accepted do not gate CI.",
+  "description": "Findings cite ids only. The client maps a target id back to a name locally. status is open, mitigated, unverified, waived, or accepted. Waived is applied from .fray/waivers.yml (accepted_mitigations v2) after evaluation; the engine does not emit it. Accepted is historical only (legacy mitigations.yaml). Severity and stride are copied from the rule. Unverified, waived, and accepted do not gate CI.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "findings"],
@@ -21,7 +21,7 @@
       "properties": {
         "rule_id": { "type": "string", "pattern": "^FR-[0-9]{3}$" },
         "target": { "type": "string", "pattern": "^[ef][0-9a-f]{16}$" },
-        "status": { "enum": ["open", "mitigated", "unverified", "accepted"] },
+        "status": { "enum": ["open", "mitigated", "unverified", "waived", "accepted"] },
         "severity": { "enum": ["low", "medium", "high"] },
         "stride": {
           "type": "array",
