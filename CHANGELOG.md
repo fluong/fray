@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.10.0] — pending tag
+
+### Added
+- Action input **`plan-file`**: path (relative to `working-directory`) to a
+  `terraform show -json` plan. Skips `setup-terraform` / `terraform init` /
+  `plan` / `show`. Validates JSON (not binary/state), 32 MiB cap, managed
+  `resource_changes`, plan↔source mismatch warning, and refuses an empty DFD
+  before any API call. Docs: README **Bring your own plan**.
+
 ## [0.9.1] — pending tag
 
 ### Security
