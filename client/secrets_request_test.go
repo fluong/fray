@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	apiv1 "github.com/fluong/fray/api/v1"
@@ -55,6 +56,42 @@ func TestNoSecretsInScanRequest(t *testing.T) {
 			t.Fatalf("Parse demo plan: %v", err)
 		}
 		assertSentinelsAbsentInRequests(t, doc, "demo")
+	})
+
+	t.Run("plan_file_fixture", func(t *testing.T) {
+		// External plan-file path: LoadPlanFile → StripSensitive (inside Parse) →
+		// allow-list; sentinels in after_sensitive, sensitive_values, and a
+		// sensitive variable must not reach the ScanRequest.
+		dir := t.TempDir()
+		path := filepath.Join(dir, "plan.json")
+		body := planFileSecretsFixtureJSON()
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		plan, err := client.LoadPlanFile(path)
+		if err != nil {
+			t.Fatalf("LoadPlanFile: %v", err)
+		}
+		cfg := []byte("schema_version: fray-config/v1\naudit_config: owned_by_this_root\n")
+		doc, _, err := client.Parse(plan, cfg, "fray.yaml", client.Source{
+			Repo: "probe/planfile", Commit: "abcdef1234567", Tool: "terraform", Fidelity: "plan",
+		}, t.TempDir())
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		if len(doc.Elements) == 0 {
+			t.Fatal("expected elements from plan-file fixture")
+		}
+		assertSentinelsAbsentInRequests(t, doc, "plan_file")
+		raw, err := client.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range []string{senDBPassword, senSecretString, senRandomResult, senIAMSecret} {
+			if bytes.Contains(raw, []byte(s)) {
+				t.Fatalf("sentinel %q in parsed DFD after LoadPlanFile", s)
+			}
+		}
 	})
 }
 
@@ -398,4 +435,21 @@ func sensitiveProbePlanJSON() string {
     }
   }
 }`
+}
+
+// planFileSecretsFixtureJSON is a terraform show -json body for the plan-file
+// regression: format_version, managed resources, password + secret_string +
+// random_password.result + iam secret, plus planned_values.sensitive_values and
+// a sensitive variable.
+func planFileSecretsFixtureJSON() string {
+	return `{
+  "format_version": "1.2",
+  "terraform_version": "1.5.0",
+  "variables": {
+    "db_password": {
+      "value": "` + senDBPassword + `",
+      "sensitive": true
+    }
+  },
+` + strings.TrimPrefix(strings.TrimSpace(sensitiveProbePlanJSON()), "{")
 }

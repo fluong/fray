@@ -42,9 +42,24 @@ func runRemote(opt options) (bool, error) {
 	}
 	isDefault := opt.Branch == opt.DefaultBranch
 
-	plan, err := os.ReadFile(opt.Plan)
-	if err != nil {
-		return false, err
+	var plan []byte
+	var err error
+	if opt.ExternalPlan {
+		plan, err = client.LoadPlanFile(opt.Plan)
+		if err != nil {
+			annotateError(planFileUserError(err))
+			return false, err
+		}
+		if n, matchErr := client.CountUnmatchedPlanAddresses(plan, opt.Source); matchErr != nil {
+			return false, matchErr
+		} else if n > 0 {
+			annotateWarning(usermsg.SeeTroubleshooting(client.PlanMismatchWarning(n)))
+		}
+	} else {
+		plan, err = os.ReadFile(opt.Plan)
+		if err != nil {
+			return false, err
+		}
 	}
 	// Strip before Parse so sensitive-marked plan values never reach DFD
 	// construction (Parse also strips; this keeps the CLI entry explicit).
@@ -72,6 +87,11 @@ func runRemote(opt options) (bool, error) {
 	}
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
+	}
+	if opt.ExternalPlan && len(doc.Elements) == 0 {
+		msg := usermsg.SeeTroubleshooting(client.ErrPlanEmptyDFD.Error())
+		annotateError(msg)
+		return false, client.ErrPlanEmptyDFD
 	}
 
 	now := time.Now().UTC()
@@ -327,6 +347,22 @@ func reportWaivers(w *apiv1.Waivers, reported bool) {
 		_, _ = f.WriteString(text)
 		_ = f.Close()
 	}
+}
+
+func annotateError(msg string) {
+	fmt.Fprintf(os.Stdout, "::error::%s\n", escapeWorkflowCommand(msg))
+}
+
+func annotateWarning(msg string) {
+	fmt.Fprintf(os.Stdout, "::warning::%s\n", escapeWorkflowCommand(msg))
+}
+
+func planFileUserError(err error) string {
+	msg := err.Error()
+	if strings.Contains(msg, usermsg.TroubleshootingURL) {
+		return msg
+	}
+	return usermsg.SeeTroubleshooting(msg)
 }
 
 func remapFindings(f *apiv1.Findings, m client.IDMap) {

@@ -29,6 +29,7 @@ func main() {
 	flag.BoolVar(&opt.DryRun, "dry-run", false, "build the scan payload but do not POST")
 	flag.BoolVar(&opt.ShowPayload, "show-payload", false, "print the exact JSON that would be sent")
 	flag.BoolVar(&opt.FailOnUnenrolled, "fail-on-unenrolled", false, "exit non-zero when the GitHub App install does not cover this repo")
+	flag.BoolVar(&opt.ExternalPlan, "external-plan", false, "plan came from Action plan-file (validate JSON, warn on source mismatch, refuse empty DFD)")
 	flag.Parse()
 
 	if opt.Plan == "" || opt.Source == "" || opt.Config == "" || opt.Remote == "" {
