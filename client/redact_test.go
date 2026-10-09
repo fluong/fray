@@ -153,6 +153,83 @@ func TestHashFieldDomainSeparation(t *testing.T) {
 	}
 }
 
+// TestPlanDerivedSignalsHashedUnderRedaction covers evidence signal names that
+// come from plan values (AWS world CIDRs, GCP secret_id): with redaction on they
+// must be HMAC digests and must not appear as plaintext in the wire DFD.
+func TestPlanDerivedSignalsHashedUnderRedaction(t *testing.T) {
+	const (
+		cidr     = "0.0.0.0/0"
+		secretID = "fray-database-url-probe"
+	)
+	doc := client.DFD{
+		SchemaVersion: "dfd/v1",
+		Source:        client.Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"},
+		Elements: []client.Element{
+			{
+				Name: "Public client", Type: "external_entity", Kind: "public_client",
+				Provenance: "inferred",
+				Evidence:   client.Evidence{Signals: []client.Signal{{Type: "network_ingress", Name: cidr}}},
+			},
+			{
+				Name: "Postgres", Type: "datastore", Kind: "relational_db",
+				Provenance: "inferred",
+				Evidence:   client.Evidence{Signals: []client.Signal{{Type: "secret_name", Name: secretID}}},
+			},
+		},
+	}
+
+	key := mustKey(t)
+	redacted, idMap, err := client.Redact(doc, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := client.Marshal(redacted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(wire, []byte(cidr)) {
+		t.Fatal("CIDR signal name still plaintext under redaction")
+	}
+	if bytes.Contains(wire, []byte(secretID)) {
+		t.Fatal("GCP secret_id signal name still plaintext under redaction")
+	}
+	wantCIDR := client.HashField(key, "signal.name", cidr)
+	wantSec := client.HashField(key, "signal.name", secretID)
+	foundCIDR, foundSec := false, false
+	for _, el := range redacted.Elements {
+		for _, sig := range el.Evidence.Signals {
+			if sig.Name == wantCIDR {
+				foundCIDR = true
+			}
+			if sig.Name == wantSec {
+				foundSec = true
+			}
+		}
+	}
+	if !foundCIDR || !foundSec {
+		t.Fatalf("expected hashed signals; cidr=%v secret=%v", foundCIDR, foundSec)
+	}
+	if err := client.AssertNoPlaintext(wire, idMap.Plaintext); err != nil {
+		t.Fatal(err)
+	}
+	// Fixture path: AWS plan emits network_ingress 0.0.0.0/0 — same guarantee.
+	aws := loadAWSFixture(t)
+	awsRedacted, awsMap, err := client.Redact(aws, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	awsWire, err := client.Marshal(awsRedacted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(awsWire, []byte(cidr)) {
+		t.Fatal("fixture CIDR still plaintext under redaction")
+	}
+	if err := client.AssertNoPlaintext(awsWire, awsMap.Plaintext); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func loadAWSFixture(t *testing.T) client.DFD {
 	t.Helper()
 	plan, err := os.ReadFile(filepath.Join("testdata", "aws-plan.json"))

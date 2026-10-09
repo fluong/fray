@@ -137,6 +137,14 @@ type frayAnnotations struct {
 // the plan JSON omits it. An empty moduleDir skips that read. Warnings are
 // ambiguity: the parser emitted nothing for that decision.
 func Parse(plan, config []byte, declaredSource string, src Source, moduleDir string) (DFD, []string, error) {
+	// Defense in depth: blank Terraform-marked sensitive values before any
+	// attribute or name is read into the DFD (Action and CLI share this path).
+	stripped, _, err := StripSensitive(plan)
+	if err != nil {
+		return DFD{}, nil, fmt.Errorf("strip sensitive plan values: %w", err)
+	}
+	plan = stripped
+
 	resources, err := loadResources(plan)
 	if err != nil {
 		return DFD{}, nil, err
@@ -306,6 +314,8 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		}
 		boundaries = append(boundaries, bound)
 	}
+	sanitizeAttributes(elements)
+
 	doc := DFD{
 		SchemaVersion:   "dfd/v1",
 		Source:          src,

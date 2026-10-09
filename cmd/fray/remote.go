@@ -46,6 +46,12 @@ func runRemote(opt options) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Strip before Parse so sensitive-marked plan values never reach DFD
+	// construction (Parse also strips; this keeps the CLI entry explicit).
+	plan, _, err = client.StripSensitive(plan)
+	if err != nil {
+		return false, fmt.Errorf("strip sensitive plan values: %w", err)
+	}
 	cfg, err := os.ReadFile(opt.Config)
 	if err != nil {
 		return false, err
