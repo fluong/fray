@@ -2,13 +2,19 @@
 
 ## [Unreleased]
 
+## [0.8.1] — pending tag
+
+### Fixed
+- Don't upload waived findings to code scanning (GitHub does not honour SARIF
+  suppressions; v0.8.0 re-opened waived alerts).
+
 ## [0.8.0] — pending tag
 
 ### Added
 - SARIF **`partialFingerprints["fray/v1"]`**: sha256 hex of
   `<rule_id>|<cause Terraform address>` (falls back to `<rule_id>|<DFD id>`),
   stable across HCL line moves.
-- SARIF driver metadata: `version` / `semanticVersion` (`0.8.0`) and
+- SARIF driver metadata: `version` / `semanticVersion` and
   `informationUri` (`https://github.com/fluong/fray`). Per-rule `helpUri` is
   omitted until public docs have rule anchors.
 - Action input **`upload-sarif`** (default `true`): set `false` to skip
@@ -19,11 +25,11 @@
   code scanning on private repos.
 
 ### Changed
-- SARIF includes **`waived`** findings with
-  `suppressions: [{kind: external, status: accepted, justification: ...}]`
-  (waiver id + expires only — never reason/owner). Mitigated / unverified /
-  legacy `accepted` findings remain omitted so Code Scanning closes them as
-  fixed when they leave the open set.
+- ~~SARIF included waived findings with SARIF `suppressions`.~~ **Reverted in
+  0.8.1** — GitHub Code Scanning imports suppressed results as open alerts.
+  Waived / mitigated / unverified / legacy `accepted` findings are omitted from
+  SARIF so Code Scanning closes prior alerts as fixed; the accepted-risk record
+  remains `.fray/waivers.yml`, the PR comment, and the Fray dashboard.
 
 ## [0.7.0] — pending tag
 

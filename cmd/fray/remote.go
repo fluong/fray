@@ -79,9 +79,6 @@ func runRemote(opt options) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	// Local-id copy for SARIF suppressions (before wire remapping).
-	acceptedLocal := make([]apiv1.Accepted, len(accepted))
-	copy(acceptedLocal, accepted)
 
 	wireDoc := doc
 	idMap := client.IDMap{}
@@ -269,7 +266,7 @@ func runRemote(opt options) (bool, error) {
 	if err := os.WriteFile(filepath.Join(opt.Out, "threat-model.md"), []byte(report), 0o644); err != nil {
 		return false, err
 	}
-	sarif, err := render.SARIF(doc, resp.Findings, texts, locs, changedInputs, acceptedLocal)
+	sarif, err := render.SARIF(doc, resp.Findings, texts, locs, changedInputs)
 	if err != nil {
 		return false, err
 	}

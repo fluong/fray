@@ -27,7 +27,7 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw, err := SARIF(doc, findings, texts, locs, nil, nil)
+	raw, err := SARIF(doc, findings, texts, locs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,12 +74,12 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 
 	wantN := 0
 	for _, f := range findings.Findings {
-		if f.Status == "open" || f.Status == "waived" {
+		if f.Status == "open" {
 			wantN++
 		}
 	}
 	if len(docSARIF.Runs[0].Results) != wantN {
-		t.Fatalf("results %d want %d open/waived findings", len(docSARIF.Runs[0].Results), wantN)
+		t.Fatalf("results %d want %d open findings", len(docSARIF.Runs[0].Results), wantN)
 	}
 
 	var fr010 *struct {
@@ -144,7 +144,7 @@ func TestSARIFFallbackLocationWhenUnknown(t *testing.T) {
 		Severity: "high",
 	}}}
 	texts := map[string]apiv1.RuleText{"FR-010": {ID: "FR-010", Title: "Object storage is not public"}}
-	raw, err := SARIF(doc, findings, texts, nil, nil, nil)
+	raw, err := SARIF(doc, findings, texts, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestSARIFGolden(t *testing.T) {
 		"FR-001": {ID: "FR-001", Title: "Example medium"},
 		"FR-003": {ID: "FR-003", Title: "Example low"},
 	}
-	raw, err := SARIF(doc, findings, texts, nil, nil, nil)
+	raw, err := SARIF(doc, findings, texts, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestSARIFFR025AttributeRegion(t *testing.T) {
 			"restrict_public_buckets",
 		},
 	}
-	raw, err := SARIF(doc, findings, texts, locs, changed, nil)
+	raw, err := SARIF(doc, findings, texts, locs, changed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ resource "aws_s3_bucket_public_access_block" "this" {
 	return dst
 }
 
-func TestSARIFWaivedSuppression(t *testing.T) {
+func TestSARIFOmitsWaivedAndNonOpen(t *testing.T) {
 	doc := client.DFD{
 		Elements: []client.Element{{
 			ID:   "e1",
@@ -389,15 +389,12 @@ func TestSARIFWaivedSuppression(t *testing.T) {
 		"FR-010": {ID: "FR-010", Title: "Object storage is not public"},
 		"FR-012": {ID: "FR-012", Title: "Object storage cannot be destroyed by the tool"},
 	}
-	waivers := []apiv1.Accepted{{
-		RuleID: "FR-010", TargetID: "e1", ID: "public-assets", Expires: "2026-12-08",
-	}}
-	raw, err := SARIF(doc, findings, texts, nil, nil, waivers)
+	raw, err := SARIF(doc, findings, texts, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "reason") || strings.Contains(string(raw), "owner") {
-		t.Fatalf("SARIF must not include reason/owner text: %s", raw)
+	if strings.Contains(string(raw), "suppressions") {
+		t.Fatalf("SARIF must not emit suppressions: %s", raw)
 	}
 
 	var docSARIF struct {
@@ -411,13 +408,7 @@ func TestSARIFWaivedSuppression(t *testing.T) {
 				} `json:"driver"`
 			} `json:"tool"`
 			Results []struct {
-				RuleID              string            `json:"ruleId"`
-				PartialFingerprints map[string]string `json:"partialFingerprints"`
-				Suppressions        []struct {
-					Kind          string `json:"kind"`
-					Status        string `json:"status"`
-					Justification string `json:"justification"`
-				} `json:"suppressions"`
+				RuleID string `json:"ruleId"`
 			} `json:"results"`
 		} `json:"runs"`
 	}
@@ -431,37 +422,8 @@ func TestSARIFWaivedSuppression(t *testing.T) {
 	if drv.InformationURI != version.InformationURI {
 		t.Fatalf("informationUri %q", drv.InformationURI)
 	}
-	if len(docSARIF.Runs[0].Results) != 2 {
-		t.Fatalf("want open+waived only, got %d results", len(docSARIF.Runs[0].Results))
-	}
-	var waived *struct {
-		RuleID              string            `json:"ruleId"`
-		PartialFingerprints map[string]string `json:"partialFingerprints"`
-		Suppressions        []struct {
-			Kind          string `json:"kind"`
-			Status        string `json:"status"`
-			Justification string `json:"justification"`
-		} `json:"suppressions"`
-	}
-	for i := range docSARIF.Runs[0].Results {
-		r := &docSARIF.Runs[0].Results[i]
-		if r.RuleID == "FR-010" {
-			waived = r
-			break
-		}
-	}
-	if waived == nil || len(waived.Suppressions) != 1 {
-		t.Fatalf("waived result %+v", waived)
-	}
-	s := waived.Suppressions[0]
-	wantJust := "Waived via .fray/waivers.yml (id public-assets, until 2026-12-08)"
-	if s.Kind != "external" || s.Status != "accepted" || s.Justification != wantJust {
-		t.Fatalf("suppression %+v", s)
-	}
-	fp := waived.PartialFingerprints["fray/v1"]
-	wantFP := Fingerprint("FR-010", "aws_s3_bucket.assets", "e1")
-	if fp != wantFP {
-		t.Fatalf("fingerprint %s want %s", fp, wantFP)
+	if len(docSARIF.Runs[0].Results) != 1 || docSARIF.Runs[0].Results[0].RuleID != "FR-012" {
+		t.Fatalf("want only open FR-012, got %+v", docSARIF.Runs[0].Results)
 	}
 }
 
@@ -514,11 +476,11 @@ resource "aws_s3_bucket" "logs" {
 	}}
 	texts := map[string]apiv1.RuleText{"FR-010": {ID: "FR-010", Title: "Object storage is not public"}}
 
-	raw1, err := SARIF(doc, findings, texts, locs1, nil, nil)
+	raw1, err := SARIF(doc, findings, texts, locs1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw2, err := SARIF(doc, findings, texts, locs2, nil, nil)
+	raw2, err := SARIF(doc, findings, texts, locs2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +549,7 @@ func TestSARIFFingerprintFallbackToDFDID(t *testing.T) {
 		{RuleID: "FR-010", Target: "e-no-addr", Status: "open", Severity: "high"},
 	}}
 	texts := map[string]apiv1.RuleText{"FR-010": {ID: "FR-010", Title: "Object storage is not public"}}
-	raw, err := SARIF(doc, findings, texts, nil, nil, nil)
+	raw, err := SARIF(doc, findings, texts, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

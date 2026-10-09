@@ -262,9 +262,11 @@ On each run the Action:
    enabled. Upload failures are non-fatal (`continue-on-error`) and emit a
    warning. Results include `properties.security-severity` (high 7.5, medium
    5.0, low 3.0) so Code Scanning’s “check run failure” threshold (default High
-   or higher) agrees with Fray’s high-severity gate. **Waived** findings appear
-   as dismissed alerts (`suppressions` with the waiver id); **mitigated**
-   findings are omitted from SARIF so Code Scanning closes them as fixed.
+   or higher) agrees with Fray’s high-severity gate. **Waived** and **mitigated**
+   findings are not uploaded to Code Scanning (GitHub ignores SARIF
+   `suppressions`), so their alerts close as fixed there. The accepted-risk
+   record is `.fray/waivers.yml`, the PR comment’s Waivers section, and the Fray
+   dashboard — not the Security tab.
 5. Exits non-zero when the merge gate blocks
 
 Optional waivers live at `.fray/waivers.yml` (Action input `waivers-file`). See
@@ -273,7 +275,7 @@ Optional waivers live at `.fray/waivers.yml` (Action input `waivers-file`). See
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.8.0
+go install github.com/fluong/fray/cmd/fray@v0.8.1
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 export FRAY_API_URL=https://api.getfray.dev

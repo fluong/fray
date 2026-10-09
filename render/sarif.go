@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -18,13 +17,12 @@ const sarifSchema = "https://json.schemastore.org/sarif-2.1.0.json"
 // partialFingerprintKey is the stable identity namespace for Code Scanning.
 const partialFingerprintKey = "fray/v1"
 
-// SARIF encodes open and waived findings as SARIF 2.1.0 for
-// github/codeql-action/upload-sarif. Mitigated, unverified, and legacy accepted
-// findings are omitted (mitigated disappear as fixed in Code Scanning).
-//
-// Waived findings include suppressions (kind external, status accepted) so
-// Code Scanning shows them as dismissed. Justification carries waiver id and
-// expires only — never reason or owner.
+// SARIF encodes open findings as SARIF 2.1.0 for github/codeql-action/upload-sarif.
+// Waived, mitigated, unverified, and legacy accepted findings are omitted —
+// GitHub Code Scanning ignores SARIF suppressions, so waived must not be
+// uploaded (they would reopen as open alerts). Omitting them closes prior
+// alerts as fixed; the accepted-risk record stays in .fray/waivers.yml, the PR
+// comment, and the Fray dashboard.
 //
 // Locations come from CauseAddress looked up in locs. When changedInputs names
 // module arguments for a finding's cause, the primary region spans those
@@ -39,33 +37,27 @@ const partialFingerprintKey = "fray/v1"
 // Fray's high-severity gate: high→7.5, medium→5.0, low→3.0, critical→9.0.
 // Rule properties.tags always includes "security" so security-severity counts.
 //
-// waivers indexes local-id Accepted rows (id + expires) for suppression text.
 // helpUri is omitted: public docs have no per-rule anchors yet.
-func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, waivers []apiv1.Accepted) ([]byte, error) {
+func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string) ([]byte, error) {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
-	waiverByKey := indexWaiverRefs(waivers)
 
-	var include []apiv1.Finding
+	var open []apiv1.Finding
 	for _, f := range findings.Findings {
-		switch f.Status {
-		case "open", "waived":
-			include = append(include, f)
+		if f.Status == "open" {
+			open = append(open, f)
 		}
 	}
-	slices.SortFunc(include, func(a, b apiv1.Finding) int {
+	slices.SortFunc(open, func(a, b apiv1.Finding) int {
 		if a.RuleID != b.RuleID {
 			return strings.Compare(a.RuleID, b.RuleID)
 		}
-		if a.Target != b.Target {
-			return strings.Compare(a.Target, b.Target)
-		}
-		return strings.Compare(a.Status, b.Status)
+		return strings.Compare(a.Target, b.Target)
 	})
 
-	rules := sarifRules(include, texts)
-	results := make([]sarifResult, 0, len(include))
-	for _, f := range include {
+	rules := sarifRules(open, texts)
+	results := make([]sarifResult, 0, len(open))
+	for _, f := range open {
 		rule := texts[f.RuleID]
 		msg := rule.Title
 		if msg == "" {
@@ -83,13 +75,6 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 			PartialFingerprints: map[string]string{
 				partialFingerprintKey: Fingerprint(f.RuleID, cause, f.Target),
 			},
-		}
-		if f.Status == "waived" {
-			r.Suppressions = []sarifSuppression{{
-				Kind:          "external",
-				Status:        "accepted",
-				Justification: waiverJustification(f, waiverByKey),
-			}}
 		}
 		phys := sarifPhysical{
 			ArtifactLocation: sarifArtifact{URI: "fray.yaml"},
@@ -173,24 +158,6 @@ func Fingerprint(ruleID, causeAddress, targetID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func indexWaiverRefs(waivers []apiv1.Accepted) map[string]apiv1.Accepted {
-	out := make(map[string]apiv1.Accepted, len(waivers))
-	for _, w := range waivers {
-		if w.RuleID == "" || w.TargetID == "" || w.ID == "" {
-			continue
-		}
-		out[w.RuleID+"\x00"+w.TargetID] = w
-	}
-	return out
-}
-
-func waiverJustification(f apiv1.Finding, byKey map[string]apiv1.Accepted) string {
-	if w, ok := byKey[f.RuleID+"\x00"+f.Target]; ok {
-		return fmt.Sprintf("Waived via .fray/waivers.yml (id %s, until %s)", w.ID, w.Expires)
-	}
-	return "Waived via .fray/waivers.yml"
-}
-
 func sarifRegionFromLoc(loc client.SourceLocation) *sarifRegion {
 	r := &sarifRegion{StartLine: loc.Line}
 	if loc.EndLine > loc.Line {
@@ -229,11 +196,11 @@ func sarifSecuritySeverity(severity string) string {
 	}
 }
 
-func sarifRules(include []apiv1.Finding, texts map[string]apiv1.RuleText) []sarifReportingDescriptor {
+func sarifRules(open []apiv1.Finding, texts map[string]apiv1.RuleText) []sarifReportingDescriptor {
 	seen := map[string]bool{}
 	var ids []string
 	severityByRule := map[string]string{}
-	for _, f := range include {
+	for _, f := range open {
 		if !seen[f.RuleID] {
 			seen[f.RuleID] = true
 			ids = append(ids, f.RuleID)
@@ -293,20 +260,13 @@ type sarifReportingDescriptor struct {
 }
 
 type sarifResult struct {
-	RuleID              string              `json:"ruleId"`
-	Level               string              `json:"level"`
-	Message             sarifMessage        `json:"message"`
-	Locations           []sarifLocation     `json:"locations,omitempty"`
-	RelatedLocations    []sarifLocation     `json:"relatedLocations,omitempty"`
-	PartialFingerprints map[string]string   `json:"partialFingerprints,omitempty"`
-	Suppressions        []sarifSuppression  `json:"suppressions,omitempty"`
-	Properties          *sarifProperties    `json:"properties,omitempty"`
-}
-
-type sarifSuppression struct {
-	Kind          string `json:"kind"`
-	Status        string `json:"status,omitempty"`
-	Justification string `json:"justification,omitempty"`
+	RuleID              string            `json:"ruleId"`
+	Level               string            `json:"level"`
+	Message             sarifMessage      `json:"message"`
+	Locations           []sarifLocation   `json:"locations,omitempty"`
+	RelatedLocations    []sarifLocation   `json:"relatedLocations,omitempty"`
+	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
+	Properties          *sarifProperties  `json:"properties,omitempty"`
 }
 
 type sarifProperties struct {
