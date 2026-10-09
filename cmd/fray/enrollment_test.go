@@ -131,8 +131,11 @@ func TestEnrollmentMessagesAndFailFlag(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !strings.Contains(string(sum), "## Fray") {
+				if !strings.Contains(string(sum), "## Fray — enrollment") {
 					t.Fatalf("summary missing heading: %s", sum)
+				}
+				if !strings.Contains(got, "https://github.com/fluong/fray#troubleshooting") {
+					t.Fatalf("annotation missing troubleshooting: %q", got)
 				}
 				if !strings.Contains(string(sum), sanitizeSummaryText(primary)) {
 					t.Fatalf("summary missing message: %s", sum)

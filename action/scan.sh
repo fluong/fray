@@ -28,21 +28,33 @@ s=sys.argv[1].replace("\r\n","\n").replace("\r","\n").replace("\n"," ")
 print(html.escape(s))' "$1"
 }
 
-# Handle a rate_limited marker: warn (default) or fail when fail-on-rate-limit.
-# Args: message retry_after. Uses FRAY_FAIL_ON_RATE_LIMIT, GITHUB_STEP_SUMMARY.
+FRAY_TROUBLESHOOT_URL="https://github.com/fluong/fray#troubleshooting"
+FRAY_RATE_LIMIT_HINT=" Free plan: 30 scans/repo/hour and 100/org/day — see README Limits. Wait for retry-after, then re-run. See ${FRAY_TROUBLESHOOT_URL}."
+
+# Soft-skip becomes a hard failure when fail-on-skip or the specific flag is set.
+fail_soft_skip() {
+  is_true "${FRAY_FAIL_ON_SKIP:-false}" && return 0
+  return 1
+}
+
+# Handle a rate_limited marker: warn (default) or fail when fail-on-rate-limit
+# or fail-on-skip. Args: message retry_after.
+# Uses FRAY_FAIL_ON_RATE_LIMIT, FRAY_FAIL_ON_SKIP, GITHUB_STEP_SUMMARY.
 handle_rate_limited_marker() {
   local message=$1
   local retry_after=$2
+  local plain
+  plain="${message} (retry after ${retry_after} s)${FRAY_RATE_LIMIT_HINT}"
   local notice
-  notice="$(escape_workflow_command "${message} (retry after ${retry_after} s)")"
+  notice="$(escape_workflow_command "${plain}")"
   local summary
-  summary="$(sanitize_summary_text "${message} (retry after ${retry_after} s)")"
+  summary="$(sanitize_summary_text "${plain}")"
 
-  if is_true "${FRAY_FAIL_ON_RATE_LIMIT:-false}"; then
+  if is_true "${FRAY_FAIL_ON_RATE_LIMIT:-false}" || fail_soft_skip; then
     echo "::error::${notice}"
     if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
       {
-        echo "## Fray"
+        echo "## Fray — rate limited (job failed)"
         echo ""
         echo "${summary}"
       } >>"$GITHUB_STEP_SUMMARY"
@@ -52,9 +64,11 @@ handle_rate_limited_marker() {
   echo "::warning::${notice}"
   if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
-      echo "## Fray"
+      echo "## Fray — rate limited (soft-skip)"
       echo ""
       echo "${summary}"
+      echo ""
+      echo "Set \`fail-on-skip: true\` or \`fail-on-rate-limit: true\` to fail the job instead."
     } >>"$GITHUB_STEP_SUMMARY"
   fi
   return 0
@@ -152,11 +166,16 @@ waivers="${root}/${FRAY_WAIVERS_FILE:-.fray/waivers.yml}"
 mitigations="${root}/mitigations.yaml"
 
 if [[ ! -d "$workdir" ]]; then
-  echo "::error::working-directory not found: ${FRAY_WORKDIR}"
+  echo "::error::working-directory not found: ${FRAY_WORKDIR}. Set the Action input working-directory to your Terraform root (directory with .tf files), relative to the repository root. See ${FRAY_TROUBLESHOOT_URL}."
   exit 2
 fi
 if [[ ! -f "$config" ]]; then
-  echo "::error::fray.yaml not found: ${FRAY_CONFIG}"
+  echo "::error::fray.yaml not found: ${FRAY_CONFIG}. Add a file with: schema_version: fray-config/v1 (see README Config). See ${FRAY_TROUBLESHOOT_URL}."
+  exit 2
+fi
+# shellcheck disable=SC2010
+if ! ls -1 "$workdir"/*.tf >/dev/null 2>&1; then
+  echo "::error::No Terraform (.tf) files in working-directory: ${FRAY_WORKDIR}. Set working-directory to your Terraform root (directory with .tf files), relative to the repository root. See ${FRAY_TROUBLESHOOT_URL}."
   exit 2
 fi
 
@@ -165,11 +184,17 @@ plan_bin="${FRAY_OUT}/tfplan"
 plan_json="${FRAY_OUT}/plan.json"
 
 echo "::group::terraform init"
-terraform -chdir="$workdir" init -input=false -no-color
+if ! terraform -chdir="$workdir" init -input=false -no-color; then
+  echo "::error::terraform init failed in ${FRAY_WORKDIR}. Fray runs terraform init/plan in CI — ensure provider and backend credentials are available to the job (same as your normal plan workflow). See ${FRAY_TROUBLESHOOT_URL}."
+  exit 1
+fi
 echo "::endgroup::"
 
 echo "::group::terraform plan"
-terraform -chdir="$workdir" plan -input=false -no-color -out="$plan_bin"
+if ! terraform -chdir="$workdir" plan -input=false -no-color -out="$plan_bin"; then
+  echo "::error::terraform plan failed in ${FRAY_WORKDIR}. Fray runs terraform init/plan in CI — ensure provider and backend credentials are available to the job (same as your normal plan workflow). See ${FRAY_TROUBLESHOOT_URL}."
+  exit 1
+fi
 echo "::endgroup::"
 
 terraform -chdir="$workdir" show -json "$plan_bin" >"$plan_json"
@@ -228,7 +253,7 @@ fi
 if is_true "${FRAY_SHOW_PAYLOAD:-false}"; then
   args+=(-payload-out "${FRAY_OUT}/payload.json")
 fi
-if is_true "${FRAY_FAIL_ON_UNENROLLED:-false}"; then
+if is_true "${FRAY_FAIL_ON_UNENROLLED:-false}" || fail_soft_skip; then
   args+=(-fail-on-unenrolled)
 fi
 if [[ -n "$base_commit" ]]; then

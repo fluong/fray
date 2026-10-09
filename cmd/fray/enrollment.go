@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/fluong/fray/usermsg"
 )
 
 // Enrollment rejection codes from POST /v1/scans when OIDC is valid but the
@@ -25,9 +27,9 @@ const maxServerMessageChars = 300
 
 // Fixed Action messages (server message is untrusted and never used alone).
 var enrollmentMessages = map[string]string{
-	codeInstallationInactive: "The Fray GitHub App is not installed (or is suspended) for this account. Install it: https://github.com/apps/fray-getfray-dev",
-	codeRepoNotEnrolled:      "This repository is not selected in the Fray GitHub App installation. Add it under Repository access: https://github.com/settings/installations",
-	codeInstallationOverCap:  "The Fray installation grants access to more repositories than the free plan allows. Narrow repository access to the repos you want scanned: https://github.com/settings/installations",
+	codeInstallationInactive: usermsg.SeeTroubleshooting("The Fray GitHub App is not installed (or is suspended) for this account. Install it: https://github.com/apps/fray-getfray-dev"),
+	codeRepoNotEnrolled:      usermsg.SeeTroubleshooting("This repository is not selected in the Fray GitHub App installation. Add it under Repository access: https://github.com/settings/installations"),
+	codeInstallationOverCap:  usermsg.SeeTroubleshooting("The Fray installation grants access to more repositories than the free plan allows. Narrow repository access to the repos you want scanned: https://github.com/settings/installations"),
 }
 
 func knownEnrollmentCode(code string) bool {
@@ -155,7 +157,14 @@ func reportEnrollment(code, serverMsg string, fail bool) {
 			return
 		}
 		defer f.Close()
-		_, _ = fmt.Fprintf(f, "## Fray\n\n%s\n", sanitizeSummaryText(notice))
+		title := "## Fray — enrollment soft-skip"
+		if fail {
+			title = "## Fray — enrollment (job failed)"
+		}
+		_, _ = fmt.Fprintf(f, "%s\n\n%s\n\n", title, sanitizeSummaryText(notice))
+		if !fail {
+			_, _ = fmt.Fprintf(f, "Set `fail-on-skip: true` or `fail-on-unenrolled: true` to fail the job instead.\n")
+		}
 	}
 }
 

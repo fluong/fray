@@ -16,6 +16,7 @@ import (
 	apiv1 "github.com/fluong/fray/api/v1"
 	"github.com/fluong/fray/client"
 	"github.com/fluong/fray/render"
+	"github.com/fluong/fray/usermsg"
 )
 
 // errEnrollmentRejected is returned when fail-on-unenrolled is true and the
@@ -171,7 +172,7 @@ func runRemote(opt options) (bool, error) {
 	clientHTTP := &http.Client{Timeout: 60 * time.Second}
 	httpResp, err := clientHTTP.Do(httpReq)
 	if err != nil {
-		return false, err
+		return false, errors.New(usermsg.SeeTroubleshooting(usermsg.APIRequestFailed(err.Error())))
 	}
 	defer httpResp.Body.Close()
 	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, maxEnrollmentBody+1))
@@ -207,7 +208,8 @@ func runRemote(opt options) (bool, error) {
 			// Server validation (horizons, schema) — show verbatim.
 			return false, errors.New(msg)
 		}
-		return false, fmt.Errorf("remote scan: %s: %s", httpResp.Status, truncate(respBody, 200))
+		detail := fmt.Sprintf("%s: %s", httpResp.Status, truncate(respBody, 200))
+		return false, errors.New(usermsg.SeeTroubleshooting(usermsg.APIRequestFailed(detail)))
 	}
 
 	var resp apiv1.ScanResponse
@@ -276,29 +278,21 @@ func runRemote(opt options) (bool, error) {
 
 	reportWaivers(resp.Waivers, waiversReported)
 
+	// Always write a PR comment on a successful scan. With no baseline findings,
+	// render absolute-mode open findings and explain that comparison starts later.
+	baselineNote := resp.Baseline.Note
 	var baseline apiv1.Findings
-	haveBaseline := resp.Baseline.Findings != nil
-	if haveBaseline {
+	if resp.Baseline.Findings != nil {
 		baseline = *resp.Baseline.Findings
-		comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
-		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
-			return false, err
+	} else {
+		baseline = apiv1.Findings{SchemaVersion: "finding/v1"}
+		if baselineNote == "" {
+			baselineNote = render.NoBaselineNote
 		}
 	}
-	// Also write a comment when the server reports an incomparable baseline note
-	// with no finding delta (absolute-mode key rotation on a clean PR).
-	if !haveBaseline && resp.Baseline.Note != "" {
-		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, resp.Baseline.Note, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
-		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
-			return false, err
-		}
-	}
-	// Waivers-only comment when there is no baseline delta but waivers were reported.
-	if !haveBaseline && resp.Baseline.Note == "" && waiversReported && resp.Waivers != nil && waiversSectionNonEmpty(resp.Waivers) {
-		comment := render.PRComment(doc, resp.Findings, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, locs, changedInputs, "", resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
-		if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
-			return false, err
-		}
+	comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, baselineNote, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
+	if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
+		return false, err
 	}
 	return resp.Gate.Blocked, nil
 }
@@ -311,14 +305,6 @@ func waiverErrorMessage(body []byte) string {
 		return ""
 	}
 	return errBody.Message
-}
-
-func waiversSectionNonEmpty(w *apiv1.Waivers) bool {
-	if w == nil {
-		return false
-	}
-	return len(w.Applied) > 0 || len(w.Expired) > 0 || len(w.Stale) > 0 ||
-		len(w.ExpiringSoon) > 0 || len(w.NewInPR) > 0
 }
 
 func reportWaivers(w *apiv1.Waivers, reported bool) {

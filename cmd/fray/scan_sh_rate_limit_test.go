@@ -49,6 +49,12 @@ func TestScanShFailOnRateLimit(t *testing.T) {
 			if !strings.Contains(got, "retry after 45 s") {
 				t.Fatalf("missing retry after: %q", got)
 			}
+			if !strings.Contains(got, "30 scans/repo/hour") {
+				t.Fatalf("missing free-plan limits: %q", got)
+			}
+			if !strings.Contains(got, "https://github.com/fluong/fray#troubleshooting") {
+				t.Fatalf("missing troubleshooting anchor: %q", got)
+			}
 
 			sum, err := os.ReadFile(summary)
 			if err != nil {
@@ -61,6 +67,26 @@ func TestScanShFailOnRateLimit(t *testing.T) {
 				t.Fatalf("summary missing retry: %s", sum)
 			}
 		})
+	}
+}
+
+func TestScanShFailOnSkipRateLimit(t *testing.T) {
+	script := filepath.Join(repoRoot(t), "action", "scan.sh")
+	cmd := exec.Command("bash", script, "--self-test-rate-limit", "quota", "9")
+	cmd.Env = append(os.Environ(),
+		"FRAY_FAIL_ON_SKIP=true",
+		"FRAY_FAIL_ON_RATE_LIMIT=false",
+	)
+	out, err := cmd.CombinedOutput()
+	got := string(out)
+	if err == nil {
+		t.Fatalf("fail-on-skip should fail soft rate-limit skip, got %q", got)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(got), "::error::") {
+		t.Fatalf("want ::error::, got %q", got)
+	}
+	if !strings.Contains(got, "30 scans/repo/hour") || !strings.Contains(got, "https://github.com/fluong/fray#troubleshooting") {
+		t.Fatalf("want limits + troubleshooting: %q", got)
 	}
 }
 

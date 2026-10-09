@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/fluong/fray/usermsg"
 )
 
 // Rate-limit outcome from POST /v1/scans (HTTP 429).
@@ -106,7 +108,8 @@ func formatRateLimitedNotice(serverMsg string, retryAfter int) string {
 	} else {
 		msg = truncateRunes(msg, maxServerMessageChars)
 	}
-	return fmt.Sprintf("%s (retry after %d s)", msg, retryAfter)
+	notice := fmt.Sprintf("%s (retry after %d s)", msg, retryAfter) + usermsg.RateLimitFreePlan
+	return usermsg.SeeTroubleshooting(notice)
 }
 
 // reportRateLimitedStderr prints a single clear line on stderr for local/CI logs.

@@ -37,11 +37,11 @@ type IDMap struct {
 func ParseRedactionKey(hexKey string) ([]byte, error) {
 	hexKey = strings.TrimSpace(hexKey)
 	if hexKey == "" {
-		return nil, fmt.Errorf("FRAY_REDACTION_KEY is required (redaction is on by default).\nSet a 32-byte hex key:\n  %s", setupKeyCommand)
+		return nil, fmt.Errorf("FRAY_REDACTION_KEY is required (redaction is on by default). Set a 32-byte hex key: %s See https://github.com/fluong/fray#troubleshooting.", setupKeyCommand)
 	}
 	key, err := hex.DecodeString(hexKey)
 	if err != nil || len(key) != 32 {
-		return nil, fmt.Errorf("FRAY_REDACTION_KEY must be 64 hex characters (32 bytes).\nGenerate one:\n  %s", setupKeyCommand)
+		return nil, fmt.Errorf("FRAY_REDACTION_KEY must be 64 hex characters (32 bytes). Generate one: %s See https://github.com/fluong/fray#troubleshooting.", setupKeyCommand)
 	}
 	return key, nil
 }

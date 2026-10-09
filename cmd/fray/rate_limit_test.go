@@ -176,6 +176,12 @@ func TestRemoteRateLimitedSoftSkip(t *testing.T) {
 	if !strings.Contains(stderr, "retry after 60 s") {
 		t.Fatalf("stderr missing retry: %q", stderr)
 	}
+	if !strings.Contains(stderr, "30 scans/repo/hour") {
+		t.Fatalf("stderr missing free-plan limits: %q", stderr)
+	}
+	if !strings.Contains(stderr, "https://github.com/fluong/fray#troubleshooting") {
+		t.Fatalf("stderr missing troubleshooting: %q", stderr)
+	}
 }
 
 func TestRemoteRateLimitedNonJSONFails(t *testing.T) {

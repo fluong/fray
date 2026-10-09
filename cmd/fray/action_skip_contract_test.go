@@ -309,6 +309,34 @@ func TestEnrollmentSkipWritesMarkerAndGatesArtifacts(t *testing.T) {
 	}
 }
 
+func TestFailOnSkipInputContract(t *testing.T) {
+	yml, err := os.ReadFile(filepath.Join(repoRoot(t), "action.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(yml)
+	if !strings.Contains(text, "fail-on-skip:") {
+		t.Fatal("missing fail-on-skip input")
+	}
+	if !strings.Contains(text, "FRAY_FAIL_ON_SKIP:") {
+		t.Fatal("scan step must pass FRAY_FAIL_ON_SKIP")
+	}
+	gate := ""
+	for _, block := range strings.Split(text, "\n    - name: ")[1:] {
+		name, rest, _ := strings.Cut(block, "\n")
+		if strings.TrimSpace(name) == "Gate" {
+			gate = rest
+			break
+		}
+	}
+	if !strings.Contains(gate, "https://github.com/fluong/fray#troubleshooting") {
+		t.Fatal("Gate error must link troubleshooting")
+	}
+	if !strings.Contains(gate, "waivers.yml") {
+		t.Fatal("Gate error must mention waivers remedy")
+	}
+}
+
 func TestUploadSARIFInputAndWarningContract(t *testing.T) {
 	yml, err := os.ReadFile(filepath.Join(repoRoot(t), "action.yml"))
 	if err != nil {
