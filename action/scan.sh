@@ -185,13 +185,45 @@ plan_json="${FRAY_OUT}/plan.json"
 external_plan=false
 
 if [[ -n "${FRAY_PLAN_FILE:-}" ]]; then
-  # Bring-your-own plan: path is relative to working-directory.
-  src_plan="${workdir}/${FRAY_PLAN_FILE}"
-  if [[ ! -f "$src_plan" ]]; then
-    echo "::error::plan-file not found: ${FRAY_WORKDIR}/${FRAY_PLAN_FILE}. Pass a terraform show -json file relative to working-directory. See ${FRAY_TROUBLESHOOT_URL}."
+  # Bring-your-own plan: path is relative to working-directory and must resolve
+  # under GITHUB_WORKSPACE (no .., no absolute paths outside, no outbound symlinks).
+  set +e
+  resolved_plan="$(python3 -c '
+import os, sys
+root = os.path.realpath(sys.argv[1])
+workdir = os.path.realpath(sys.argv[2])
+rel = sys.argv[3]
+if not rel or os.path.isabs(rel):
+    sys.exit(10)
+parts = [p for p in rel.replace("\\", "/").split("/") if p not in ("", ".")]
+if any(p == ".." for p in parts):
+    sys.exit(11)
+if not (workdir == root or workdir.startswith(root + os.sep)):
+    sys.exit(12)
+candidate = os.path.join(workdir, *parts)
+if not os.path.lexists(candidate):
+    sys.exit(13)
+resolved = os.path.realpath(candidate)
+if not (resolved == root or resolved.startswith(root + os.sep)):
+    sys.exit(14)
+if not os.path.isfile(resolved):
+    sys.exit(13)
+print(resolved)
+' "$root" "$workdir" "$FRAY_PLAN_FILE")"
+  plan_rc=$?
+  set -e
+  if [[ "$plan_rc" -ne 0 ]]; then
+    case "$plan_rc" in
+      10|11|12|14)
+        echo "::error::plan-file path must stay under the GitHub workspace (no absolute paths outside, no .. escapes, no outbound symlinks). See ${FRAY_TROUBLESHOOT_URL}."
+        ;;
+      *)
+        echo "::error::plan-file not found: ${FRAY_WORKDIR}/${FRAY_PLAN_FILE}. Pass a terraform show -json file relative to working-directory. See ${FRAY_TROUBLESHOOT_URL}."
+        ;;
+    esac
     exit 2
   fi
-  plan_json="$src_plan"
+  plan_json="$resolved_plan"
   external_plan=true
 else
   echo "::group::terraform init"

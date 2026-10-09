@@ -192,3 +192,147 @@ func TestExternalPlanEmptyDFDNoAPI(t *testing.T) {
 		t.Fatal("API must not be called for empty DFD on external plan")
 	}
 }
+
+func TestActionYMLPlanFileInputOnlyInEnv(t *testing.T) {
+	yml, err := os.ReadFile(filepath.Join(repoRoot(t), "action.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(yml)
+	const expr = "${{ inputs.plan-file }}"
+	if strings.Count(text, expr) != 1 {
+		t.Fatalf("want exactly one %s", expr)
+	}
+	envLine := "FRAY_PLAN_FILE: " + expr
+	if !strings.Contains(text, envLine) {
+		t.Fatal("expression must appear only as FRAY_PLAN_FILE under env:")
+	}
+	// Ensure no run: script line interpolates the input directly.
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, expr) && !strings.Contains(trimmed, "FRAY_PLAN_FILE:") {
+			t.Fatalf("unexpected %s on line: %s", expr, trimmed)
+		}
+		if strings.HasPrefix(trimmed, "run:") && strings.Contains(trimmed, expr) {
+			t.Fatalf("%s must not appear in run: %s", expr, trimmed)
+		}
+	}
+}
+
+func TestScanShPlanFilePathContainment(t *testing.T) {
+	root := repoRoot(t)
+	script := filepath.Join(root, "action", "scan.sh")
+
+	mkWorkspace := func(t *testing.T) (dir, workdir, binDir, frayStub string) {
+		t.Helper()
+		dir = t.TempDir()
+		workdir = filepath.Join(dir, "infra")
+		if err := os.MkdirAll(workdir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(workdir, "main.tf"), []byte(`resource "null_resource" "x" {}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "fray.yaml"), []byte("schema_version: fray-config/v1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "event.json"), []byte(`{"repository":{"default_branch":"main"}}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		binDir = filepath.Join(dir, "bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		frayStub = filepath.Join(binDir, "fray")
+		// If scan.sh reaches fray, the path check failed.
+		if err := os.WriteFile(frayStub, []byte("#!/bin/sh\necho fray-was-invoked >&2\nexit 99\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return dir, workdir, binDir, frayStub
+	}
+
+	run := func(t *testing.T, dir, binDir, frayStub, planFile string) (out []byte, err error) {
+		t.Helper()
+		cmd := exec.Command("bash", script)
+		cmd.Env = append(os.Environ(),
+			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"FRAY_BIN="+frayStub,
+			"FRAY_API_URL=https://example.invalid",
+			"FRAY_OIDC_TOKEN=test-token",
+			"FRAY_WORKDIR=infra",
+			"FRAY_CONFIG=fray.yaml",
+			"FRAY_WAIVERS_FILE=.fray/waivers.yml",
+			"FRAY_OUT="+filepath.Join(dir, "out"),
+			"FRAY_PLAN_FILE="+planFile,
+			"GITHUB_WORKSPACE="+dir,
+			"GITHUB_OUTPUT="+filepath.Join(dir, "github_output"),
+			"GITHUB_REPOSITORY=acme/demo",
+			"GITHUB_SHA=abcdef1",
+			"GITHUB_EVENT_NAME=push",
+			"GITHUB_REF_NAME=main",
+			"GITHUB_REF=refs/heads/main",
+			"GITHUB_EVENT_PATH="+filepath.Join(dir, "event.json"),
+		)
+		return cmd.CombinedOutput()
+	}
+
+	t.Run("dotdot_escape", func(t *testing.T) {
+		dir, workdir, binDir, frayStub := mkWorkspace(t)
+		outside := filepath.Join(dir, "..", "outside-plan.json")
+		// Put a file as sibling of workspace via temp parent — use path with ..
+		_ = workdir
+		out, err := run(t, dir, binDir, frayStub, "../secrets.json")
+		if err == nil {
+			t.Fatalf("expected failure, got:\n%s", out)
+		}
+		if strings.Contains(string(out), "fray-was-invoked") {
+			t.Fatal("fray ran before path rejection")
+		}
+		if !strings.Contains(string(out), "must stay under the GitHub workspace") {
+			t.Fatalf("want containment error, got:\n%s", out)
+		}
+		_ = outside
+	})
+
+	t.Run("absolute_outside", func(t *testing.T) {
+		dir, workdir, binDir, frayStub := mkWorkspace(t)
+		abs := filepath.Join(t.TempDir(), "plan.json")
+		if err := os.WriteFile(abs, []byte(`{}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_ = workdir
+		out, err := run(t, dir, binDir, frayStub, abs)
+		if err == nil {
+			t.Fatalf("expected failure, got:\n%s", out)
+		}
+		if strings.Contains(string(out), "fray-was-invoked") {
+			t.Fatal("fray ran before path rejection")
+		}
+		if !strings.Contains(string(out), "must stay under the GitHub workspace") {
+			t.Fatalf("want containment error, got:\n%s", out)
+		}
+	})
+
+	t.Run("symlink_outside", func(t *testing.T) {
+		dir, workdir, binDir, frayStub := mkWorkspace(t)
+		outsideDir := t.TempDir()
+		outsideFile := filepath.Join(outsideDir, "plan.json")
+		if err := os.WriteFile(outsideFile, []byte(`{"format_version":"1.2","resource_changes":[{"address":"null_resource.x","mode":"managed","change":{"after":{}}}]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(workdir, "linked-plan.json")
+		if err := os.Symlink(outsideFile, link); err != nil {
+			t.Fatal(err)
+		}
+		out, err := run(t, dir, binDir, frayStub, "linked-plan.json")
+		if err == nil {
+			t.Fatalf("expected failure, got:\n%s", out)
+		}
+		if strings.Contains(string(out), "fray-was-invoked") {
+			t.Fatal("fray ran before path rejection")
+		}
+		if !strings.Contains(string(out), "must stay under the GitHub workspace") {
+			t.Fatalf("want containment error, got:\n%s", out)
+		}
+	})
+}
