@@ -10,7 +10,7 @@ import (
 	apiv1 "github.com/fluong/fray/api/v1"
 )
 
-func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string, advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichment) string {
+func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string, advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichment, waivers *apiv1.Waivers, waiversReported bool) string {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
 	base := map[findingKey]apiv1.Finding{}
@@ -34,11 +34,16 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 			continue
 		}
 		next, ok := cur[findingKey{f.RuleID, f.Target}]
+		// Waiving an open finding is not "Resolved" — it belongs in Waivers.
+		if ok && (next.Status == "waived" || next.Status == "accepted") {
+			continue
+		}
 		if !ok || next.Status != "open" {
 			resolved = append(resolved, f)
 		}
 	}
-	if len(opened) == 0 && len(resolved) == 0 && baselineNote == "" && advisoryEmpty(advisory) {
+	waiverSection := WaiversSummary(waivers, waiversReported)
+	if len(opened) == 0 && len(resolved) == 0 && baselineNote == "" && advisoryEmpty(advisory) && waiverSection == "" {
 		return "No change in open findings.\n"
 	}
 	groups := issueGroups(opened, texts, byID, flows)
@@ -49,10 +54,21 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		fmt.Fprintf(&b, "%s\n\n", baselineNote)
 	}
 	if len(opened) == 0 && len(resolved) == 0 {
-		b.WriteString("No change in open findings.\n")
+		if waiverSection == "" || baselineNote != "" || !advisoryEmpty(advisory) {
+			b.WriteString("No change in open findings.\n")
+		}
+		if waiverSection != "" {
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(waiverSection)
+		}
 		if section := renderAdvisory(advisory, enrichments, opened, texts, byID, flows); section != "" {
 			b.WriteByte('\n')
 			b.WriteString(section)
+		}
+		if b.Len() == 0 {
+			return "No change in open findings.\n"
 		}
 		return b.String()
 	}
@@ -69,9 +85,53 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		b.WriteByte('\n')
 	}
 	fmt.Fprintf(&b, "%s\n", footer(current.Findings, base, groups, len(resolved) == 0))
+	if waiverSection != "" {
+		b.WriteByte('\n')
+		b.WriteString(waiverSection)
+	}
 	if section := renderAdvisory(advisory, enrichments, opened, texts, byID, flows); section != "" {
 		b.WriteByte('\n')
 		b.WriteString(section)
+	}
+	return b.String()
+}
+
+// WaiversSummary formats server waiver outcomes for the PR comment and job summary.
+// When reported is false (older server), returns a short notice. Empty outcomes → "".
+func WaiversSummary(w *apiv1.Waivers, reported bool) string {
+	if !reported {
+		return "### Waivers\n\nserver did not report waiver outcomes\n"
+	}
+	if w == nil {
+		return ""
+	}
+	if len(w.Applied) == 0 && len(w.Expired) == 0 && len(w.Stale) == 0 &&
+		len(w.ExpiringSoon) == 0 && len(w.NewInPR) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("### Waivers\n\n")
+	if len(w.Applied) > 0 {
+		fmt.Fprintf(&b, "**Applied** (%d): %s\n\n", len(w.Applied), strings.Join(w.Applied, ", "))
+	}
+	if len(w.NewInPR) > 0 {
+		b.WriteString("**New in this PR:** ")
+		b.WriteString(strings.Join(w.NewInPR, ", "))
+		b.WriteString("\n\n")
+		b.WriteString("Protect `.fray/` with CODEOWNERS so waiver changes get review.\n\n")
+	}
+	if len(w.ExpiringSoon) > 0 {
+		fmt.Fprintf(&b, "**Expiring soon** (≤14 days): %s\n\n", strings.Join(w.ExpiringSoon, ", "))
+	}
+	if len(w.Expired) > 0 {
+		fmt.Fprintf(&b, "**Expired** (finding is open again): %s\n\n", strings.Join(w.Expired, ", "))
+	}
+	if len(w.Stale) > 0 {
+		b.WriteString("**Stale:**\n")
+		for _, s := range w.Stale {
+			fmt.Fprintf(&b, "- `%s`: %s\n", s.ID, s.Reason)
+		}
+		b.WriteByte('\n')
 	}
 	return b.String()
 }
@@ -282,7 +342,7 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 		if hasMod && g.cause != mod.Call {
 			fmt.Fprintf(&b, "Resource: `%s`\n\n", g.cause)
 		}
-		b.WriteString(mitigationSnippet(g.items, byID, flows))
+		b.WriteString(waiverSnippet(g.items, byID, flows))
 		b.WriteString("</details>\n")
 	}
 	return b.String()
@@ -747,7 +807,7 @@ func uniqueSorted(vals []string) []string {
 	return out
 }
 
-func mitigationSnippet(items []apiv1.Finding, byID map[string]client.Element, flows map[string]client.Flow) string {
+func waiverSnippet(items []apiv1.Finding, byID map[string]client.Element, flows map[string]client.Flow) string {
 	type row struct {
 		rule, address string
 	}
@@ -762,17 +822,21 @@ func mitigationSnippet(items []apiv1.Finding, byID map[string]client.Element, fl
 		return strings.Compare(a.address, b.address)
 	})
 	var b strings.Builder
+	b.WriteString("Add to `.fray/waivers.yml`:\n\n")
 	b.WriteString("```yaml\n")
-	b.WriteString("schema_version: mitigation/v1\nentries:\n")
-	for _, row := range rows {
-		fmt.Fprintf(&b, "  - rule_id: %s\n", row.rule)
+	b.WriteString("version: 1\nwaivers:\n")
+	for i, row := range rows {
+		id := fmt.Sprintf("waiver-%d", i+1)
+		fmt.Fprintf(&b, "  - id: %s\n", id)
+		fmt.Fprintf(&b, "    rule: %s\n", row.rule)
 		if strings.ContainsAny(row.address, " :") {
 			fmt.Fprintf(&b, "    address: %q\n", row.address)
 		} else {
 			fmt.Fprintf(&b, "    address: %s\n", row.address)
 		}
-		b.WriteString("    status: accepted\n")
-		b.WriteString("    reason: \"<why this risk is acceptable>\"\n")
+		b.WriteString("    reason: \"<why this risk is acceptable — min 10 chars>\"\n")
+		b.WriteString("    owner: \"@security-eng\"\n")
+		b.WriteString("    expires: \"YYYY-MM-DD\"\n")
 	}
 	b.WriteString("```\n")
 	return b.String()

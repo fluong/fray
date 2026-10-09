@@ -13,13 +13,17 @@ Fix: Scope GetSecretValue in `task_exec_iam_statements` to the secret ARN in Res
 
 Resource: `module.ecs_service.data.aws_iam_policy_document.execution[0]`
 
+Add to `.fray/waivers.yml`:
+
 ```yaml
-schema_version: mitigation/v1
-entries:
-  - rule_id: FR-007
+version: 1
+waivers:
+  - id: waiver-1
+    rule: FR-007
     address: "module.db_password.aws_secretsmanager_secret.this[0] -> module.ecs_service.aws_ecs_service.this[0] credentials"
-    status: accepted
-    reason: "<why this risk is acceptable>"
+    reason: "<why this risk is acceptable — min 10 chars>"
+    owner: "@security-eng"
+    expires: "YYYY-MM-DD"
 ```
 </details>
 

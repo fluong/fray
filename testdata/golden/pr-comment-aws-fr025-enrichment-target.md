@@ -16,13 +16,17 @@ Fix: Set `block_public_acls`, `block_public_policy`, `ignore_public_acls`,
 
 Resource: `module.uploads.aws_s3_bucket.this[0]`
 
+Add to `.fray/waivers.yml`:
+
 ```yaml
-schema_version: mitigation/v1
-entries:
-  - rule_id: FR-025
+version: 1
+waivers:
+  - id: waiver-1
+    rule: FR-025
     address: module.uploads.aws_s3_bucket.this[0]
-    status: accepted
-    reason: "<why this risk is acceptable>"
+    reason: "<why this risk is acceptable — min 10 chars>"
+    owner: "@security-eng"
+    expires: "YYYY-MM-DD"
 ```
 </details>
 

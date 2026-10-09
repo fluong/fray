@@ -11,13 +11,17 @@ Fix: grant `roles/secretmanager.secretAccessor` on each secret with
 
 <details><summary>Accept this risk instead</summary>
 
+Add to `.fray/waivers.yml`:
+
 ```yaml
-schema_version: mitigation/v1
-entries:
-  - rule_id: FR-007
+version: 1
+waivers:
+  - id: waiver-1
+    rule: FR-007
     address: "google_secret_manager_secret.database_url -> fray-api credentials"
-    status: accepted
-    reason: "<why this risk is acceptable>"
+    reason: "<why this risk is acceptable — min 10 chars>"
+    owner: "@security-eng"
+    expires: "YYYY-MM-DD"
 ```
 </details>
 

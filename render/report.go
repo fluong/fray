@@ -26,7 +26,7 @@ func ThreatModel(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1
 	b.WriteString("\n## Open threats\n\n")
 	b.WriteString(openSection(findings, texts, byID, flows, locs))
 	b.WriteString("\n## Accepted risks\n\n")
-	b.WriteString("These threats are real. They were accepted on purpose, with a reason and, where one was set, a trigger to look again.\n\n")
+	b.WriteString("These threats are real. They were waived (or historically accepted) on purpose, with a reason kept in the repository.\n\n")
 	b.WriteString(acceptedSection(doc, findings, texts, accepted, byID, flows))
 	b.WriteString("\n## Verified controls\n\n")
 	b.WriteString("These controls were checked against the plan and passed.\n\n")
@@ -37,7 +37,7 @@ func ThreatModel(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1
 }
 
 func summary(findings apiv1.Findings) string {
-	statuses := []string{"open", "mitigated", "accepted", "unverified"}
+	statuses := []string{"open", "mitigated", "waived", "accepted", "unverified"}
 	count := map[string]map[string]int{}
 	for _, s := range statuses {
 		count[s] = map[string]int{}
@@ -149,7 +149,7 @@ func acceptedSection(doc client.DFD, findings apiv1.Findings, texts map[string]a
 	var b strings.Builder
 	n := 0
 	for _, f := range findings.Findings {
-		if f.Status != "accepted" {
+		if f.Status != "accepted" && f.Status != "waived" {
 			continue
 		}
 		if n > 0 {
