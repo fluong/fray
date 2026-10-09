@@ -53,7 +53,7 @@ Details: [redaction key rotation](#redaction-key-rotation).
 Pin third-party actions by commit SHA (same shape as the post-install setup
 page). Use the commit SHA of the release tag
 (`git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{}`); tags are
-immutable but SHAs are what Actions guarantees. Replace `<full-commit-sha>` with
+immutable but SHAs are what Actions guarantees. Replace the example commit SHA with
 that 40-character hex:
 
 ```yaml
@@ -79,7 +79,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@<full-commit-sha> # v0.10.0
+      - uses: fluong/fray@223d55694d9962e1059424e3d42dda04fb435af9 # v0.10.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra   # Terraform root; omit if plans live at repo root
@@ -228,7 +228,7 @@ jobs:
       # Use the commit SHA of the release tag
       # (git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{});
       # tags are immutable but SHAs are what Actions guarantees.
-      - uses: fluong/fray@<full-commit-sha> # v0.10.0
+      - uses: fluong/fray@223d55694d9962e1059424e3d42dda04fb435af9 # v0.10.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra
@@ -332,7 +332,7 @@ jobs:
           terraform -chdir=infra init -input=false
           terraform -chdir=infra plan -input=false -out=tfplan
           terraform -chdir=infra show -json tfplan > plan.json
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fray-plan
           path: infra/plan.json
@@ -351,11 +351,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@<full-commit-sha> # pin download-artifact
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fray-plan
           path: infra
-      - uses: fluong/fray@<full-commit-sha> # v0.10.0
+      - uses: fluong/fray@223d55694d9962e1059424e3d42dda04fb435af9 # v0.10.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra
@@ -518,8 +518,9 @@ go test ./...
 
 CI (`.github/workflows/guardrails.yml`) and the pre-push hook both run actionlint,
 gitleaks, `scripts/check-internal-identifiers.sh` (whole tree, including
-`*_test.go`), `scripts/check-action-pins.sh` (every `action.yml` `uses:` must be
-a 40-char SHA), and `scripts/check-public-docs.sh` (CHANGELOG/README must not
+`*_test.go`), `scripts/check-action-pins.sh` (every `uses:` in `action.yml`,
+workflows, README, and `docs/**` must be a 40-char lowercase hex SHA — no
+placeholders, tags, or short SHAs), and `scripts/check-public-docs.sh` (CHANGELOG/README must not
 name the private companion repository; README/`docs/`/`action.yml` must not
 contain a Cloud Run `*.run.app` hostname). Patterns come from the `FRAY_DENYLIST`
 secret (CI) or `FRAY_DENYLIST` / `~/.config/fray/denylist` locally — never from

@@ -44,7 +44,7 @@ Redaction is **on by default**. Keep `FRAY_REDACTION_KEY` set unless you deliber
 
 Pin third-party actions by **commit SHA**. Use the commit SHA of the release tag
 (`git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{}`); tags are
-immutable but SHAs are what Actions guarantees. Replace `<full-commit-sha>` below
+immutable but SHAs are what Actions guarantees. Replace the example commit SHA below
 with that 40-character hex.
 
 ```yaml
@@ -70,7 +70,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@<full-commit-sha> # v0.10.0
+      - uses: fluong/fray@223d55694d9962e1059424e3d42dda04fb435af9 # v0.10.0
         with:
           api-url: https://api.getfray.dev
           working-directory: .   # Terraform root (directory with .tf files)
