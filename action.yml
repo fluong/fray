@@ -9,6 +9,15 @@ branding:
   color: gray-dark
 
 inputs:
+  mode:
+    description: >
+      scan (default) runs the full Fray scan. check runs local setup checks only
+      (OIDC, api-url, config, waivers, plan-file or terraform init -backend=false
+      + validate). Does not submit a scan, post a PR comment, upload SARIF, or
+      run the gate. Does not verify App enrollment until a server readiness
+      probe is available.
+    required: false
+    default: "scan"
   api-url:
     description: >
       Fray API base URL (https://api.getfray.dev). Required — do not use a
@@ -96,18 +105,22 @@ runs:
     - name: Detect fork pull request
       id: fork
       shell: bash
+      env:
+        FRAY_EVENT_NAME: ${{ github.event_name }}
+        FRAY_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        FRAY_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
         is_fork=false
-        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-          if [[ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]]; then
+        if [[ "${FRAY_EVENT_NAME}" == "pull_request" ]]; then
+          if [[ "${FRAY_PR_HEAD_REPO}" != "${FRAY_REPOSITORY}" ]]; then
             is_fork=true
           fi
         fi
         echo "is_fork=${is_fork}" >> "$GITHUB_OUTPUT"
 
     - name: Skip Fray on fork PR (no OIDC)
-      if: steps.fork.outputs.is_fork == 'true'
+      if: steps.fork.outputs.is_fork == 'true' && inputs.mode != 'check'
       shell: bash
       run: |
         set -euo pipefail
@@ -118,6 +131,20 @@ runs:
           echo ""
           echo "$msg"
         } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Fail setup check on fork PR
+      if: steps.fork.outputs.is_fork == 'true' && inputs.mode == 'check'
+      shell: bash
+      run: |
+        set -euo pipefail
+        msg='Fray did not run: fork pull requests cannot request an OIDC token with audience "fray". Open the PR from a branch in this repository to scan. Run setup checks from a non-fork branch or workflow_dispatch.'
+        echo "::error::$msg"
+        {
+          echo "## Fray — setup check"
+          echo ""
+          echo "$msg"
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit 1
 
     - name: Setup Go
       if: steps.fork.outputs.is_fork != 'true'
@@ -173,7 +200,7 @@ runs:
         echo "token=$token" >> "$GITHUB_OUTPUT"
 
     - name: Fray scan
-      if: steps.fork.outputs.is_fork != 'true'
+      if: steps.fork.outputs.is_fork != 'true' && inputs.mode != 'check'
       id: scan
       shell: bash
       env:
@@ -192,9 +219,25 @@ runs:
         FRAY_PLAN_FILE: ${{ inputs.plan-file }}
       run: bash "${{ github.action_path }}/action/scan.sh"
 
+    - name: Fray setup check
+      if: steps.fork.outputs.is_fork != 'true' && inputs.mode == 'check'
+      id: check
+      shell: bash
+      env:
+        FRAY_BIN: ${{ steps.build.outputs.bin }}
+        FRAY_API_URL: ${{ inputs.api-url }}
+        FRAY_WORKDIR: ${{ inputs.working-directory }}
+        FRAY_CONFIG: ${{ inputs.config }}
+        FRAY_WAIVERS_FILE: ${{ inputs.waivers-file }}
+        FRAY_OUT: ${{ runner.temp }}/fray-out
+        FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
+        FRAY_PLAN_FILE: ${{ inputs.plan-file }}
+      run: bash "${{ github.action_path }}/action/check.sh"
+
     - name: Upload sent payload
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
+        inputs.mode != 'check' &&
         steps.scan.outputs.skipped != 'true' &&
         inputs.show-payload == 'true' &&
         steps.scan.outputs.has_payload == 'true'
@@ -207,6 +250,7 @@ runs:
     - name: Update PR comment
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
+        inputs.mode != 'check' &&
         steps.scan.outputs.skipped != 'true' &&
         github.event_name == 'pull_request' &&
         steps.scan.outputs.has_comment == 'true'
@@ -238,6 +282,7 @@ runs:
       id: upload-sarif
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
+        inputs.mode != 'check' &&
         steps.scan.outputs.skipped != 'true' &&
         steps.scan.outputs.has_sarif == 'true' &&
         inputs.upload-sarif == 'true'
@@ -256,6 +301,7 @@ runs:
     - name: Gate
       if: >-
         steps.fork.outputs.is_fork != 'true' &&
+        inputs.mode != 'check' &&
         steps.scan.outputs.skipped != 'true'
       shell: bash
       env:

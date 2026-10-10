@@ -7,11 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/fluong/fray/client"
+	"gopkg.in/yaml.v3"
 )
 
 func TestActionYMLSkipsTerraformWhenPlanFileSet(t *testing.T) {
@@ -198,29 +200,72 @@ func TestExternalPlanEmptyDFDNoAPI(t *testing.T) {
 	}
 }
 
-func TestActionYMLPlanFileInputOnlyInEnv(t *testing.T) {
-	yml, err := os.ReadFile(filepath.Join(repoRoot(t), "action.yml"))
+// actionCompositeYML is the subset of action.yml we need for interpolation checks.
+type actionCompositeYML struct {
+	Runs struct {
+		Using string `yaml:"using"`
+		Steps []struct {
+			Name string         `yaml:"name"`
+			Run  string         `yaml:"run"`
+			If   string         `yaml:"if"`
+			Env  map[string]any `yaml:"env"`
+		} `yaml:"steps"`
+	} `yaml:"runs"`
+}
+
+// exprInRunRe finds ${{ ... }} expressions inside a run: script.
+var exprInRunRe = regexp.MustCompile(`\$\{\{\s*([^}]+?)\s*\}\}`)
+
+// runExprForbidden reports whether an expression body (inside ${{ }}) is not
+// allowed in run:. Inputs and untrusted github/steps contexts belong in env:/if:.
+func runExprForbidden(expr string) bool {
+	e := strings.TrimSpace(expr)
+	switch {
+	case strings.Contains(e, "inputs."):
+		return true
+	case strings.Contains(e, "github.event"): // event_name, event.pull_request, …
+		return true
+	case strings.Contains(e, "github.head_ref"):
+		return true
+	case strings.Contains(e, "steps."):
+		// Step outputs (including fork/event-derived) must be passed via env:.
+		return true
+	default:
+		return false
+	}
+}
+
+func TestActionYMLNoInputInterpolationInRun(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "action.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(yml)
-	const expr = "${{ inputs.plan-file }}"
-	if strings.Count(text, expr) != 1 {
-		t.Fatalf("want exactly one %s", expr)
+	var doc actionCompositeYML
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse action.yml: %v", err)
 	}
-	envLine := "FRAY_PLAN_FILE: " + expr
-	if !strings.Contains(text, envLine) {
-		t.Fatal("expression must appear only as FRAY_PLAN_FILE under env:")
+	if doc.Runs.Using != "composite" {
+		t.Fatalf("using=%q want composite", doc.Runs.Using)
 	}
-	// Ensure no run: script line interpolates the input directly.
-	for _, line := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, expr) && !strings.Contains(trimmed, "FRAY_PLAN_FILE:") {
-			t.Fatalf("unexpected %s on line: %s", expr, trimmed)
+
+	var offenders []string
+	for _, step := range doc.Runs.Steps {
+		if step.Run == "" {
+			continue
 		}
-		if strings.HasPrefix(trimmed, "run:") && strings.Contains(trimmed, expr) {
-			t.Fatalf("%s must not appear in run: %s", expr, trimmed)
+		for _, m := range exprInRunRe.FindAllStringSubmatch(step.Run, -1) {
+			if runExprForbidden(m[1]) {
+				name := step.Name
+				if name == "" {
+					name = "(unnamed)"
+				}
+				offenders = append(offenders, name+": ${{ "+strings.TrimSpace(m[1])+" }}")
+			}
 		}
+	}
+	if len(offenders) > 0 {
+		t.Fatalf("run: must not interpolate inputs./github.event/github.head_ref/steps.* (use env: or if:):\n  - %s",
+			strings.Join(offenders, "\n  - "))
 	}
 }
 
