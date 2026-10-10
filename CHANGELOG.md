@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-10-10
+
 ### Added
 - Action input **`mode`**: `scan` (default) or `check`. `check` runs local setup
   checks (OIDC, `api-url`, config, waivers, `plan-file` or
