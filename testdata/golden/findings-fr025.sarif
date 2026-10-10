@@ -6,8 +6,8 @@
       "tool": {
         "driver": {
           "name": "Fray",
-          "version": "0.10.0",
-          "semanticVersion": "0.10.0",
+          "version": "0.10.1",
+          "semanticVersion": "0.10.1",
           "informationUri": "https://github.com/fluong/fray",
           "rules": [
             {
