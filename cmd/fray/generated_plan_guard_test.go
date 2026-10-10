@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/fluong/fray/client"
@@ -73,9 +74,9 @@ func TestGeneratedPlanNormalStillCallsAPI(t *testing.T) {
 	writeMinimalScanInputs(t, dir) // includes analysable S3 bucket
 	t.Setenv("FRAY_REDACTION_KEY", strings.Repeat("ab", 32))
 
-	called := false
+	var called atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
+		called.Store(true)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"error":"repo_not_enrolled","message":"x"}`))
@@ -99,7 +100,7 @@ func TestGeneratedPlanNormalStillCallsAPI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("enrollment skip should succeed: %v", err)
 	}
-	if !called {
+	if !called.Load() {
 		t.Fatal("normal generated plan must reach the API")
 	}
 }
@@ -164,9 +165,9 @@ func TestGeneratedPlanOver32MiBNotRejectedForSize(t *testing.T) {
 	}
 
 	t.Setenv("FRAY_REDACTION_KEY", strings.Repeat("ab", 32))
-	called := false
+	var called atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
+		called.Store(true)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"error":"repo_not_enrolled","message":"x"}`))
@@ -190,7 +191,7 @@ func TestGeneratedPlanOver32MiBNotRejectedForSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generated plan over 32 MiB must not fail for size: %v", err)
 	}
-	if !called {
+	if !called.Load() {
 		t.Fatal("API must be reached; size cap applies only to plan-file")
 	}
 	if errors.Is(err, client.ErrPlanTooLarge) {
@@ -218,9 +219,9 @@ func writeGeneratedScanScaffold(t *testing.T, dir string) {
 func assertGeneratedRefuseNoAPI(t *testing.T, dir string, want error, substr string) {
 	t.Helper()
 	t.Setenv("FRAY_REDACTION_KEY", strings.Repeat("ab", 32))
-	called := false
+	var called atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
+		called.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
@@ -260,7 +261,7 @@ func assertGeneratedRefuseNoAPI(t *testing.T, dir string, want error, substr str
 	if !strings.Contains(runErr.Error(), substr) {
 		t.Fatalf("error %q missing %q", runErr, substr)
 	}
-	if called {
+	if called.Load() {
 		t.Fatal("API must not be called")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "out", "pr-comment.md")); !os.IsNotExist(err) {

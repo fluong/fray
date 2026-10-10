@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/fluong/fray/client"
@@ -162,9 +163,9 @@ func TestExternalPlanEmptyDFDNoAPI(t *testing.T) {
 	}
 	t.Setenv("FRAY_REDACTION_KEY", strings.Repeat("ab", 32))
 
-	called := false
+	var called atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
+		called.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
@@ -192,7 +193,7 @@ func TestExternalPlanEmptyDFDNoAPI(t *testing.T) {
 	if !strings.Contains(err.Error(), "all changes are deletes") {
 		t.Fatalf("all-delete plan should mention deletes: %v", err)
 	}
-	if called {
+	if called.Load() {
 		t.Fatal("API must not be called for empty DFD on external plan")
 	}
 }

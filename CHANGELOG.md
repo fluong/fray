@@ -10,12 +10,10 @@
 - Action scan step name is now the static **Fray scan** (id unchanged).
 
 ### Fixed
-- Empty-DFD / no-managed-resource refuse runs on the generated-plan path as well
-  as `plan-file`, via one shared check (workdir hint; all-delete suffix).
 - PR comments with no open new/fixed findings always show a status-count summary
   line (including above Waivers), instead of a Waivers-only comment.
 
-## [0.10.0] — pending tag
+## [0.10.0] — 2026-10-10
 
 ### Added
 - Action input **`plan-file`**: path (relative to `working-directory`) to a
