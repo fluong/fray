@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,19 +30,19 @@ func TestValidatePlanJSONBranches(t *testing.T) {
 			wantErr: ErrPlanLooksLikeState,
 		},
 		{
-			name:    "c_data_only",
+			name:    "c_data_only_format_ok",
 			body:    `{"format_version":"1.2","resource_changes":[{"address":"data.aws_caller_identity.current","mode":"data","change":{"after":{}}}],"planned_values":{"root_module":{}}}`,
-			wantErr: ErrPlanNoResources,
+			wantErr: nil, // RefuseUnanalysablePlan rejects; format/state checks only here
 		},
 		{
-			name:    "d_planned_values_only",
+			name:    "d_planned_values_only_format_ok",
 			body:    `{"format_version":"1.2","resource_changes":[],"planned_values":{"root_module":{"resources":[{"address":"aws_s3_bucket.a","values":{"bucket":"x"}}]}}}`,
-			wantErr: ErrPlanNoResources,
+			wantErr: nil,
 		},
 		{
-			name:    "d_empty_resource_changes",
+			name:    "d_empty_resource_changes_format_ok",
 			body:    `{"format_version":"1.2","resource_changes":[],"planned_values":{"root_module":{}}}`,
-			wantErr: ErrPlanNoResources,
+			wantErr: nil,
 		},
 		{
 			name: "noop_accepted",
@@ -176,6 +177,89 @@ resource "aws_s3_bucket" "inner" { bucket = "y" }
 	if n != 1 {
 		t.Fatalf("unmatched=%d, want 1 (aws_s3_bucket.missing)", n)
 	}
+}
+
+func TestRefuseUnanalysablePlan(t *testing.T) {
+	cfg := []byte("schema_version: fray-config/v1\n")
+	src := Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}
+	dir := t.TempDir()
+
+	parse := func(plan []byte) DFD {
+		t.Helper()
+		doc, _, err := Parse(plan, cfg, "fray.yaml", src, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doc
+	}
+
+	t.Run("no_managed", func(t *testing.T) {
+		plan := []byte(`{"format_version":"1.2","resource_changes":[],"planned_values":{"root_module":{}}}`)
+		err := RefuseUnanalysablePlan(plan, parse(plan), "infra")
+		if !errors.Is(err, ErrPlanNoResources) {
+			t.Fatalf("got %v", err)
+		}
+		if !strings.Contains(err.Error(), "check working-directory (currently: infra)") {
+			t.Fatalf("missing workdir hint: %v", err)
+		}
+	})
+	t.Run("all_delete", func(t *testing.T) {
+		plan := []byte(`{
+		  "format_version": "1.2",
+		  "resource_changes": [{
+		    "address": "aws_s3_bucket.gone",
+		    "mode": "managed",
+		    "type": "aws_s3_bucket",
+		    "change": {"actions": ["delete"], "before": {"bucket": "x"}, "after": null}
+		  }]
+		}`)
+		err := RefuseUnanalysablePlan(plan, parse(plan), "infra")
+		if !errors.Is(err, ErrPlanEmptyDFD) {
+			t.Fatalf("got %v", err)
+		}
+		if !strings.Contains(err.Error(), "all changes are deletes") {
+			t.Fatalf("missing delete hint: %v", err)
+		}
+	})
+	t.Run("unsupported_only", func(t *testing.T) {
+		plan := []byte(`{
+		  "format_version": "1.2",
+		  "resource_changes": [{
+		    "address": "null_resource.x",
+		    "mode": "managed",
+		    "type": "null_resource",
+		    "change": {"actions": ["no-op"], "after": {}}
+		  }],
+		  "configuration": {"root_module": {"resources": [
+		    {"address":"null_resource.x","type":"null_resource","name":"x","mode":"managed","expressions":{}}
+		  ]}}
+		}`)
+		err := RefuseUnanalysablePlan(plan, parse(plan), "infra")
+		if !errors.Is(err, ErrPlanEmptyDFD) {
+			t.Fatalf("got %v", err)
+		}
+		if strings.Contains(err.Error(), "deletes") {
+			t.Fatalf("unsupported must not claim deletes: %v", err)
+		}
+	})
+	t.Run("normal", func(t *testing.T) {
+		plan := []byte(`{
+		  "format_version": "1.2",
+		  "resource_changes": [{
+		    "address": "aws_s3_bucket.a",
+		    "mode": "managed",
+		    "type": "aws_s3_bucket",
+		    "name": "a",
+		    "change": {"actions": ["no-op"], "after": {"bucket": "keep-me"}}
+		  }],
+		  "configuration": {"root_module": {"resources": [
+		    {"address":"aws_s3_bucket.a","type":"aws_s3_bucket","name":"a","mode":"managed","expressions":{}}
+		  ]}}
+		}`)
+		if err := RefuseUnanalysablePlan(plan, parse(plan), "infra"); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestNoopPlanProducesNonEmptyDFD(t *testing.T) {

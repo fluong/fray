@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -185,8 +186,11 @@ func TestExternalPlanEmptyDFDNoAPI(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected empty-DFD error")
 	}
-	if err != client.ErrPlanEmptyDFD && !strings.Contains(err.Error(), "no resources Fray can analyse") {
+	if !errors.Is(err, client.ErrPlanEmptyDFD) {
 		t.Fatalf("got %v", err)
+	}
+	if !strings.Contains(err.Error(), "all changes are deletes") {
+		t.Fatalf("all-delete plan should mention deletes: %v", err)
 	}
 	if called {
 		t.Fatal("API must not be called for empty DFD on external plan")

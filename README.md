@@ -499,7 +499,9 @@ Symptom → typical cause → fix. Full setup path: [Getting started](docs/getti
 | `fray.yaml not found` | Config file missing | Add `schema_version: fray-config/v1` (see [Config](#config)). |
 | `terraform init/plan failed` | Provider/backend credentials or TF error | Give the job the same credentials as your normal plan workflow, or use [`plan-file`](#bring-your-own-plan). |
 | `plan-file must be terraform show -json output` | Binary plan or state file passed as `plan-file` | Run `terraform show -json tfplan > plan.json` and pass that JSON path. |
-| `not a Terraform JSON plan` / `plan contains no resources` | Wrong or empty plan JSON | Ensure `format_version` is set and `resource_changes` has at least one managed resource with values Fray can analyse. |
+| `not a Terraform JSON plan` | Plan JSON missing `format_version` (string) | Pass `terraform show -json` output, not state or a binary plan. |
+| `plan contains no resources` / `check working-directory (currently: …)` | No managed `resource_changes` (empty plan, data-only, or wrong root) | Set `working-directory` to the Terraform root that owns the resources in the plan. |
+| `plan contains no resources Fray can analyse` | Managed changes present but none map to a DFD (unsupported types, or deletes only) | Add supported resources, or note deletes produce nothing to analyse (`(all changes are deletes; …)` when every managed change is a delete). |
 | `plan-file may not match this commit's working-directory` | Plan from another root/commit | Re-export the plan from this checkout’s `working-directory` (warning only; scan continues). |
 | `Fray API request failed` / 5xx | Network or API error | Confirm `api-url: https://api.getfray.dev`, retry. If it persists, open an issue on `fluong/fray`. |
 | Waivers / `mitigations.yaml` errors | Invalid `.fray/waivers.yml` or legacy file | Fix schema/expires; migrate mitigations → [Waivers](#waivers). |

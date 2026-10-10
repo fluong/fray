@@ -82,28 +82,87 @@ func ValidatePlanJSON(data []byte) error {
 	if hasValues && !hasPV && !hasRC {
 		return ErrPlanLooksLikeState
 	}
-	if countManagedResourceChanges(root["resource_changes"]) < 1 {
-		return ErrPlanNoResources
-	}
+	// Managed-resource and empty-DFD checks are RefuseUnanalysablePlan
+	// (shared by generated and plan-file paths). Size/format/state only here.
 	return nil
 }
 
-func countManagedResourceChanges(v any) int {
-	list, ok := v.([]any)
-	if !ok {
+// RefuseUnanalysablePlan fails closed when the plan has nothing Fray can scan.
+// Used for both generated and plan-file paths after Parse. workdir is the
+// Action working-directory shown in the no-resources hint.
+func RefuseUnanalysablePlan(plan []byte, doc DFD, workdir string) error {
+	if countManagedInPlan(plan) < 1 {
+		dir := workdir
+		if dir == "" {
+			dir = "."
+		}
+		return fmt.Errorf("%w; check working-directory (currently: %s)", ErrPlanNoResources, dir)
+	}
+	if len(doc.Elements) > 0 {
+		return nil
+	}
+	if allManagedDeletes(plan) {
+		return fmt.Errorf("%w (all changes are deletes; nothing would remain to analyse)", ErrPlanEmptyDFD)
+	}
+	return ErrPlanEmptyDFD
+}
+
+func countManagedInPlan(plan []byte) int {
+	var root struct {
+		ResourceChanges []struct {
+			Mode string `json:"mode"`
+		} `json:"resource_changes"`
+	}
+	if json.Unmarshal(plan, &root) != nil {
 		return 0
 	}
 	n := 0
-	for _, raw := range list {
-		m, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		if m["mode"] == "managed" {
+	for _, rc := range root.ResourceChanges {
+		if rc.Mode == "" || rc.Mode == "managed" {
 			n++
 		}
 	}
 	return n
+}
+
+func allManagedDeletes(plan []byte) bool {
+	var root struct {
+		ResourceChanges []struct {
+			Mode   string `json:"mode"`
+			Change struct {
+				Actions []string        `json:"actions"`
+				After   json.RawMessage `json:"after"`
+			} `json:"change"`
+		} `json:"resource_changes"`
+	}
+	if json.Unmarshal(plan, &root) != nil {
+		return false
+	}
+	managed := 0
+	for _, rc := range root.ResourceChanges {
+		if rc.Mode != "" && rc.Mode != "managed" {
+			continue
+		}
+		managed++
+		if !isDeleteChange(rc.Change.Actions, rc.Change.After) {
+			return false
+		}
+	}
+	return managed > 0
+}
+
+func isDeleteChange(actions []string, after json.RawMessage) bool {
+	if len(actions) == 1 && actions[0] == "delete" {
+		return true
+	}
+	if len(after) == 0 || string(after) == "null" {
+		for _, a := range actions {
+			if a == "delete" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // CountUnmatchedPlanAddresses returns how many managed plan addresses are

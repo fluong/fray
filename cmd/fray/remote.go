@@ -88,10 +88,9 @@ func runRemote(opt options) (bool, error) {
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
-	if opt.ExternalPlan && len(doc.Elements) == 0 {
-		msg := usermsg.SeeTroubleshooting(client.ErrPlanEmptyDFD.Error())
-		annotateError(msg)
-		return false, client.ErrPlanEmptyDFD
+	if err := client.RefuseUnanalysablePlan(plan, doc, opt.Source); err != nil {
+		annotateError(planFileUserError(err))
+		return false, err
 	}
 
 	now := time.Now().UTC()

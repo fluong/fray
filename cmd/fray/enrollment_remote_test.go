@@ -183,12 +183,22 @@ func writeMinimalScanInputs(t *testing.T, dir string) {
 	if err := os.WriteFile(filepath.Join(infra, "main.tf"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// One managed resource so Parse yields a non-empty DFD and remote tests
+	// reach the HTTP stub (empty plans now fail before the API call).
 	plan := `{
   "format_version": "1.2",
   "terraform_version": "1.5.0",
   "planned_values": {"root_module": {}},
-  "resource_changes": [],
-  "configuration": {"root_module": {}}
+  "resource_changes": [{
+    "address": "aws_s3_bucket.a",
+    "mode": "managed",
+    "type": "aws_s3_bucket",
+    "name": "a",
+    "change": {"actions": ["no-op"], "after": {"bucket": "keep-me"}}
+  }],
+  "configuration": {"root_module": {"resources": [
+    {"address":"aws_s3_bucket.a","type":"aws_s3_bucket","name":"a","mode":"managed","expressions":{}}
+  ]}}
 }`
 	if err := os.WriteFile(filepath.Join(dir, "plan.json"), []byte(plan), 0o644); err != nil {
 		t.Fatal(err)
