@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.10.1] — pending tag
+## [0.10.1] — 2026-10-10
 
 ### Changed
 - Generated-plan scans with no analysable resources now fail early with a clear
