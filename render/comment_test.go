@@ -472,6 +472,40 @@ func TestPRCommentAdvisoryNovelTarget(t *testing.T) {
 	}
 }
 
+func TestPRCommentNoDeltaWithWaivers(t *testing.T) {
+	// Mirrors demo PR #13 shape: no open new/fixed, Waivers section present.
+	root := filepath.Join("..", "testdata")
+	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.dfd.json"))
+	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
+	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
+	waivers := &apiv1.Waivers{Applied: []string{"waiver-demo"}}
+	got := PRComment(doc, cur, base, texts, locs, nil, "", nil, nil, waivers, true)
+	want := readGolden(t, filepath.Join(root, "golden", "pr-comment-no-delta-waivers.md"))
+	if got != want {
+		t.Fatalf("comment mismatch:\n%s", got)
+	}
+}
+
+func TestNoChangeSummary(t *testing.T) {
+	if got := noChangeSummary(nil); got != "No change in open findings.\n" {
+		t.Fatalf("empty: %q", got)
+	}
+	got := noChangeSummary([]apiv1.Finding{
+		{Status: "open"}, {Status: "open"},
+		{Status: "mitigated"},
+		{Status: "waived"}, {Status: "accepted"},
+	})
+	want := "No change in open findings · 2 open · 1 mitigated · 2 waived\n"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
 func TestSanitizeAdvisoryText(t *testing.T) {
 	in := "See [docs](https://evil.example) and <script>x</script> **bold** `code`"
 	got := SanitizeAdvisoryText(in)

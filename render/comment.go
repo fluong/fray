@@ -48,7 +48,7 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 	}
 	waiverSection := WaiversSummary(waivers, waiversReported)
 	if len(opened) == 0 && len(resolved) == 0 && baselineNote == "" && advisoryEmpty(advisory) && waiverSection == "" {
-		return "No change in open findings.\n"
+		return noChangeSummary(current.Findings)
 	}
 	groups := issueGroups(opened, texts, byID, flows)
 	sortGroups(groups)
@@ -58,21 +58,14 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		fmt.Fprintf(&b, "%s\n\n", baselineNote)
 	}
 	if len(opened) == 0 && len(resolved) == 0 {
-		if waiverSection == "" || baselineNote != "" || !advisoryEmpty(advisory) {
-			b.WriteString("No change in open findings.\n")
-		}
+		b.WriteString(noChangeSummary(current.Findings))
 		if waiverSection != "" {
-			if b.Len() > 0 {
-				b.WriteByte('\n')
-			}
+			b.WriteByte('\n')
 			b.WriteString(waiverSection)
 		}
 		if section := renderAdvisory(advisory, enrichments, opened, texts, byID, flows); section != "" {
 			b.WriteByte('\n')
 			b.WriteString(section)
-		}
-		if b.Len() == 0 {
-			return "No change in open findings.\n"
 		}
 		return b.String()
 	}
@@ -98,6 +91,41 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		b.WriteString(section)
 	}
 	return b.String()
+}
+
+// noChangeSummary is the lead line when there are no new or fixed open findings.
+// Zero-count status parts are omitted; all-zero keeps the plain lead.
+func noChangeSummary(findings []apiv1.Finding) string {
+	var open, mitigated, unverified, waived int
+	for _, f := range findings {
+		switch f.Status {
+		case "open":
+			open++
+		case "mitigated":
+			mitigated++
+		case "unverified":
+			unverified++
+		case "waived", "accepted":
+			waived++
+		}
+	}
+	if open+mitigated+unverified+waived == 0 {
+		return "No change in open findings.\n"
+	}
+	parts := []string{"No change in open findings"}
+	if open > 0 {
+		parts = append(parts, fmt.Sprintf("%d open", open))
+	}
+	if mitigated > 0 {
+		parts = append(parts, fmt.Sprintf("%d mitigated", mitigated))
+	}
+	if unverified > 0 {
+		parts = append(parts, fmt.Sprintf("%d unverified", unverified))
+	}
+	if waived > 0 {
+		parts = append(parts, fmt.Sprintf("%d waived", waived))
+	}
+	return strings.Join(parts, " · ") + "\n"
 }
 
 // WaiversSummary formats server waiver outcomes for the PR comment and job summary.

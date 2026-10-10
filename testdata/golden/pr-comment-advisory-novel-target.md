@@ -1,4 +1,4 @@
-No change in open findings.
+No change in open findings · 6 open · 8 mitigated · 1 unverified
 
 Advisory (AI)
 
