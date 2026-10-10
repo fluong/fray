@@ -239,6 +239,7 @@ jobs:
 
 | Input | Default | Notes |
 |-------|---------|-------|
+| `mode` | `scan` | `scan` runs the full scan. `check` runs local setup checks only (no scan submit, PR comment, SARIF, or gate). See [Getting started — Verify your setup](docs/getting-started.md#verify-your-setup). |
 | `api-url` | — | Required. Hosted API: `https://api.getfray.dev` (never a `*.run.app` URL). |
 | `working-directory` | `.` | Terraform root (contains `.tf` sources). |
 | `config` | `fray.yaml` | Path relative to the workspace. |
@@ -510,6 +511,9 @@ Symptom → typical cause → fix. Full setup path: [Getting started](docs/getti
 | Gate blocked | New high-severity findings vs baseline | Read the Fray PR comment / `findings.sarif`. Waive via `.fray/waivers.yml` if accepting the risk. Push/merge to the default branch to set the baseline. |
 | Soft-skip exit 0 (enrollment / rate limit) | Default soft-skip | Check the **warning** on the checks page and the job summary. Set `fail-on-skip: true` (or `fail-on-unenrolled` / `fail-on-rate-limit`) to fail instead. |
 | No “new vs baseline” on first PR | No default-branch scan yet | Expected: comment still posts in absolute mode with a “No baseline yet” line. Scan the default branch once. |
+| Setup check job summary has failures | Local wiring (OIDC, `api-url`, config, waivers, terraform/plan-file) | Read **Fray — setup check** rows; fix each fail. Use `workflow_dispatch` or a non-fork branch. See [Getting started — Verify your setup](docs/getting-started.md#verify-your-setup). |
+| Setup check warns `server readiness probe not yet available` | Expected until enrollment probe ships | Warning only — check mode does not verify App install/enrollment yet. Confirm install manually, then run a real `mode: scan`. |
+| `mode: check` fails on fork PR | Forks cannot mint OIDC `aud=fray` | Run setup checks from a non-fork branch or `workflow_dispatch`. |
 
 ## Development
 

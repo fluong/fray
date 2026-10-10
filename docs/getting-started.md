@@ -9,8 +9,9 @@ Shortest path to a **first green Fray scan** in GitHub Actions.
 3. [ ] Create secret `FRAY_REDACTION_KEY` (`openssl rand -hex 32 | gh secret set FRAY_REDACTION_KEY`). **Keep this key stable** — rotating or losing it resets the baseline (findings can't be compared with earlier scans). Store a copy in your password manager. See [README — redaction key rotation](../README.md#redaction-key-rotation).
 4. [ ] Ensure the job can run `terraform plan` (provider + backend credentials — see below)
 5. [ ] Add the workflow with the permissions below
-6. [ ] Push to the **default branch** once (establishes the merge baseline)
-7. [ ] Open a PR from a branch **in this repository** (not a fork)
+6. [ ] [Verify your setup](#verify-your-setup) with `mode: check` (optional but recommended)
+7. [ ] Push to the **default branch** once (establishes the merge baseline)
+8. [ ] Open a PR from a branch **in this repository** (not a fork)
 
 Free plan: **3 repositories** per App install; **30 scans/repo/hour** and **100 scans/org/day**.  
 Troubleshooting: [README § Troubleshooting](../README.md#troubleshooting).
@@ -80,6 +81,48 @@ jobs:
 Set `working-directory` to your Terraform root if it is not the repo root (for example `infra`).
 
 Optional: `fail-on-skip: true` fails the job on enrollment or rate-limit soft-skips (default is warn + exit 0). See [README](../README.md#github-action).
+
+## Verify your setup
+
+Before the first real scan, run **`mode: check`** to confirm OIDC, `api-url`,
+`fray.yaml`, redaction key, waivers, and either a valid `plan-file` or
+`terraform init -backend=false` + `validate` in `working-directory`. This does
+**not** submit a scan, post a PR comment, upload SARIF, or run the gate. It also
+does **not** verify GitHub App enrollment yet (that needs a future server
+readiness probe — check mode warns that the probe is skipped).
+
+Use `workflow_dispatch` (or a non-fork branch). Fork PRs cannot mint OIDC and
+fail the check on purpose.
+
+```yaml
+name: fray-setup-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: fluong/fray@fbcb6c63a64f5c2db970fcdfecab379d3296c4f0 # v0.10.1
+        with:
+          mode: check
+          api-url: https://api.getfray.dev
+          working-directory: .   # Terraform root (directory with .tf files)
+          redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}
+```
+
+Inspect the job summary **Fray — setup check** for pass/warn/fail per row. Fix
+any failures before switching to the full scan workflow (`mode` omitted or
+`scan`).
 
 ## 5. What `terraform plan` needs (or bring your own plan)
 
