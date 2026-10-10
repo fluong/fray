@@ -4,10 +4,10 @@
 
 ### Added
 - Action input **`mode`**: `scan` (default) or `check`. `check` runs local setup
-  checks only (OIDC, `api-url`, config, waivers, `plan-file` or
-  `terraform init -backend=false` + `validate`) — no scan submit, PR comment,
-  SARIF, or gate. Enrollment verification waits on a future server readiness
-  probe (stub warns for now).
+  checks (OIDC, `api-url`, config, waivers, `plan-file` or
+  `terraform init -backend=false` + `validate`) plus **`GET /v1/readiness`** to
+  verify GitHub App installation and repository enrollment — no scan submit, PR
+  comment, SARIF, or gate.
 
 ## [0.10.1] — 2026-10-10
 

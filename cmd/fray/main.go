@@ -31,12 +31,12 @@ func main() {
 	flag.BoolVar(&opt.ShowPayload, "show-payload", false, "print the exact JSON that would be sent")
 	flag.BoolVar(&opt.FailOnUnenrolled, "fail-on-unenrolled", false, "exit non-zero when the GitHub App install does not cover this repo")
 	flag.BoolVar(&opt.ExternalPlan, "external-plan", false, "plan came from Action plan-file (validate JSON, warn on source mismatch; empty-DFD refuse applies to all plans)")
-	flag.BoolVar(&setupCheck, "check", false, "run setup checks only (no plan scan, no API)")
+	flag.BoolVar(&setupCheck, "check", false, "run setup checks only (no plan scan; GET /v1/readiness)")
 	flag.Parse()
 
 	if setupCheck {
 		if opt.Source == "" || opt.Config == "" || opt.Remote == "" {
-			fmt.Fprintln(os.Stderr, "usage: fray -check -source infra -config fray.yaml -remote url [-plan plan.json -external-plan] [-waivers .fray/waivers.yml]")
+			fmt.Fprintln(os.Stderr, "usage: fray -check -source infra -config fray.yaml -remote url [-oidc-token tok] [-plan plan.json -external-plan] [-waivers .fray/waivers.yml]")
 			os.Exit(2)
 		}
 		os.Exit(runSetupCheck(opt))

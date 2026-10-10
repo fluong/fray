@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -252,17 +251,7 @@ esac
 	}
 }
 
-func TestReadinessProbeCheckStub(t *testing.T) {
-	row := readinessProbeCheck()
-	if row.Outcome != checkWarn {
-		t.Fatalf("%+v", row)
-	}
-	if !strings.Contains(row.Detail, "skipped: server readiness probe not yet available") {
-		t.Fatalf("%+v", row)
-	}
-}
-
-func TestRunSetupChecksNoHTTP(t *testing.T) {
+func TestRunSetupCheckLocalOnlyUsesReadinessHook(t *testing.T) {
 	dir := t.TempDir()
 	opt := writeCheckFixture(t, dir)
 	opt.ExternalPlan = true
@@ -271,28 +260,32 @@ func TestRunSetupChecksNoHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	opt.Plan = plan
-	opt.Remote = "https://example.invalid"
+	opt.Remote = "https://api.getfray.dev"
+	opt.OIDCToken = "tok"
 
-	hit := false
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		hit = true
-	}))
-	t.Cleanup(srv.Close)
-	_ = srv // server exists only so a mistaken client would have somewhere to hit; we never pass its URL
+	var calledScans bool
+	prev := readinessGET
+	t.Cleanup(func() { readinessGET = prev })
+	readinessGET = func(baseURL, token string) (int, http.Header, []byte, error) {
+		if strings.Contains(baseURL, "/v1/scans") {
+			calledScans = true
+		}
+		return http.StatusOK, nil, []byte(`{"ready":true,"checks":[{"check":"oidc","status":"ok"},{"check":"installation","status":"ok"},{"check":"repo_cap","status":"ok"},{"check":"repo_enrolled","status":"ok"}]}`), nil
+	}
 
 	summary := filepath.Join(dir, "summary.md")
 	t.Setenv("GITHUB_STEP_SUMMARY", summary)
 
-	prev := terraformCommand
-	t.Cleanup(func() { terraformCommand = prev })
+	prevTF := terraformCommand
+	t.Cleanup(func() { terraformCommand = prevTF })
 	terraformCommand = func(string, ...string) *exec.Cmd {
 		t.Fatal("terraform must not run when ExternalPlan is set")
 		return nil
 	}
 
 	code := runSetupCheck(opt)
-	if hit {
-		t.Fatal("check mode must not perform HTTP")
+	if calledScans {
+		t.Fatal("check mode must not call /v1/scans")
 	}
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -304,9 +297,6 @@ func TestRunSetupChecksNoHTTP(t *testing.T) {
 	if !strings.Contains(string(raw), "## Fray — setup check") {
 		t.Fatalf("summary missing header: %s", raw)
 	}
-	if !strings.Contains(string(raw), "server readiness") || !strings.Contains(string(raw), "warn") {
-		t.Fatalf("expected readiness warn row: %s", raw)
-	}
 }
 
 func TestRunSetupCheckFailsOnBadAPIURL(t *testing.T) {
@@ -314,12 +304,19 @@ func TestRunSetupCheckFailsOnBadAPIURL(t *testing.T) {
 	opt := writeCheckFixture(t, dir)
 	opt.Remote = "http://insecure.example"
 	opt.ExternalPlan = true
+	opt.OIDCToken = "t"
 	plan := filepath.Join(dir, "plan.json")
 	if err := os.WriteFile(plan, []byte(`{"format_version":"1.2"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	opt.Plan = plan
 	t.Setenv("GITHUB_STEP_SUMMARY", filepath.Join(dir, "summary.md"))
+	prev := readinessGET
+	t.Cleanup(func() { readinessGET = prev })
+	readinessGET = func(string, string) (int, http.Header, []byte, error) {
+		t.Fatal("readiness must not run when api-url is invalid")
+		return 0, nil, nil, nil
+	}
 	if code := runSetupCheck(opt); code == 0 {
 		t.Fatal("want non-zero exit")
 	}

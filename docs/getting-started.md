@@ -85,11 +85,10 @@ Optional: `fail-on-skip: true` fails the job on enrollment or rate-limit soft-sk
 ## Verify your setup
 
 Before the first real scan, run **`mode: check`** to confirm OIDC, `api-url`,
-`fray.yaml`, redaction key, waivers, and either a valid `plan-file` or
-`terraform init -backend=false` + `validate` in `working-directory`. This does
-**not** submit a scan, post a PR comment, upload SARIF, or run the gate. It also
-does **not** verify GitHub App enrollment yet (that needs a future server
-readiness probe — check mode warns that the probe is skipped).
+`fray.yaml`, redaction key, waivers, either a valid `plan-file` or
+`terraform init -backend=false` + `validate` in `working-directory`, and that
+the **Fray GitHub App is installed with this repository enrolled**. This does
+**not** submit a scan, post a PR comment, upload SARIF, or run the gate.
 
 Use `workflow_dispatch` (or a non-fork branch). Fork PRs cannot mint OIDC and
 fail the check on purpose.

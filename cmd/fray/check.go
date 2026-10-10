@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"html"
 	"net/url"
 	"os"
 	"os/exec"
@@ -29,19 +28,12 @@ type checkRow struct {
 	Detail  string // human text; includes remedy when fail/warn
 }
 
-// readinessProbeCheck is the single hook for a future read-only server probe.
-// Until the hosted API exposes one, this always warns and never calls the network.
-func readinessProbeCheck() checkRow {
-	return checkRow{
-		Name:    "server readiness",
-		Outcome: checkWarn,
-		Detail:  "skipped: server readiness probe not yet available",
-	}
-}
-
-// runSetupCheck validates local Action/CLI wiring without scanning or HTTP.
-// Returns process exit code: 0 if no failures (warnings OK), 1 if any fail.
+// runSetupCheck validates local Action/CLI wiring and calls GET /v1/readiness.
+// Returns process exit code: 0 if no failures (warnings/skipped OK), 1 if any fail.
 func runSetupCheck(opt options) int {
+	if opt.OIDCToken == "" {
+		opt.OIDCToken = os.Getenv("FRAY_OIDC_TOKEN")
+	}
 	rows := runSetupChecks(opt)
 	writeSetupCheckSummary(rows)
 	for _, r := range rows {
@@ -62,14 +54,23 @@ func runSetupCheck(opt options) int {
 
 func runSetupChecks(opt options) []checkRow {
 	var rows []checkRow
-	rows = append(rows, checkAPIURL(opt.Remote))
+	apiRow := checkAPIURL(opt.Remote)
+	rows = append(rows, apiRow)
 	rows = append(rows, checkWorkingDirectory(opt.Source, opt.ExternalPlan)...)
 	rows = append(rows, checkFrayYAML(opt.Config))
 	rows = append(rows, checkRedactionKey(opt.Config))
 	rows = append(rows, checkWaiversFile(opt.Waivers))
 	rows = append(rows, checkLegacyMitigationsRow(opt.Mitigations, opt.Waivers))
 	rows = append(rows, checkPlanOrTerraform(opt))
-	rows = append(rows, readinessProbeCheck())
+	if apiRow.Outcome == checkPass {
+		rows = append(rows, callReadinessProbe(opt)...)
+	} else {
+		rows = append(rows, checkRow{
+			Name:    "server readiness",
+			Outcome: checkSkipped,
+			Detail:  "skipped: api-url invalid",
+		})
+	}
 	return rows
 }
 
@@ -321,23 +322,25 @@ func runTerraform(dir string, args ...string) (string, error) {
 	return string(out), err
 }
 
+const markdownTableCellMax = 300
+
+// markdownTableCell makes a value safe for a GitHub Markdown table cell:
+// pipes escaped, CR/LF → space, trimmed to 300 runes with an ellipsis.
+func markdownTableCell(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "|", `\|`)
+	runes := []rune(s)
+	if len(runes) > markdownTableCellMax {
+		s = string(runes[:markdownTableCellMax]) + "…"
+	}
+	return s
+}
+
 func writeSetupCheckSummary(rows []checkRow) {
 	path := os.Getenv("GITHUB_STEP_SUMMARY")
-	var b strings.Builder
-	b.WriteString("## Fray — setup check\n\n")
-	b.WriteString("| Check | Result | Detail |\n")
-	b.WriteString("|-------|--------|--------|\n")
-	for _, r := range rows {
-		detail := html.EscapeString(strings.ReplaceAll(strings.ReplaceAll(r.Detail, "\r", " "), "\n", " "))
-		b.WriteString("| ")
-		b.WriteString(html.EscapeString(r.Name))
-		b.WriteString(" | ")
-		b.WriteString(string(r.Outcome))
-		b.WriteString(" | ")
-		b.WriteString(detail)
-		b.WriteString(" |\n")
-	}
-	text := b.String()
+	text := formatSetupCheckSummary(rows)
 	fmt.Fprint(os.Stderr, text)
 	if path == "" {
 		return
@@ -348,4 +351,21 @@ func writeSetupCheckSummary(rows []checkRow) {
 	}
 	_, _ = f.WriteString(text)
 	_ = f.Close()
+}
+
+func formatSetupCheckSummary(rows []checkRow) string {
+	var b strings.Builder
+	b.WriteString("## Fray — setup check\n\n")
+	b.WriteString("| Check | Result | Detail |\n")
+	b.WriteString("|-------|--------|--------|\n")
+	for _, r := range rows {
+		b.WriteString("| ")
+		b.WriteString(markdownTableCell(r.Name))
+		b.WriteString(" | ")
+		b.WriteString(markdownTableCell(string(r.Outcome)))
+		b.WriteString(" | ")
+		b.WriteString(markdownTableCell(r.Detail))
+		b.WriteString(" |\n")
+	}
+	return b.String()
 }

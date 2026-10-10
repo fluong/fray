@@ -239,7 +239,7 @@ jobs:
 
 | Input | Default | Notes |
 |-------|---------|-------|
-| `mode` | `scan` | `scan` runs the full scan. `check` runs local setup checks only (no scan submit, PR comment, SARIF, or gate). See [Getting started — Verify your setup](docs/getting-started.md#verify-your-setup). |
+| `mode` | `scan` | `scan` runs the full scan. `check` runs local setup checks plus `GET /v1/readiness` (verifies GitHub App install and repository enrollment; no scan submit, PR comment, SARIF, or gate). See [Getting started — Verify your setup](docs/getting-started.md#verify-your-setup). |
 | `api-url` | — | Required. Hosted API: `https://api.getfray.dev` (never a `*.run.app` URL). |
 | `working-directory` | `.` | Terraform root (contains `.tf` sources). |
 | `config` | `fray.yaml` | Path relative to the workspace. |
@@ -511,8 +511,14 @@ Symptom → typical cause → fix. Full setup path: [Getting started](docs/getti
 | Gate blocked | New high-severity findings vs baseline | Read the Fray PR comment / `findings.sarif`. Waive via `.fray/waivers.yml` if accepting the risk. Push/merge to the default branch to set the baseline. |
 | Soft-skip exit 0 (enrollment / rate limit) | Default soft-skip | Check the **warning** on the checks page and the job summary. Set `fail-on-skip: true` (or `fail-on-unenrolled` / `fail-on-rate-limit`) to fail instead. |
 | No “new vs baseline” on first PR | No default-branch scan yet | Expected: comment still posts in absolute mode with a “No baseline yet” line. Scan the default branch once. |
-| Setup check job summary has failures | Local wiring (OIDC, `api-url`, config, waivers, terraform/plan-file) | Read **Fray — setup check** rows; fix each fail. Use `workflow_dispatch` or a non-fork branch. See [Getting started — Verify your setup](docs/getting-started.md#verify-your-setup). |
-| Setup check warns `server readiness probe not yet available` | Expected until enrollment probe ships | Warning only — check mode does not verify App install/enrollment yet. Confirm install manually, then run a real `mode: scan`. |
+| Setup check job summary has failures | Local wiring or App enrollment | Read **Fray — setup check** rows; fix each fail. Use `workflow_dispatch` or a non-fork branch. See [Getting started — Verify your setup](docs/getting-started.md#verify-your-setup). |
+| Setup check: `installation_missing` / `installation_inactive` | App not installed or suspended | Install or re-enable [Fray (getfray.dev)](https://github.com/apps/fray-getfray-dev) and select this repository. |
+| Setup check: `installation_over_cap` | Too many repos on free plan | Narrow Repository access to ≤3 repos, or upgrade. |
+| Setup check: `repo_not_enrolled` | Repo not selected in the App | Add the repo under [installation Repository access](https://github.com/settings/installations). |
+| Setup check: `repo_mismatch` | OIDC repo does not match org binding | Contact support. |
+| Setup check: `token rejected by Fray` | Bad/missing OIDC (`aud=fray`) or `pull_request_target` | Grant `id-token: write`; use a non-fork branch or `workflow_dispatch`. |
+| Setup check: `Fray API unavailable` | Network/5xx/timeout on readiness | Retry later — not a local config problem. |
+| Setup check warns readiness rate-limited | Probe quota (30/repo/hour) | Warning only; re-run later. Job still exits 0 if other checks passed. |
 | `mode: check` fails on fork PR | Forks cannot mint OIDC `aud=fray` | Run setup checks from a non-fork branch or `workflow_dispatch`. |
 
 ## Development

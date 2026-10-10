@@ -11,11 +11,11 @@ branding:
 inputs:
   mode:
     description: >
-      scan (default) runs the full Fray scan. check runs local setup checks only
-      (OIDC, api-url, config, waivers, plan-file or terraform init -backend=false
-      + validate). Does not submit a scan, post a PR comment, upload SARIF, or
-      run the gate. Does not verify App enrollment until a server readiness
-      probe is available.
+      scan (default) runs the full Fray scan. check runs local setup checks plus
+      GET /v1/readiness (OIDC, api-url, config, waivers, plan-file or terraform
+      init -backend=false + validate, GitHub App installation and repository
+      enrollment). Does not submit a scan, post a PR comment, upload SARIF, or
+      run the gate.
     required: false
     default: "scan"
   api-url:
@@ -226,12 +226,14 @@ runs:
       env:
         FRAY_BIN: ${{ steps.build.outputs.bin }}
         FRAY_API_URL: ${{ inputs.api-url }}
+        FRAY_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         FRAY_WORKDIR: ${{ inputs.working-directory }}
         FRAY_CONFIG: ${{ inputs.config }}
         FRAY_WAIVERS_FILE: ${{ inputs.waivers-file }}
         FRAY_OUT: ${{ runner.temp }}/fray-out
         FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
         FRAY_PLAN_FILE: ${{ inputs.plan-file }}
+        FRAY_SHOW_PAYLOAD: ${{ inputs.show-payload }}
       run: bash "${{ github.action_path }}/action/check.sh"
 
     - name: Upload sent payload

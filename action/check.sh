@@ -4,11 +4,19 @@ set -euo pipefail
 
 : "${FRAY_BIN:?}"
 : "${FRAY_API_URL:?}"
+: "${FRAY_OIDC_TOKEN:?}"
 : "${FRAY_WORKDIR:?}"
 : "${FRAY_CONFIG:?}"
 : "${FRAY_OUT:?}"
 
 FRAY_TROUBLESHOOT_URL="https://github.com/fluong/fray#troubleshooting"
+
+is_true() {
+  case "${1:-false}" in
+    true|True|TRUE|1|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 root="${GITHUB_WORKSPACE:?}"
 workdir="${root}/${FRAY_WORKDIR}"
@@ -24,7 +32,11 @@ args=(
   -config "$config"
   -waivers "$waivers"
   -remote "$FRAY_API_URL"
+  -oidc-token "$FRAY_OIDC_TOKEN"
 )
+if is_true "${FRAY_SHOW_PAYLOAD:-false}"; then
+  args+=(-show-payload)
+fi
 
 if [[ -f "$mitigations" ]]; then
   args+=(-mitigations "$mitigations")
