@@ -9,6 +9,7 @@ import (
 
 func main() {
 	var opt options
+	var setupCheck bool
 	flag.StringVar(&opt.Plan, "plan", "", "path to terraform show -json output")
 	flag.StringVar(&opt.Source, "source", "", "Terraform root module, read for lifecycle and block locations")
 	flag.StringVar(&opt.Config, "config", "", "path to fray.yaml")
@@ -30,7 +31,16 @@ func main() {
 	flag.BoolVar(&opt.ShowPayload, "show-payload", false, "print the exact JSON that would be sent")
 	flag.BoolVar(&opt.FailOnUnenrolled, "fail-on-unenrolled", false, "exit non-zero when the GitHub App install does not cover this repo")
 	flag.BoolVar(&opt.ExternalPlan, "external-plan", false, "plan came from Action plan-file (validate JSON, warn on source mismatch; empty-DFD refuse applies to all plans)")
+	flag.BoolVar(&setupCheck, "check", false, "run setup checks only (no plan scan, no API)")
 	flag.Parse()
+
+	if setupCheck {
+		if opt.Source == "" || opt.Config == "" || opt.Remote == "" {
+			fmt.Fprintln(os.Stderr, "usage: fray -check -source infra -config fray.yaml -remote url [-plan plan.json -external-plan] [-waivers .fray/waivers.yml]")
+			os.Exit(2)
+		}
+		os.Exit(runSetupCheck(opt))
+	}
 
 	if opt.Plan == "" || opt.Source == "" || opt.Config == "" || opt.Remote == "" {
 		fmt.Fprintln(os.Stderr, "usage: fray -plan plan.json -source infra -config fray.yaml -remote url -default-branch main [-waivers .fray/waivers.yml] [-out dir]")
