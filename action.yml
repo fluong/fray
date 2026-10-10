@@ -172,7 +172,7 @@ runs:
         echo "::add-mask::$token"
         echo "token=$token" >> "$GITHUB_OUTPUT"
 
-    - name: Terraform plan and Fray scan
+    - name: Fray scan
       if: steps.fork.outputs.is_fork != 'true'
       id: scan
       shell: bash
