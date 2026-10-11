@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- Load balancer internet exposure uses the same security-group classifier as
+  RDS (`network_restricted`), including cross-module associations, separate
+  ingress-rule resources, and managed prefix lists.
+- S3 `audit_logging` is bound to per-bucket logging / CloudTrail data-event
+  selectors (not a plan-wide string match). WriteOnly selectors stay unverified.
+- Databases behind for_each-style `aws_vpc_security_group_ingress_rule`s that
+  are open to the internet are now reported (FR-029 open instead of unverified).
+
 ## [0.14.0] — 2026-10-11
 
 ### Added

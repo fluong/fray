@@ -499,35 +499,34 @@ func ingressFromVPCRule(r planResource, idx configIndex) ingressSource {
 		src.toPort = int(to)
 		src.portSet = true
 	}
+
+	// Only concrete planned values count as resolved sources.
+	//
+	// for_each modules list each.value.* refs on every optional source attribute
+	// even when the value is null (unused). Those nulls are ignored — a sibling
+	// concrete CIDR still classifies the rule.
+	//
+	// A null/absent value with a real configuration reference (aws_security_group,
+	// aws_ec2_managed_prefix_list, var.*, after_unknown) is configured-but-unknown:
+	// we must NOT promote config refs into resolved peer/prefix sources (that
+	// would yield network_restricted=true / public=false). Leave the source set
+	// empty → unknown below.
+	_ = idx // configuration refs intentionally not harvested for null sources
 	if s, ok := r.values["cidr_ipv4"].(string); ok {
 		src.cidrs = append(src.cidrs, s)
 	}
 	if s, ok := r.values["cidr_ipv6"].(string); ok {
 		src.cidrs = append(src.cidrs, s)
 	}
-	for _, ref := range idx.attrRefs(r.address, "referenced_security_group_id") {
-		// for_each modules reference each.value.* on every attr; keep only SG refs.
-		if ref == "self" || securityGroupNameFromRef(ref) != "" ||
-			strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
-			src.sgRefs = append(src.sgRefs, ref)
-		}
-	}
-	if s, ok := r.values["referenced_security_group_id"].(string); ok && s != "" && len(src.sgRefs) == 0 {
+	if s, ok := r.values["referenced_security_group_id"].(string); ok && s != "" {
 		src.sgRefs = append(src.sgRefs, s)
-	}
-	for _, ref := range idx.attrRefs(r.address, "prefix_list_id") {
-		if strings.Contains(ref, "aws_ec2_managed_prefix_list") {
-			src.prefixListRefs = append(src.prefixListRefs, ref)
-		}
 	}
 	if s, ok := r.values["prefix_list_id"].(string); ok && s != "" {
 		src.prefixListIDs = append(src.prefixListIDs, s)
 	}
-	// Plans often set unused optional source fields to null while for_each
-	// modules still list configuration references on every attribute. A
-	// concrete CIDR / peer / prefix list is enough; only treat as unknown
-	// when no source resolved.
 	if len(src.cidrs) == 0 && len(src.sgRefs) == 0 && len(src.prefixListIDs) == 0 && len(src.prefixListRefs) == 0 {
+		// Degenerate all-null / unknown-after-apply with no concrete source:
+		// cannot classify as world or restricted.
 		src.unknown = true
 	}
 	return src
