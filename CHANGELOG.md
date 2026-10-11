@@ -2,11 +2,11 @@
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-10-11
+
 ### Added
-- AWS RDS / Aurora `relational_db` elements now set `attributes.network_restricted`
-  from security-group ingress (inline, `aws_security_group_rule`, and
-  `aws_vpc_security_group_ingress_rule`), including associations via module calls.
-  Only the boolean is sent — never CIDRs, ports, or SG/prefix-list IDs.
+- RDS/Aurora instances now report whether their security groups admit the internet
+  (`network_restricted`); only the boolean leaves the runner.
 - Rule schema operators `any` / `all` with `conds` (for nested pass predicates).
 
 ## [0.12.1] — 2026-10-11
