@@ -214,9 +214,41 @@ func TestLBPublicTable(t *testing.T) {
 			wantVal: false, wantKnown: true,
 		},
 		{
-			name: "world on non-listener port",
+			name: "world on 22 only listener 443 → not public",
 			build: func() (planResource, []planResource, configIndex) {
 				lb, resources, idx := rootLBBare(t, false)
+				resources[2].values = map[string]any{"port": float64(443), "protocol": "HTTPS"}
+				resources[1].values = map[string]any{
+					"ingress": []any{map[string]any{
+						"from_port": float64(22), "to_port": float64(22), "protocol": "tcp",
+						"cidr_blocks": []any{"0.0.0.0/0"},
+					}},
+				}
+				return lb, resources, idx
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
+			name: "world on all ports → public",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				resources[2].values = map[string]any{"port": float64(443), "protocol": "HTTPS"}
+				resources[1].values = map[string]any{
+					"ingress": []any{map[string]any{
+						"from_port": float64(0), "to_port": float64(65535), "protocol": "tcp",
+						"cidr_blocks": []any{"0.0.0.0/0"},
+					}},
+				}
+				return lb, resources, idx
+			},
+			wantVal: true, wantKnown: true,
+		},
+		{
+			name: "unknown listener port + port-specific world → absent (same as DB)",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				// Listener present but port not a number → listenerPortSet empty → portKnown=false.
+				resources[2].values = map[string]any{"protocol": "HTTPS"}
 				resources[1].values = map[string]any{
 					"ingress": []any{map[string]any{
 						"from_port": float64(443), "to_port": float64(443), "protocol": "tcp",
@@ -225,7 +257,22 @@ func TestLBPublicTable(t *testing.T) {
 				}
 				return lb, resources, idx
 			},
-			wantVal: false, wantKnown: true,
+			wantVal: false, wantKnown: false,
+		},
+		{
+			name: "unknown listener port + protocol -1 world → public (same as DB world)",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				resources[2].values = map[string]any{"protocol": "HTTPS"}
+				resources[1].values = map[string]any{
+					"ingress": []any{map[string]any{
+						"from_port": float64(0), "to_port": float64(0), "protocol": "-1",
+						"cidr_blocks": []any{"0.0.0.0/0"},
+					}},
+				}
+				return lb, resources, idx
+			},
+			wantVal: true, wantKnown: true,
 		},
 		{
 			name: "slash8 world",
