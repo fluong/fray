@@ -15,7 +15,8 @@
 - Inline ingress peer refs resolve per block / list element (multi-block and
   multi-peer first-apply no longer stay unverified).
 - Cloud Run secrets mounted via `template.volumes[].secret` emit
-  `secret_delivery: volume` (FR-003 can mitigate).
+  `secret_delivery: volume` only when that secret is not also injected as
+  an environment variable on the same service.
 - R2 `object_lock` is set from `cloudflare_r2_bucket_lock` enabled rules
   (false when none in this root).
 
