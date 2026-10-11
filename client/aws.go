@@ -187,7 +187,9 @@ func awsBucketElement(r planResource, resources []planResource, idx configIndex,
 		causes["object_lock"] = reason
 	}
 	if auditOwned {
-		attrs["audit_logging"] = bucketAudit(r, resources, idx)
+		if audit, known := bucketAudit(r, resources, idx); known {
+			attrs["audit_logging"] = audit
+		}
 	}
 	el := &Element{
 		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "aws",

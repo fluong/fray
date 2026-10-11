@@ -276,29 +276,258 @@ func encrypted(values map[string]any) bool {
 	return false
 }
 
-func bucketAudit(bucket planResource, resources []planResource, idx configIndex) bool {
+// bucketAudit reports attributes.audit_logging for an S3 bucket when
+// audit_config is owned_by_this_root.
+//
+// Outcomes (known=false ⇒ omit the attribute → FR-023 unverified):
+//   - aws_s3_bucket_logging references this bucket → true
+//   - aws_cloudtrail (enable_logging not false) selects this bucket for
+//     S3 object data events that include reads → true
+//   - Only WriteOnly / readOnly=false selectors cover the bucket → omit
+//     (reads may not be logged; do not emit true or false)
+//   - Owned root with no covering logging or trail → false
+func bucketAudit(bucket planResource, resources []planResource, idx configIndex) (audit bool, known bool) {
+	if bucketLogged(bucket, resources, idx) {
+		return true, true
+	}
+	sawWriteOnly := false
 	for _, r := range resources {
-		if r.typ == "aws_s3_bucket_logging" {
-			for _, ref := range idx.attrRefs(r.address, "bucket") {
-				if containsResource(ref, "aws_s3_bucket", localTypeName(bucket.address)) {
-					return true
-				}
+		if r.typ != "aws_cloudtrail" {
+			continue
+		}
+		if v, ok := r.values["enable_logging"].(bool); ok && !v {
+			continue
+		}
+		reads, writeOnly := trailCoversBucketDataEvents(r, bucket, idx)
+		if reads {
+			return true, true
+		}
+		if writeOnly {
+			sawWriteOnly = true
+		}
+	}
+	if sawWriteOnly {
+		return false, false
+	}
+	return false, true
+}
+
+func bucketLogged(bucket planResource, resources []planResource, idx configIndex) bool {
+	name := localTypeName(bucket.address)
+	for _, r := range resources {
+		if r.typ != "aws_s3_bucket_logging" {
+			continue
+		}
+		for _, ref := range idx.attrRefs(r.address, "bucket") {
+			if containsResource(ref, "aws_s3_bucket", name) {
+				return true
 			}
 		}
-		if r.typ == "aws_cloudtrail" && trailSelectsS3(r.values) {
+	}
+	return false
+}
+
+// trailCoversBucketDataEvents reports whether a trail's event selectors cover
+// S3 object data events for bucket. reads=true means read (or All) coverage;
+// writeOnly=true means only WriteOnly / readOnly=false coverage was found.
+func trailCoversBucketDataEvents(trail, bucket planResource, idx configIndex) (reads, writeOnly bool) {
+	for _, raw := range asList(trail.values["event_selector"]) {
+		sel, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if !eventSelectorCoversBucket(sel, trail, bucket, idx) {
+			continue
+		}
+		switch strings.ToLower(stringAttr(sel["read_write_type"])) {
+		case "writeonly":
+			writeOnly = true
+		default:
+			// All, ReadOnly, or unset (AWS default All).
+			reads = true
+		}
+	}
+	for _, raw := range asList(trail.values["advanced_event_selector"]) {
+		sel, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		covers, includeReads := advancedSelectorCoversBucket(sel, trail, bucket, idx)
+		if !covers {
+			continue
+		}
+		if includeReads {
+			reads = true
+		} else {
+			writeOnly = true
+		}
+	}
+	return reads, writeOnly
+}
+
+func eventSelectorCoversBucket(sel map[string]any, trail, bucket planResource, idx configIndex) bool {
+	var values []string
+	hasS3Object := false
+	for _, dr := range asList(sel["data_resource"]) {
+		m, ok := dr.(map[string]any)
+		if !ok {
+			continue
+		}
+		if stringAttr(m["type"]) != "AWS::S3::Object" {
+			continue
+		}
+		hasS3Object = true
+		values = append(values, stringList(m["values"])...)
+	}
+	if !hasS3Object {
+		return false
+	}
+	if s3ObjectARNCoversBucket(values, bucket) {
+		return true
+	}
+	// Computed ARNs: configuration references on event_selector name this bucket.
+	return trailSelectorRefsBucket(trail, bucket, "event_selector", idx) && len(values) == 0
+}
+
+func advancedSelectorCoversBucket(sel map[string]any, trail, bucket planResource, idx configIndex) (covers, includeReads bool) {
+	var (
+		isData, isS3Object bool
+		arnEquals          []string
+		arnStarts          []string
+		arnNotStarts       []string
+		arnNotEquals       []string
+		readOnlyEquals     []string
+		hasARNFilter       bool
+	)
+	for _, raw := range asList(sel["field_selector"]) {
+		fs, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch stringAttr(fs["field"]) {
+		case "eventCategory":
+			for _, v := range stringList(fs["equals"]) {
+				if v == "Data" {
+					isData = true
+				}
+			}
+		case "resources.type":
+			for _, v := range stringList(fs["equals"]) {
+				if v == "AWS::S3::Object" {
+					isS3Object = true
+				}
+			}
+		case "resources.ARN":
+			hasARNFilter = true
+			arnEquals = append(arnEquals, stringList(fs["equals"])...)
+			arnStarts = append(arnStarts, stringList(fs["starts_with"])...)
+			arnNotStarts = append(arnNotStarts, stringList(fs["not_starts_with"])...)
+			arnNotEquals = append(arnNotEquals, stringList(fs["not_equals"])...)
+		case "readOnly":
+			readOnlyEquals = append(readOnlyEquals, stringList(fs["equals"])...)
+		}
+	}
+	if !isData || !isS3Object {
+		return false, false
+	}
+	if hasARNFilter {
+		included := advancedARNIncludesBucket(arnEquals, arnStarts, arnNotStarts, arnNotEquals, bucket)
+		if !included && !trailSelectorRefsBucket(trail, bucket, "advanced_event_selector", idx) {
+			return false, false
+		}
+		if !included {
+			// Refs name this bucket but concrete ARN values did not match.
+			included = true
+		}
+	}
+	// No resources.ARN filter ⇒ all S3 objects in the account.
+	return true, advancedIncludesReads(readOnlyEquals)
+}
+
+func advancedARNIncludesBucket(equals, starts, notStarts, notEquals []string, bucket planResource) bool {
+	name := s3BucketName(bucket)
+	if name == "" {
+		return false
+	}
+	prefix := "arn:aws:s3:::" + name + "/"
+	arn := "arn:aws:s3:::" + name
+	included := false
+	if len(equals) == 0 && len(starts) == 0 {
+		// Exclusion-only filter: start included, then apply not_*.
+		included = true
+	}
+	for _, v := range equals {
+		if v == prefix || v == arn || s3ObjectARNCoversBucket([]string{v}, bucket) {
+			included = true
+		}
+	}
+	for _, v := range starts {
+		if v == prefix || v == arn || v == arn+"/" || strings.HasPrefix(prefix, v) || s3ObjectARNCoversBucket([]string{v}, bucket) {
+			included = true
+		}
+	}
+	for _, v := range notStarts {
+		if v == prefix || v == arn || v == arn+"/" || strings.HasPrefix(prefix, v) {
+			included = false
+		}
+	}
+	for _, v := range notEquals {
+		if v == prefix || v == arn {
+			included = false
+		}
+	}
+	return included
+}
+
+func advancedIncludesReads(readOnlyEquals []string) bool {
+	if len(readOnlyEquals) == 0 {
+		return true
+	}
+	for _, v := range readOnlyEquals {
+		if strings.EqualFold(v, "true") {
+			return true
+		}
+	}
+	// Only false → write events only.
+	return false
+}
+
+func s3ObjectARNCoversBucket(values []string, bucket planResource) bool {
+	name := s3BucketName(bucket)
+	prefix := "arn:aws:s3:::" + name + "/"
+	arn := "arn:aws:s3:::" + name
+	for _, v := range values {
+		switch {
+		case v == "arn:aws:s3" || v == "arn:aws:s3:::":
+			return true
+		case name != "" && (v == prefix || v == arn || v == arn+"/" || strings.HasPrefix(v, prefix)):
+			return true
+		case name != "" && strings.HasPrefix(prefix, v) && strings.HasPrefix(v, "arn:aws:s3:::"):
+			// starts_with value that is a prefix of our bucket ARN prefix.
 			return true
 		}
 	}
 	return false
 }
 
-func trailSelectsS3(values map[string]any) bool {
-	raw, err := json.Marshal(values)
-	if err != nil {
-		return false
+func s3BucketName(bucket planResource) string {
+	if s, ok := bucket.values["bucket"].(string); ok && s != "" {
+		return s
 	}
-	text := string(raw)
-	return strings.Contains(text, "AWS::S3::Object") || strings.Contains(text, "s3.amazonaws.com")
+	if s, ok := bucket.values["bucket_prefix"].(string); ok && s != "" {
+		return s
+	}
+	return ""
+}
+
+func trailSelectorRefsBucket(trail, bucket planResource, attr string, idx configIndex) bool {
+	name := localTypeName(bucket.address)
+	for _, ref := range idx.attrRefs(trail.address, attr) {
+		if containsResource(ref, "aws_s3_bucket", name) {
+			return true
+		}
+	}
+	return false
 }
 
 func secretRotated(secret planResource, resources []planResource, idx configIndex) bool {
