@@ -164,6 +164,42 @@ func TestProjectScopeCoversEverySecret(t *testing.T) {
 	}
 }
 
+func TestCloudRunSecretVolumeDelivery(t *testing.T) {
+	plan := []byte(`{
+	  "resource_changes": [
+	    {"address":"google_cloud_run_v2_service.api","mode":"managed","type":"google_cloud_run_v2_service","change":{"after":{
+	      "name":"api","location":"us-central1",
+	      "template":[{
+	        "volumes":[{"name":"secvol","secret":[{"secret":"app-secret","items":[{"path":"token","version":"latest"}]}]}],
+	        "containers":[{"image":"gcr.io/x/y@sha256:abc","volume_mounts":[{"name":"secvol","mount_path":"/secrets"}],
+	          "env":[{"name":"OTHER","value_source":[{"secret_key_ref":[{"secret":"other-secret","version":"latest"}]}]}]}]
+	      }]
+	    }}},
+	    {"address":"google_secret_manager_secret.app","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"app-secret","rotation":[]}}},
+	    {"address":"google_secret_manager_secret.other","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"other-secret","rotation":[]}}},
+	    {"address":"google_secret_manager_secret_iam_member.app","mode":"managed","type":"google_secret_manager_secret_iam_member","change":{"after":{"secret_id":"app-secret","role":"roles/secretmanager.secretAccessor","member":"serviceAccount:api@example.iam.gserviceaccount.com"}}},
+	    {"address":"google_secret_manager_secret_iam_member.other","mode":"managed","type":"google_secret_manager_secret_iam_member","change":{"after":{"secret_id":"other-secret","role":"roles/secretmanager.secretAccessor","member":"serviceAccount:api@example.iam.gserviceaccount.com"}}}
+	  ]
+	}`)
+	doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range doc.Flows {
+		if f.DataClass != "credentials" {
+			continue
+		}
+		got[f.SecretDelivery] = got[f.SecretDelivery] + "1"
+	}
+	if got["volume"] != "1" {
+		t.Fatalf("want one volume credential flow, got %#v", got)
+	}
+	if got["env"] != "1" {
+		t.Fatalf("want one env credential flow, got %#v", got)
+	}
+}
+
 func TestR2DevDomainMakesBucketPublic(t *testing.T) {
 	plan := []byte(`{
 	  "resource_changes": [

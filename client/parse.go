@@ -648,6 +648,59 @@ func serviceEnvs(r planResource) []envRef {
 	return out
 }
 
+// serviceVolumeSecrets returns Secret Manager secret ids mounted into the
+// Cloud Run service as volumes (template.volumes[].secret) that at least one
+// container mounts. These are secret_delivery=volume, not env.
+func serviceVolumeSecrets(r planResource) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, t := range asList(r.values["template"]) {
+		tm, ok := t.(map[string]any)
+		if !ok {
+			continue
+		}
+		mounted := map[string]bool{}
+		for _, c := range asList(tm["containers"]) {
+			cm, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			for _, vm := range asList(cm["volume_mounts"]) {
+				m, ok := vm.(map[string]any)
+				if !ok {
+					continue
+				}
+				if name, _ := m["name"].(string); name != "" {
+					mounted[name] = true
+				}
+			}
+		}
+		for _, v := range asList(tm["volumes"]) {
+			vm, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			volName, _ := vm["name"].(string)
+			if volName == "" || !mounted[volName] {
+				continue
+			}
+			for _, s := range asList(vm["secret"]) {
+				sm, ok := s.(map[string]any)
+				if !ok {
+					continue
+				}
+				id, _ := sm["secret"].(string)
+				if id == "" || seen[id] {
+					continue
+				}
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+
 func secretRef(env map[string]any) string {
 	for _, vs := range asList(env["value_source"]) {
 		vm, ok := vs.(map[string]any)
@@ -712,6 +765,37 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 			continue
 		}
 		sa, _ := serviceAccount(svc)
+		volumeSecretEls := map[string]bool{} // secret element canonical key
+		for _, id := range serviceVolumeSecrets(svc) {
+			sec := secretByID[id]
+			if sec == nil {
+				for sid, el := range secretByID {
+					if secretMatch(id, sid) {
+						sec = el
+						id = sid
+						break
+					}
+				}
+			}
+			if sec == nil {
+				*warnings = append(*warnings, "volume secret "+id+" on "+svc.address+" with no element")
+				continue
+			}
+			volumeSecretEls[sec.canonicalKey()] = true
+			flow := &Flow{
+				From: secTemp(sec), To: secTemp(svcEl),
+				DataClass: "credentials", Transport: "local", SecretDelivery: "volume",
+				Causes: map[string]string{"secret_delivery": svc.address},
+			}
+			if scope, grants, cause := secretScope(id, sa, secretIAM, projectIAM); scope != "" {
+				flow.AuthzScope = scope
+				flow.AuthzGrants = grants
+				if cause != "" {
+					flow.Causes["authz_scope"] = cause
+				}
+			}
+			flows = append(flows, flow)
+		}
 		for _, env := range serviceEnvs(svc) {
 			if env.secret == "" {
 				continue
@@ -719,6 +803,10 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 			sec := secretByID[env.secret]
 			if sec == nil {
 				*warnings = append(*warnings, "env "+env.name+" references secret "+env.secret+" with no element")
+				continue
+			}
+			// Volume mount for the same secret already emits a mitigated path.
+			if volumeSecretEls[sec.canonicalKey()] {
 				continue
 			}
 			flow := &Flow{
