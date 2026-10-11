@@ -107,15 +107,81 @@ func TestLBPublicTable(t *testing.T) {
 					},
 				}
 				idx.resources[rule.address] = exprSet{refs: map[string][]string{
-					"security_group_id":             {"aws_security_group.alb.id", "aws_security_group.alb"},
-					"cidr_ipv4":                     {"each.value.cidr_ipv4", "each.value"},
-					"cidr_ipv6":                     {"each.value.cidr_ipv6", "each.value"},
-					"prefix_list_id":                {"each.value.prefix_list_id", "each.value"},
-					"referenced_security_group_id":  {"each.value.referenced_security_group_id", "each.value"},
+					"security_group_id":            {"aws_security_group.alb.id", "aws_security_group.alb"},
+					"cidr_ipv4":                    {"each.value.cidr_ipv4", "each.value"},
+					"cidr_ipv6":                    {"each.value.cidr_ipv6", "each.value"},
+					"prefix_list_id":               {"each.value.prefix_list_id", "each.value"},
+					"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
 				}}
 				return lb, append(resources, rule), idx
 			},
 			wantVal: true, wantKnown: true,
+		},
+		{
+			name: "vpc rule cidr null + peer SG unknown-after-apply → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.peer",
+					values: map[string]any{
+						"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "referenced_security_group_id": nil,
+					},
+				}
+				idx.resources[rule.address] = exprSet{refs: map[string][]string{
+					"security_group_id":            {"aws_security_group.alb.id", "aws_security_group.alb"},
+					"referenced_security_group_id": {"aws_security_group.tasks.id", "aws_security_group.tasks"},
+				}}
+				return lb, append(resources, rule), idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			name: "vpc rule cidr null + prefix_list_id unknown-after-apply → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				pl := planResource{
+					typ: "aws_ec2_managed_prefix_list", address: "aws_ec2_managed_prefix_list.world",
+					values: map[string]any{
+						"id":    "pl-world",
+						"entry": []any{map[string]any{"cidr": "0.0.0.0/0"}},
+					},
+				}
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.pl",
+					values: map[string]any{
+						"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "prefix_list_id": nil,
+					},
+				}
+				idx.resources[rule.address] = exprSet{refs: map[string][]string{
+					"security_group_id": {"aws_security_group.alb.id", "aws_security_group.alb"},
+					"prefix_list_id":    {"aws_ec2_managed_prefix_list.world.id", "aws_ec2_managed_prefix_list.world"},
+				}}
+				return lb, append(resources, rule, pl), idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			name: "vpc rule all sources null → absent (degenerate)",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.empty",
+					values: map[string]any{
+						"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "cidr_ipv6": nil,
+						"prefix_list_id": nil, "referenced_security_group_id": nil,
+					},
+				}
+				idx.resources[rule.address] = exprSet{refs: map[string][]string{
+					"security_group_id":            {"aws_security_group.alb.id", "aws_security_group.alb"},
+					"cidr_ipv4":                    {"each.value.cidr_ipv4", "each.value"},
+					"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
+				}}
+				return lb, append(resources, rule), idx
+			},
+			wantVal: false, wantKnown: false,
 		},
 		{
 			name: "prefix list all-world",

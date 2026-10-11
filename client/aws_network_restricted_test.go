@@ -126,6 +126,73 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 			wantVal: false, wantKnown: true,
 		},
 		{
+			name: "vpc rule cidr null + peer SG unknown-after-apply → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.peer",
+					values: map[string]any{
+						"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "referenced_security_group_id": nil,
+					},
+				}
+				idx.resources[rule.address] = exprSet{refs: map[string][]string{
+					"security_group_id":            {"aws_security_group.db.id", "aws_security_group.db"},
+					"referenced_security_group_id": {"aws_security_group.tasks.id", "aws_security_group.tasks"},
+				}}
+				return db, append(resources, rule), idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			name: "vpc rule cidr null + prefix_list_id unknown-after-apply → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				pl := planResource{
+					typ: "aws_ec2_managed_prefix_list", address: "aws_ec2_managed_prefix_list.priv",
+					values: map[string]any{
+						"id":    "pl-priv",
+						"entry": []any{map[string]any{"cidr": "10.0.0.0/8"}},
+					},
+				}
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.pl",
+					values: map[string]any{
+						"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "prefix_list_id": nil,
+					},
+				}
+				idx.resources[rule.address] = exprSet{refs: map[string][]string{
+					"security_group_id": {"aws_security_group.db.id", "aws_security_group.db"},
+					"prefix_list_id":    {"aws_ec2_managed_prefix_list.priv.id", "aws_ec2_managed_prefix_list.priv"},
+				}}
+				return db, append(resources, rule, pl), idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			name: "vpc rule all sources null → absent (degenerate)",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.empty",
+					values: map[string]any{
+						"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "cidr_ipv6": nil,
+						"prefix_list_id": nil, "referenced_security_group_id": nil,
+					},
+				}
+				idx.resources[rule.address] = exprSet{refs: map[string][]string{
+					"security_group_id":            {"aws_security_group.db.id", "aws_security_group.db"},
+					"cidr_ipv4":                    {"each.value.cidr_ipv4", "each.value"},
+					"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
+					"prefix_list_id":               {"each.value.prefix_list_id", "each.value"},
+				}}
+				return db, append(resources, rule), idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
 			name: "::/0 world",
 			build: func() (planResource, []planResource, configIndex) {
 				return rootDBWithInlineSG(t, map[string]any{
