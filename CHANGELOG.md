@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-10-11
+
+### Fixed
+- RDS instances that omit `deletion_protection` are now reported as not protected
+  (the plan's false value is recorded) instead of unverified.
+
 ## [0.12.0] — 2026-10-11
 
 ### Added
