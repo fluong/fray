@@ -5,7 +5,7 @@ package version
 import "regexp"
 
 // Version is the release version string (SemVer without a leading "v").
-const Version = "0.13.0"
+const Version = "0.14.0"
 
 // InformationURI is the public repository URL for SARIF driver.informationUri.
 const InformationURI = "https://github.com/fluong/fray"

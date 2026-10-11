@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-10-11
+
+### Added
+- SARIF `helpUri` and PR-comment rule ids link to the public rule catalog under
+  [`docs/rules/`](docs/rules/README.md).
+
 ## [0.13.0] — 2026-10-11
 
 ### Added
