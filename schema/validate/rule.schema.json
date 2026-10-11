@@ -5,7 +5,7 @@
   "description": "A rule selects elements or flows, then checks a pass condition. when and pass are conjunctions at the top level: every condition must hold. Nested any (disjunction) and all (conjunction) combine child conditions via conds. Operators are equals, in, exists, not, any, all, lte, gte, and contains. A when condition that reads an absent attribute does not match, so the rule emits nothing. Once when matches, pass true is mitigated and pass false is open. equals, in, lte, and gte yield unverified when the attribute is absent; not of an unverified read is unverified. any is true if any child is true, else unverified if any child is unverified, else false. all is false if any child is false, else unverified if any child is unverified, else true. exists is true or false, including when the attribute is absent. A false condition wins over an unverified sibling. Unverified does not gate CI. boundary equals kind/direction and matches one crossing of the flow. The evaluator rejects a field that does not apply to target.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "title", "threat", "explanation", "stride", "severity", "platforms", "target", "when", "pass", "rationale", "mitigation"],
+  "required": ["id", "title", "threat", "explanation", "stride", "severity", "platforms", "target", "when", "pass", "rationale", "mitigation", "evaluation"],
   "properties": {
     "id": { "type": "string", "pattern": "^FR-([0-9]{3}|[A-Z][A-Z0-9]{1,9}-[0-9]{4})$" },
     "title": { "type": "string", "minLength": 1, "maxLength": 120 },
@@ -45,6 +45,15 @@
     },
     "category": {
       "enum": ["exposure", "encryption", "identity", "logging", "resilience", "supply_chain", "data_flow"]
+    },
+    "introduced": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Hosted server SemVer when the rule first shipped. Omit for rules present since Fray's first public release."
+    },
+    "evaluation": {
+      "$ref": "#/$defs/evaluation",
+      "description": "Plain-language outcomes for the public rule catalog."
     },
     "target": { "enum": ["element", "flow"] },
     "when": {
@@ -97,6 +106,16 @@
     }
   },
   "$defs": {
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["open", "mitigated", "unverified"],
+      "properties": {
+        "open": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "mitigated": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "unverified": { "type": "string", "minLength": 1, "maxLength": 400 }
+      }
+    },
     "stride": {
       "enum": [
         "spoofing",
