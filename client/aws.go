@@ -119,10 +119,18 @@ func awsDBElement(r planResource, prevent bool) *Element {
 	if v, ok := r.values["publicly_accessible"].(bool); ok {
 		attrs["public"] = v
 	}
+	// Provider default for storage_encrypted is false; when Terraform omits the
+	// argument the plan still writes false, so this is open (not unverified).
 	if v, ok := r.values["storage_encrypted"].(bool); ok {
 		attrs["encrypted_at_rest"] = v
 	}
-	setDeletionProtection(attrs, r.values, prevent)
+	// prevent_destroy wins. Otherwise record the plan bool, including false
+	// (provider default when the argument is omitted).
+	if prevent {
+		attrs["deletion_protection"] = true
+	} else if v, ok := r.values["deletion_protection"].(bool); ok {
+		attrs["deletion_protection"] = v
+	}
 	return &Element{
 		Name: DisplayName(r.address, name, "relational_db"), Type: "datastore", Kind: "relational_db", Provider: "aws",
 		Provenance: "iac",
