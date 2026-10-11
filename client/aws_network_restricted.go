@@ -347,7 +347,10 @@ func classifySGIngress(sg planResource, resources []planResource, idx configInde
 			// World rule on a port that does not cover the DB: ignore for false.
 			allRestricted = false
 		case netSrcUnknown:
-			return netSrcUnknown, false
+			// Unknown only affects this listen port when the source covers it.
+			if covers != coverNo {
+				return netSrcUnknown, false
+			}
 		case netSrcRestricted:
 			// ok
 		}
@@ -380,13 +383,14 @@ type ingressSource struct {
 
 func collectSGIngressSources(sg planResource, resources []planResource, idx configIndex) []ingressSource {
 	var out []ingressSource
-	for _, ing := range asList(sg.values["ingress"]) {
+	ings := asList(sg.values["ingress"])
+	for i, ing := range ings {
 		m, ok := ing.(map[string]any)
 		if !ok {
 			out = append(out, ingressSource{unknown: true})
 			continue
 		}
-		out = append(out, ingressFromInline(m, idx, sg))
+		out = append(out, ingressFromInline(m, sg, idx, i, len(ings)))
 	}
 	for _, r := range resources {
 		switch r.typ {
@@ -409,7 +413,12 @@ func collectSGIngressSources(sg planResource, resources []planResource, idx conf
 	return out
 }
 
-func ingressFromInline(m map[string]any, idx configIndex, sg planResource) ingressSource {
+// ingressFromInline reads one planned ingress object. Concrete values on that
+// object win. Unknown CIDR always yields unknown (never ignored or outweighed
+// by a peer). Peer/prefix config refs are used only when attributable to this
+// block: a single static ingress (not dynamic/for_each iterations) with a
+// direct same-module managed reference.
+func ingressFromInline(m map[string]any, sg planResource, idx configIndex, ingressIndex, ingressCount int) ingressSource {
 	src := ingressSource{protocol: strings.ToLower(stringAttr(m["protocol"]))}
 	if from, ok := number(m["from_port"]); ok {
 		src.fromPort, src.portSet = int(from), true
@@ -418,71 +427,168 @@ func ingressFromInline(m map[string]any, idx configIndex, sg planResource) ingre
 		src.toPort = int(to)
 		src.portSet = true
 	}
+
 	src.cidrs = append(src.cidrs, stringList(m["cidr_blocks"])...)
 	src.cidrs = append(src.cidrs, stringList(m["ipv6_cidr_blocks"])...)
-	if v, ok := m["cidr_blocks"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 {
+	if inlineCIDRUnknown(m, sg, ingressIndex) {
+		// Invariant: unknown CIDR → UNKNOWN; do not resolve peers on this source.
 		src.unknown = true
+		return src
 	}
-	if v, ok := m["ipv6_cidr_blocks"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 {
+
+	if ids := stringList(m["security_groups"]); len(ids) > 0 {
+		src.sgRefs = append(src.sgRefs, ids...)
+	} else if self, ok := m["self"].(bool); ok && self {
+		src.sgRefs = append(src.sgRefs, "self")
+	} else if ref, ok, unk := resolveInlineUnknownPeer(sg, idx, ingressIndex, ingressCount); unk {
 		src.unknown = true
+		return src
+	} else if ok {
+		src.sgRefs = append(src.sgRefs, ref)
 	}
-	if v, ok := m["security_groups"]; ok {
-		ids := stringList(v)
-		if len(ids) > 0 {
-			src.sgRefs = append(src.sgRefs, ids...)
-		} else if len(asList(v)) > 0 {
-			// Computed/null peer SGs: use config refs on this SG's ingress when present.
-			for _, ref := range idx.attrRefs(sg.address, "ingress") {
-				if strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
-					src.unknown = true
-					break
-				}
-				if securityGroupNameFromRef(ref) != "" {
-					src.sgRefs = append(src.sgRefs, ref)
-				}
-			}
-			if len(src.sgRefs) == 0 {
-				src.unknown = true
-			}
-		}
-	}
-	if v, ok := m["prefix_list_ids"]; ok {
-		ids := stringList(v)
+
+	if ids := stringList(m["prefix_list_ids"]); len(ids) > 0 {
 		src.prefixListIDs = append(src.prefixListIDs, ids...)
-		if len(ids) == 0 && len(asList(v)) > 0 {
-			for _, ref := range idx.attrRefs(sg.address, "ingress") {
-				if strings.Contains(ref, "aws_ec2_managed_prefix_list") {
-					src.prefixListRefs = append(src.prefixListRefs, ref)
-				}
-			}
-			if len(src.prefixListRefs) == 0 {
-				src.unknown = true
-			}
-		}
+	} else if ref, ok, unk := resolveInlineUnknownPrefix(sg, idx, ingressIndex, ingressCount); unk {
+		src.unknown = true
+		return src
+	} else if ok {
+		src.prefixListRefs = append(src.prefixListRefs, ref)
 	}
-	if len(src.cidrs) == 0 && len(src.sgRefs) == 0 && len(src.prefixListIDs) == 0 && len(src.prefixListRefs) == 0 && !src.unknown {
-		if self, ok := m["self"].(bool); ok && self {
-			src.sgRefs = append(src.sgRefs, "self")
-		} else {
-			// Plan after-values often omit peer SG IDs; configuration refs still name them.
-			for _, ref := range idx.attrRefs(sg.address, "ingress") {
-				if strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
-					src.unknown = true
-					break
-				}
-				if securityGroupNameFromRef(ref) != "" {
-					src.sgRefs = append(src.sgRefs, ref)
-				}
-				if strings.Contains(ref, "aws_ec2_managed_prefix_list") {
-					src.prefixListRefs = append(src.prefixListRefs, ref)
-				}
-			}
-			if len(src.sgRefs) == 0 && len(src.prefixListRefs) == 0 {
-				src.unknown = true
-			}
-		}
+
+	if len(src.cidrs) == 0 && len(src.sgRefs) == 0 && len(src.prefixListIDs) == 0 && len(src.prefixListRefs) == 0 {
+		src.unknown = true
 	}
 	return src
+}
+
+// resolveInlineUnknownPeer resolves security_groups when planned IDs are
+// unknown. Only a single static ingress block with a direct same-module SG
+// reference is attributable; dynamic/for_each (multiple blocks or each.value)
+// stays unknown.
+func resolveInlineUnknownPeer(sg planResource, idx configIndex, ingressIndex, ingressCount int) (ref string, ok bool, unk bool) {
+	if !inlineAttrUnknown(sg, ingressIndex, "security_groups") {
+		return "", false, false
+	}
+	if ingressCount != 1 {
+		return "", false, true
+	}
+	refs := idx.attrRefs(sg.address, "ingress")
+	if len(refs) == 0 {
+		return "", false, true
+	}
+	for _, r := range refs {
+		if isIndirectIngressRef(r) {
+			return "", false, true
+		}
+	}
+	ruleMod, _, _, _ := splitResourceAddress(sg.address)
+	var names []string
+	seen := map[string]bool{}
+	for _, r := range refs {
+		name := securityGroupNameFromRef(r)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) != 1 {
+		return "", false, true
+	}
+	return resourceAddress(ruleMod, "aws_security_group", names[0]), true, false
+}
+
+func resolveInlineUnknownPrefix(sg planResource, idx configIndex, ingressIndex, ingressCount int) (ref string, ok bool, unk bool) {
+	if !inlineAttrUnknown(sg, ingressIndex, "prefix_list_ids") {
+		return "", false, false
+	}
+	if ingressCount != 1 {
+		return "", false, true
+	}
+	refs := idx.attrRefs(sg.address, "ingress")
+	if len(refs) == 0 {
+		return "", false, true
+	}
+	for _, r := range refs {
+		if isIndirectIngressRef(r) {
+			return "", false, true
+		}
+	}
+	ruleMod, _, _, _ := splitResourceAddress(sg.address)
+	var names []string
+	seen := map[string]bool{}
+	for _, r := range refs {
+		name := managedPrefixListNameFromRef(r)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) != 1 {
+		return "", false, true
+	}
+	return resourceAddress(ruleMod, "aws_ec2_managed_prefix_list", names[0]), true, false
+}
+
+func inlineCIDRUnknown(m map[string]any, sg planResource, ingressIndex int) bool {
+	if inlineAttrUnknown(sg, ingressIndex, "cidr_blocks") || inlineAttrUnknown(sg, ingressIndex, "ipv6_cidr_blocks") {
+		return true
+	}
+	// List present but every element null/non-string (computed items).
+	if v, ok := m["cidr_blocks"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 {
+		return true
+	}
+	if v, ok := m["ipv6_cidr_blocks"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 {
+		return true
+	}
+	return false
+}
+
+func inlineAttrUnknown(sg planResource, ingressIndex int, attr string) bool {
+	if sg.afterUnknown == nil {
+		return false
+	}
+	raw, ok := sg.afterUnknown["ingress"]
+	if !ok {
+		return false
+	}
+	switch t := raw.(type) {
+	case bool:
+		return t
+	case []any:
+		if ingressIndex < 0 || ingressIndex >= len(t) {
+			return false
+		}
+		block, ok := t[ingressIndex].(map[string]any)
+		if !ok {
+			// ingress: [true, ...] style
+			b, isBool := t[ingressIndex].(bool)
+			return isBool && b
+		}
+		return attrUnknownMap(block, attr)
+	default:
+		return false
+	}
+}
+
+func attrUnknownMap(m map[string]any, attr string) bool {
+	v, ok := m[attr]
+	if !ok {
+		return false
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case []any:
+		for _, item := range t {
+			if b, ok := item.(bool); ok && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func ingressFromVPCRule(r planResource, idx configIndex) ingressSource {
@@ -689,30 +795,121 @@ func ingressFromSGRule(r planResource, idx configIndex) ingressSource {
 		src.toPort = int(to)
 		src.portSet = true
 	}
+
 	src.cidrs = append(src.cidrs, stringList(r.values["cidr_blocks"])...)
 	src.cidrs = append(src.cidrs, stringList(r.values["ipv6_cidr_blocks"])...)
-	if v, ok := r.values["cidr_blocks"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 {
+	if sgRuleCIDRUnknown(r) {
+		// Invariant: unknown CIDR → UNKNOWN; never resolve peers on this rule.
 		src.unknown = true
+		return src
 	}
-	for _, ref := range idx.attrRefs(r.address, "source_security_group_id") {
+
+	switch ref, ok, unk := resolveUnknownSGRulePeer(r, idx); {
+	case unk:
+		src.unknown = true
+		return src
+	case ok:
 		src.sgRefs = append(src.sgRefs, ref)
+	default:
+		if s, is := r.values["source_security_group_id"].(string); is && s != "" {
+			src.sgRefs = append(src.sgRefs, s)
+		}
 	}
-	if s, ok := r.values["source_security_group_id"].(string); ok && s != "" && len(src.sgRefs) == 0 {
-		src.sgRefs = append(src.sgRefs, s)
-	} else if _, present := r.values["source_security_group_id"]; present && r.values["source_security_group_id"] == nil && len(src.sgRefs) == 0 {
+
+	switch ref, ok, unk := resolveUnknownSGRulePrefix(r, idx); {
+	case unk:
 		src.unknown = true
-	}
-	for _, ref := range idx.attrRefs(r.address, "prefix_list_ids") {
+		return src
+	case ok:
 		src.prefixListRefs = append(src.prefixListRefs, ref)
+	default:
+		src.prefixListIDs = append(src.prefixListIDs, stringList(r.values["prefix_list_ids"])...)
 	}
-	src.prefixListIDs = append(src.prefixListIDs, stringList(r.values["prefix_list_ids"])...)
-	if v, ok := r.values["prefix_list_ids"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 && len(src.prefixListRefs) == 0 {
-		src.unknown = true
-	}
+
 	if len(src.cidrs) == 0 && len(src.sgRefs) == 0 && len(src.prefixListIDs) == 0 && len(src.prefixListRefs) == 0 {
 		src.unknown = true
 	}
 	return src
+}
+
+func sgRuleCIDRUnknown(r planResource) bool {
+	if r.attrAfterUnknown("cidr_blocks") || r.attrAfterUnknown("ipv6_cidr_blocks") {
+		return true
+	}
+	if v, ok := r.values["cidr_blocks"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 {
+		return true
+	}
+	if v, ok := r.values["ipv6_cidr_blocks"]; ok && len(stringList(v)) == 0 && len(asList(v)) > 0 {
+		return true
+	}
+	return false
+}
+
+func resolveUnknownSGRulePeer(r planResource, idx configIndex) (ref string, ok bool, unk bool) {
+	if s, is := r.values["source_security_group_id"].(string); is && s != "" {
+		return "", false, false
+	}
+	if !r.attrAfterUnknown("source_security_group_id") {
+		return "", false, false
+	}
+	refs := idx.attrRefs(r.address, "source_security_group_id")
+	if len(refs) == 0 {
+		return "", false, true
+	}
+	for _, ref := range refs {
+		if isIndirectIngressRef(ref) {
+			return "", false, true
+		}
+	}
+	ruleMod, _, _, _ := splitResourceAddress(r.address)
+	var names []string
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		name := securityGroupNameFromRef(ref)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) != 1 {
+		return "", false, true
+	}
+	return resourceAddress(ruleMod, "aws_security_group", names[0]), true, false
+}
+
+func resolveUnknownSGRulePrefix(r planResource, idx configIndex) (ref string, ok bool, unk bool) {
+	ids := stringList(r.values["prefix_list_ids"])
+	if len(ids) > 0 {
+		return "", false, false
+	}
+	if !r.attrAfterUnknown("prefix_list_ids") {
+		return "", false, false
+	}
+	refs := idx.attrRefs(r.address, "prefix_list_ids")
+	if len(refs) == 0 {
+		return "", false, true
+	}
+	for _, ref := range refs {
+		if isIndirectIngressRef(ref) {
+			return "", false, true
+		}
+	}
+	ruleMod, _, _, _ := splitResourceAddress(r.address)
+	var names []string
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		name := managedPrefixListNameFromRef(ref)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) != 1 {
+		return "", false, true
+	}
+	return resourceAddress(ruleMod, "aws_ec2_managed_prefix_list", names[0]), true, false
 }
 
 func securityGroupRuleOnSG(rule, sg planResource, idx configIndex) bool {

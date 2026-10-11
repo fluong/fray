@@ -54,6 +54,9 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 							"cidr_blocks": []any{}, "ipv6_cidr_blocks": []any{}, "prefix_list_ids": []any{},
 						}},
 					},
+					afterUnknown: map[string]any{
+						"ingress": []any{map[string]any{"security_groups": true}},
+					},
 				}
 				idx := configIndex{
 					resources: map[string]exprSet{},
@@ -69,6 +72,88 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 				return db, []planResource{db, sg}, idx
 			},
 			wantVal: true, wantKnown: true,
+		},
+		{
+			// Unknown CIDR on one sg_rule; sibling peer rule restricted → absent
+			// (unknown CIDR is never outweighed by a peer).
+			name: "sg_rule unknown cidr + sibling peer → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				app := planResource{typ: "aws_security_group", address: "aws_security_group.app", values: map[string]any{}}
+				cidrRule := planResource{
+					typ: "aws_security_group_rule", address: "aws_security_group_rule.cidr",
+					values: map[string]any{
+						"type": "ingress", "from_port": float64(5432), "to_port": float64(5432),
+						"protocol": "tcp", "cidr_blocks": nil,
+					},
+					afterUnknown: map[string]any{"cidr_blocks": true},
+				}
+				peerRule := planResource{
+					typ: "aws_security_group_rule", address: "aws_security_group_rule.peer",
+					values: map[string]any{
+						"type": "ingress", "from_port": float64(5432), "to_port": float64(5432),
+						"protocol": "tcp", "source_security_group_id": "sg-app",
+					},
+				}
+				idx.resources[cidrRule.address] = exprSet{refs: map[string][]string{
+					"security_group_id": {"aws_security_group.db.id", "aws_security_group.db"},
+					"cidr_blocks":       {"var.allowed", "var.allowed"},
+				}}
+				idx.resources[peerRule.address] = exprSet{refs: map[string][]string{
+					"security_group_id":        {"aws_security_group.db.id", "aws_security_group.db"},
+					"source_security_group_id": {"aws_security_group.app.id", "aws_security_group.app"},
+				}}
+				return db, append(resources, app, cidrRule, peerRule), idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			// Dynamic-style: two concrete ingress iterations — world + peer → world.
+			name: "inline dynamic world + peer → world",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				resources[1].values = map[string]any{
+					"ingress": []any{
+						map[string]any{
+							"from_port": float64(5432), "to_port": float64(5432), "protocol": "tcp",
+							"cidr_blocks": []any{"0.0.0.0/0"}, "security_groups": []any{},
+						},
+						map[string]any{
+							"from_port": float64(5432), "to_port": float64(5432), "protocol": "tcp",
+							"cidr_blocks": []any{}, "security_groups": []any{"sg-app"},
+						},
+					},
+				}
+				// Shared each.value refs must not cross-contaminate iterations.
+				idx.resources["aws_security_group.db"] = exprSet{refs: map[string][]string{
+					"ingress": {
+						"each.value.cidr_blocks", "each.value",
+						"each.value.security_groups", "aws_security_group.app.id", "aws_security_group.app",
+					},
+				}}
+				return db, resources, idx
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
+			name: "inline ingress cidr_blocks = var.allowed unknown → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				resources[1].values = map[string]any{
+					"ingress": []any{map[string]any{
+						"from_port": float64(5432), "to_port": float64(5432), "protocol": "tcp",
+						"cidr_blocks": nil,
+					}},
+				}
+				resources[1].afterUnknown = map[string]any{
+					"ingress": []any{map[string]any{"cidr_blocks": true}},
+				}
+				idx.resources["aws_security_group.db"] = exprSet{refs: map[string][]string{
+					"ingress": {"var.allowed", "var.allowed"},
+				}}
+				return db, resources, idx
+			},
+			wantVal: false, wantKnown: false,
 		},
 		{
 			name: "inline world 0.0.0.0/0 on DB port",
