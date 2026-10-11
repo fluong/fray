@@ -59,7 +59,9 @@ var ignoredTypes = map[string]bool{
 	"aws_s3_bucket_versioning":                           true,
 	"aws_secretsmanager_secret_rotation":                 true,
 	"aws_secretsmanager_secret_version":                  true,
+	"aws_ec2_managed_prefix_list":                        true,
 	"aws_security_group":                                 true,
+	"aws_security_group_rule":                            true,
 	"aws_subnet":                                         true,
 	"aws_vpc":                                            true,
 	"aws_vpc_security_group_egress_rule":                 true,
@@ -190,7 +192,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			projectIAM = append(projectIAM, r)
 		case "google_project_iam_audit_config":
 			audits = append(audits, r)
-		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_s3_bucket", "aws_secretsmanager_secret":
+		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_secretsmanager_secret":
 			// Mapped in buildAWS. Not warned as unknown.
 		case "cloudflare_r2_managed_domain", "cloudflare_r2_custom_domain":
 			// Read later to decide whether a bucket is public. Not an element.

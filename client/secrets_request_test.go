@@ -95,6 +95,74 @@ func TestNoSecretsInScanRequest(t *testing.T) {
 	})
 }
 
+// Distinctive network identifiers planted in an RDS SG plan. None may appear
+// in the ScanRequest — only attributes.network_restricted (boolean).
+const (
+	netCIDROffice   = "203.0.113.77/32"
+	netCIDRPrivate  = "10.99.0.0/16"
+	netPrefixListID = "pl-0abc123def4567890"
+	netSGID         = "sg-0deadbeefcafe1234"
+	netDBPort       = "15432"
+)
+
+// TestNoNetworkDetailsInScanRequest ensures network_restricted is derived as a
+// boolean and that CIDRs, ports, SG IDs, and prefix-list IDs never leave the client.
+func TestNoNetworkDetailsInScanRequest(t *testing.T) {
+	plan := []byte(networkRestrictedProbePlanJSON())
+	cfg := []byte("schema_version: fray-config/v1\n")
+	doc, _, err := client.Parse(plan, cfg, "fray.yaml", client.Source{
+		Repo: "probe/network", Commit: "abcdef1234567", Tool: "terraform", Fidelity: "plan",
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var db *client.Element
+	for i := range doc.Elements {
+		if doc.Elements[i].Kind == "relational_db" {
+			db = &doc.Elements[i]
+			break
+		}
+	}
+	if db == nil {
+		t.Fatal("expected relational_db element")
+	}
+	v, ok := db.Attributes["network_restricted"]
+	if !ok {
+		t.Fatal("network_restricted absent; want boolean")
+	}
+	if _, ok := v.(bool); !ok {
+		t.Fatalf("network_restricted: got %T (%#v) want bool", v, v)
+	}
+
+	leaks := []struct{ name, val string }{
+		{"office CIDR", netCIDROffice},
+		{"private CIDR", netCIDRPrivate},
+		{"prefix list ID", netPrefixListID},
+		{"security group ID", netSGID},
+		{"DB port", netDBPort},
+	}
+	key := mustSecretsKey(t)
+	for _, mode := range []struct {
+		name   string
+		redact bool
+	}{
+		{"redaction_on", true},
+		{"redaction_off", false},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			body := buildScanRequestBody(t, doc, key, mode.redact)
+			for _, s := range leaks {
+				if bytes.Contains(body, []byte(s.val)) {
+					t.Errorf("FAIL: %s (%q) PRESENT in ScanRequest", s.name, s.val)
+				}
+			}
+			if !bytes.Contains(body, []byte(`"network_restricted"`)) {
+				t.Error("network_restricted key missing from ScanRequest body")
+			}
+		})
+	}
+}
+
 // TestSensitiveMarkedValueNeverInParsedDFD asserts StripSensitive-before-Parse:
 // a sensitive-marked after value must not appear anywhere in the marshaled DFD.
 func TestSensitiveMarkedValueNeverInParsedDFD(t *testing.T) {
@@ -431,6 +499,111 @@ func sensitiveProbePlanJSON() string {
     "root_module": {
       "resources": [
         {"address":"random_password.db","type":"random_password","values":{"result":"` + senRandomResult + `"},"sensitive_values":{"result":true}}
+      ]
+    }
+  }
+}`
+}
+
+// networkRestrictedProbePlanJSON plants distinctive CIDRs, a prefix-list ID,
+// an SG ID, and a non-default DB port on an RDS instance whose ingress is
+// restricted — so network_restricted is true and those strings must not escape.
+func networkRestrictedProbePlanJSON() string {
+	return `{
+  "resource_changes": [
+    {
+      "address": "aws_security_group.db",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "change": {
+        "after": {
+          "id": "` + netSGID + `",
+          "name": "db",
+          "ingress": [
+            {
+              "from_port": 15432,
+              "to_port": 15432,
+              "protocol": "tcp",
+              "cidr_blocks": ["` + netCIDROffice + `", "` + netCIDRPrivate + `"],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": ["` + netPrefixListID + `"],
+              "security_groups": [],
+              "self": false
+            }
+          ]
+        },
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_ec2_managed_prefix_list.office",
+      "mode": "managed",
+      "type": "aws_ec2_managed_prefix_list",
+      "change": {
+        "after": {
+          "id": "` + netPrefixListID + `",
+          "name": "office",
+          "entry": [
+            {"cidr": "` + netCIDROffice + `"},
+            {"cidr": "` + netCIDRPrivate + `"}
+          ]
+        },
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_db_instance.main",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "change": {
+        "after": {
+          "identifier": "probe-db",
+          "engine": "postgres",
+          "port": 15432,
+          "publicly_accessible": false,
+          "storage_encrypted": true,
+          "vpc_security_group_ids": ["` + netSGID + `"]
+        },
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group.db",
+          "type": "aws_security_group",
+          "name": "db",
+          "mode": "managed",
+          "expressions": {
+            "ingress": {
+              "references": [
+                "aws_ec2_managed_prefix_list.office.id",
+                "aws_ec2_managed_prefix_list.office"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_ec2_managed_prefix_list.office",
+          "type": "aws_ec2_managed_prefix_list",
+          "name": "office",
+          "mode": "managed",
+          "expressions": {}
+        },
+        {
+          "address": "aws_db_instance.main",
+          "type": "aws_db_instance",
+          "name": "main",
+          "mode": "managed",
+          "expressions": {
+            "vpc_security_group_ids": {
+              "references": ["aws_security_group.db.id", "aws_security_group.db"]
+            },
+            "port": {"constant_value": 15432}
+          }
+        }
       ]
     }
   }

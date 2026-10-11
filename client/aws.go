@@ -11,7 +11,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			lbs = append(lbs, r)
 		case "aws_ecs_service":
 			services = append(services, r)
-		case "aws_db_instance":
+		case "aws_db_instance", "aws_rds_cluster":
 			dbs = append(dbs, r)
 		case "aws_s3_bucket":
 			buckets = append(buckets, r)
@@ -52,7 +52,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 		add(awsSecretElement(r, resources, idx, lifecycle.protected(r.address)))
 	}
 	for _, r := range dbs {
-		add(awsDBElement(r, lifecycle.protected(r.address)))
+		add(awsDBElement(r, resources, idx, lifecycle.protected(r.address)))
 	}
 	for _, r := range lbs {
 		add(awsLBElement(r, resources, idx))
@@ -110,8 +110,11 @@ func awsServiceElement(r planResource, resources []planResource, idx configIndex
 	}
 }
 
-func awsDBElement(r planResource, prevent bool) *Element {
+func awsDBElement(r planResource, resources []planResource, idx configIndex, prevent bool) *Element {
 	name, _ := r.values["identifier"].(string)
+	if name == "" {
+		name, _ = r.values["cluster_identifier"].(string)
+	}
 	if name == "" {
 		name, _ = r.values["db_name"].(string)
 	}
@@ -130,6 +133,9 @@ func awsDBElement(r planResource, prevent bool) *Element {
 		attrs["deletion_protection"] = true
 	} else if v, ok := r.values["deletion_protection"].(bool); ok {
 		attrs["deletion_protection"] = v
+	}
+	if restricted, ok := dbNetworkRestricted(r, resources, idx); ok {
+		attrs["network_restricted"] = restricted
 	}
 	return &Element{
 		Name: DisplayName(r.address, name, "relational_db"), Type: "datastore", Kind: "relational_db", Provider: "aws",

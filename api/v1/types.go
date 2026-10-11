@@ -52,10 +52,11 @@ type Waivers struct {
 // Condition is a when/pass predicate shipped in rule_texts so clients can
 // name the failing attribute without shipping rule YAML.
 type Condition struct {
-	Op    string     `json:"op"`
-	Field string     `json:"field"`
-	Value any        `json:"value"`
-	Cond  *Condition `json:"cond"`
+	Op    string      `json:"op"`
+	Field string      `json:"field"`
+	Value any         `json:"value"`
+	Cond  *Condition  `json:"cond"`
+	Conds []Condition `json:"conds"`
 }
 
 // RuleRemediation is a provider-specific fix string.
