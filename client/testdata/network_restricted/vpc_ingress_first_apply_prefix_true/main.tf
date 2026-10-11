@@ -1,7 +1,6 @@
-# Fixture: vpc_ingress_prefix_unknown_absent
-# cidr_ipv4 null; prefix_list_id unknown after apply. Must NOT resolve via
-# configuration refs to the managed prefix list as restricted.
-# Expected network_restricted: absent
+# Fixture: vpc_ingress_first_apply_prefix_true
+# Direct prefix_list_id = managed PL (private entries), id unknown after apply.
+# Expected network_restricted: true
 terraform {
   required_providers {
     aws = { source = "hashicorp/aws" }
