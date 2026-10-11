@@ -14,6 +14,127 @@ const (
 	netSrcUnknown
 )
 
+// lbPublic reports attributes.public for an aws_lb.
+//
+// Outcomes (known=false ⇒ omit the attribute):
+//   - internal=true → public=false (no inferred public_client / edge flow)
+//   - internal=false and a security-group ingress classifies as world on a
+//     listener port → public=true (awsConnections emits public_client +
+//     network boundary flow)
+//   - internal=false and every resolved SG is restricted on listener ports →
+//     public=false
+//   - internal absent, unresolvable SG refs (incl. data.aws_security_group),
+//     unknown prefix lists, or port-specific world with unknown listener
+//     ports → known=false (omit; no public_client path — fail closed on
+//     exposure inference)
+//
+// Uses the same ingress collection and world classification as
+// dbNetworkRestricted (inline ingress, aws_security_group_rule,
+// aws_vpc_security_group_ingress_rule, managed prefix lists; IPv4 </16 and
+// IPv6 </32 are world). SG associations are resolved across modules.
+func lbPublic(lb planResource, resources []planResource, idx configIndex) (public bool, known bool) {
+	internal, ok := lb.values["internal"].(bool)
+	if !ok {
+		return false, false
+	}
+	if internal {
+		return false, true
+	}
+	return lbInternetExposed(lb, resources, idx)
+}
+
+// lbInternetExposed is the SG/world half of lbPublic (caller already excluded internal).
+func lbInternetExposed(lb planResource, resources []planResource, idx configIndex) (exposed bool, known bool) {
+	sgs, ok := resolveLBSecurityGroups(lb, resources, idx)
+	if !ok || len(sgs) == 0 {
+		return false, false
+	}
+	ports := listenerPortSet(lb, resources, idx)
+	portKnown := len(ports) > 0
+	for _, sg := range sgs {
+		if !portKnown {
+			cls, world := classifySGIngress(sg, resources, idx, 0, false)
+			switch {
+			case world:
+				return true, true
+			case cls == netSrcUnknown:
+				return false, false
+			}
+			continue
+		}
+		for port := range ports {
+			cls, world := classifySGIngress(sg, resources, idx, port, true)
+			switch {
+			case world:
+				return true, true
+			case cls == netSrcUnknown:
+				return false, false
+			}
+		}
+	}
+	return false, true
+}
+
+func resolveLBSecurityGroups(lb planResource, resources []planResource, idx configIndex) ([]planResource, bool) {
+	refs := lbSecurityGroupRefs(lb, idx)
+	if len(refs) == 0 {
+		return nil, false
+	}
+	var out []planResource
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		if isVarRef(ref) {
+			continue
+		}
+		if strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
+			return nil, false
+		}
+		name := securityGroupNameFromRef(ref)
+		if name == "" {
+			if looksLikeSecurityGroupRef(ref) {
+				return nil, false
+			}
+			continue
+		}
+		sg, ok := findSecurityGroup(resources, name, ref)
+		if !ok {
+			return nil, false
+		}
+		if seen[sg.address] {
+			continue
+		}
+		seen[sg.address] = true
+		out = append(out, sg)
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	return out, true
+}
+
+func lbSecurityGroupRefs(lb planResource, idx configIndex) []string {
+	var refs []string
+	refs = append(refs, idx.attrRefs(lb.address, "security_groups")...)
+	mod, _, _, ok := splitResourceAddress(lb.address)
+	if !ok {
+		return uniqueStrings(refs)
+	}
+	for m := mod; m != ""; m = parentModuleAddr(m) {
+		refs = append(refs, idx.calls[m].refs["security_groups"]...)
+	}
+	return uniqueStrings(refs)
+}
+
+func listenerPortSet(lb planResource, resources []planResource, idx configIndex) map[int]bool {
+	ports := map[int]bool{}
+	for _, ln := range listenersFor(lb, resources, idx) {
+		if n, ok := number(ln.values["port"]); ok {
+			ports[n] = true
+		}
+	}
+	return ports
+}
+
 // dbNetworkRestricted reports attributes.network_restricted for an RDS /
 // Aurora instance or cluster. known=false means leave the attribute absent.
 func dbNetworkRestricted(db planResource, resources []planResource, idx configIndex) (restricted bool, known bool) {
@@ -365,7 +486,12 @@ func ingressFromInline(m map[string]any, idx configIndex, sg planResource) ingre
 }
 
 func ingressFromVPCRule(r planResource, idx configIndex) ingressSource {
-	src := ingressSource{protocol: strings.ToLower(stringAttr(r.values["protocol"]))}
+	// aws_vpc_security_group_ingress_rule uses ip_protocol; accept protocol too.
+	proto := stringAttr(r.values["ip_protocol"])
+	if proto == "" {
+		proto = stringAttr(r.values["protocol"])
+	}
+	src := ingressSource{protocol: strings.ToLower(proto)}
 	if from, ok := number(r.values["from_port"]); ok {
 		src.fromPort, src.portSet = int(from), true
 	}
@@ -375,30 +501,32 @@ func ingressFromVPCRule(r planResource, idx configIndex) ingressSource {
 	}
 	if s, ok := r.values["cidr_ipv4"].(string); ok {
 		src.cidrs = append(src.cidrs, s)
-	} else if _, present := r.values["cidr_ipv4"]; present && r.values["cidr_ipv4"] == nil {
-		src.unknown = true
 	}
 	if s, ok := r.values["cidr_ipv6"].(string); ok {
 		src.cidrs = append(src.cidrs, s)
-	} else if _, present := r.values["cidr_ipv6"]; present && r.values["cidr_ipv6"] == nil {
-		src.unknown = true
 	}
 	for _, ref := range idx.attrRefs(r.address, "referenced_security_group_id") {
-		src.sgRefs = append(src.sgRefs, ref)
+		// for_each modules reference each.value.* on every attr; keep only SG refs.
+		if ref == "self" || securityGroupNameFromRef(ref) != "" ||
+			strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
+			src.sgRefs = append(src.sgRefs, ref)
+		}
 	}
 	if s, ok := r.values["referenced_security_group_id"].(string); ok && s != "" && len(src.sgRefs) == 0 {
 		src.sgRefs = append(src.sgRefs, s)
-	} else if _, present := r.values["referenced_security_group_id"]; present && r.values["referenced_security_group_id"] == nil && len(src.sgRefs) == 0 {
-		src.unknown = true
 	}
 	for _, ref := range idx.attrRefs(r.address, "prefix_list_id") {
-		src.prefixListRefs = append(src.prefixListRefs, ref)
+		if strings.Contains(ref, "aws_ec2_managed_prefix_list") {
+			src.prefixListRefs = append(src.prefixListRefs, ref)
+		}
 	}
 	if s, ok := r.values["prefix_list_id"].(string); ok && s != "" {
 		src.prefixListIDs = append(src.prefixListIDs, s)
-	} else if _, present := r.values["prefix_list_id"]; present && r.values["prefix_list_id"] == nil && len(src.prefixListRefs) == 0 {
-		src.unknown = true
 	}
+	// Plans often set unused optional source fields to null while for_each
+	// modules still list configuration references on every attribute. A
+	// concrete CIDR / peer / prefix list is enough; only treat as unknown
+	// when no source resolved.
 	if len(src.cidrs) == 0 && len(src.sgRefs) == 0 && len(src.prefixListIDs) == 0 && len(src.prefixListRefs) == 0 {
 		src.unknown = true
 	}
