@@ -217,6 +217,11 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		storageAudit = &v
 	}
 
+	idx, err := indexConfig(plan)
+	if err != nil {
+		return DFD{}, warnings, err
+	}
+
 	add := func(el *Element) {
 		elements = append(elements, el)
 		if len(el.Evidence.Addresses) == 1 {
@@ -236,7 +241,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		add(gcsElement(r, storageAudit, lifecycle.protected(r.address)))
 	}
 	for _, r := range r2 {
-		add(r2Element(r, resources, lifecycle.protected(r.address)))
+		add(r2Element(r, resources, idx, lifecycle.protected(r.address)))
 	}
 
 	awsOwned := cfg.AuditConfig == "owned_by_this_root"
@@ -284,10 +289,6 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		byAddress["declared:"+dec.Key] = el
 	}
 
-	idx, err := indexConfig(plan)
-	if err != nil {
-		return DFD{}, warnings, err
-	}
 	applyPurpose(elements, resources, idx)
 
 	if err := applyElementAnnotations(elements, cfg); err != nil {
@@ -484,12 +485,12 @@ func gcsElement(r planResource, audit *bool, prevent bool) *Element {
 	}
 }
 
-func r2Element(r planResource, resources []planResource, prevent bool) *Element {
+func r2Element(r planResource, resources []planResource, idx configIndex, prevent bool) *Element {
 	name, _ := r.values["name"].(string)
 	attrs := map[string]any{
-		"acls_disabled": true,
-		"audit_logging": false,
-		"object_lock":   r2ObjectLock(name, resources),
+		"acls_disabled":     true,
+		"audit_logging":     false,
+		"encrypted_at_rest": true, // R2 always encrypts objects at rest
 	}
 	causes := map[string]string{}
 	if cause, public := r2PublicCause(name, resources); public {
@@ -501,8 +502,11 @@ func r2Element(r planResource, resources []planResource, prevent bool) *Element 
 		attrs["public_access_blocked"] = true
 		attrs["public"] = false
 	}
-	if cause, ok := r2ObjectLockCause(name, resources); ok {
-		causes["object_lock"] = cause
+	if locked, known, cause := r2ObjectLock(r, resources, idx); known {
+		attrs["object_lock"] = locked
+		if cause != "" {
+			causes["object_lock"] = cause
+		}
 	}
 	setObjectDeletion(attrs, r.values, prevent)
 	return &Element{
@@ -514,36 +518,113 @@ func r2Element(r planResource, resources []planResource, prevent bool) *Element 
 	}
 }
 
-// r2ObjectLock is true when a cloudflare_r2_bucket_lock for this bucket has at
-// least one enabled rule. No lock resource → false (known off in this root).
-func r2ObjectLock(bucketName string, resources []planResource) bool {
-	_, ok := r2ObjectLockCause(bucketName, resources)
-	return ok
-}
-
-func r2ObjectLockCause(bucketName string, resources []planResource) (cause string, locked bool) {
-	if bucketName == "" {
-		return "", false
-	}
+// r2ObjectLock reports whole-bucket retention from matching
+// cloudflare_r2_bucket_lock resources.
+//
+//	true  — enabled rule, prefix absent/"", Indefinite or Age with max_age_seconds>0
+//	false — matching lock with rules empty/absent
+//	absent — no matching lock, prefix-only, disabled-only, Date-only, Age<=0, unresolved ref
+func r2ObjectLock(bucket planResource, resources []planResource, idx configIndex) (locked, known bool, cause string) {
+	var matched []planResource
 	for _, r := range resources {
 		if r.typ != "cloudflare_r2_bucket_lock" {
 			continue
 		}
-		name, _ := r.values["bucket_name"].(string)
-		if name != bucketName {
-			continue
+		if r2LockMatchesBucket(r, bucket, idx) {
+			matched = append(matched, r)
 		}
-		for _, rule := range asList(r.values["rules"]) {
+	}
+	if len(matched) == 0 {
+		return false, false, ""
+	}
+	emptyRulesOnly := true
+	for _, lock := range matched {
+		rules := asList(lock.values["rules"])
+		if len(rules) > 0 {
+			emptyRulesOnly = false
+		}
+		for _, rule := range rules {
 			rm, ok := rule.(map[string]any)
 			if !ok {
 				continue
 			}
-			if rm["enabled"] == true {
-				return r.address, true
+			if r2WholeBucketRetention(rm) {
+				return true, true, lock.address
 			}
 		}
 	}
-	return "", false
+	if emptyRulesOnly {
+		return false, true, matched[0].address
+	}
+	return false, false, ""
+}
+
+func r2Jurisdiction(v any) string {
+	s, _ := v.(string)
+	if s == "" {
+		return "default"
+	}
+	return s
+}
+
+func r2LockMatchesBucket(lock, bucket planResource, idx configIndex) bool {
+	lockAcct, _ := lock.values["account_id"].(string)
+	buckAcct, _ := bucket.values["account_id"].(string)
+	if lockAcct != buckAcct {
+		return false
+	}
+	if r2Jurisdiction(lock.values["jurisdiction"]) != r2Jurisdiction(bucket.values["jurisdiction"]) {
+		return false
+	}
+	lockName, _ := lock.values["bucket_name"].(string)
+	buckName, _ := bucket.values["name"].(string)
+	if lockName != "" && buckName != "" && lockName == buckName {
+		return true
+	}
+	_, _, bName, ok := splitResourceAddress(bucket.address)
+	if !ok {
+		return false
+	}
+	refs := idx.attrRefs(lock.address, "bucket_name")
+	if len(refs) == 0 {
+		return false
+	}
+	for _, ref := range refs {
+		if containsResource(ref, "cloudflare_r2_bucket", bName) {
+			return true
+		}
+	}
+	return false
+}
+
+func r2WholeBucketRetention(rule map[string]any) bool {
+	if rule["enabled"] != true {
+		return false
+	}
+	if prefix, ok := rule["prefix"].(string); ok && prefix != "" {
+		return false
+	}
+	var cond map[string]any
+	switch c := rule["condition"].(type) {
+	case map[string]any:
+		cond = c
+	case []any:
+		if len(c) > 0 {
+			cond, _ = c[0].(map[string]any)
+		}
+	}
+	if cond == nil {
+		return false
+	}
+	switch typ, _ := cond["type"].(string); typ {
+	case "Indefinite":
+		return true
+	case "Age":
+		n, ok := number(cond["max_age_seconds"])
+		return ok && n > 0
+	default:
+		return false
+	}
 }
 
 func setDeletionProtection(attrs, values map[string]any, prevent bool) {
