@@ -12,6 +12,8 @@
   are open to the internet are now reported (FR-029 open instead of unverified).
 - Unknown CIDR ingress on `aws_security_group` / `aws_security_group_rule`
   fails closed (never ignored or outweighed by a resolved peer SG).
+- Inline ingress peer refs resolve per block / list element (multi-block and
+  multi-peer first-apply no longer stay unverified).
 
 ## [0.14.0] — 2026-10-11
 

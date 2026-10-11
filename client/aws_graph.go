@@ -11,6 +11,9 @@ import (
 type exprSet struct {
 	refs      map[string][]string
 	constants map[string]any
+	// raw keeps the original expression tree per attribute so nested block
+	// lists (e.g. ingress[i].security_groups) can be attributed per index.
+	raw map[string]any
 }
 
 type configIndex struct {
@@ -95,12 +98,17 @@ func walkModule(mod map[string]any, prefix string, idx *configIndex) {
 }
 
 func parseExprs(v any) exprSet {
-	set := exprSet{refs: map[string][]string{}, constants: map[string]any{}}
+	set := exprSet{
+		refs:      map[string][]string{},
+		constants: map[string]any{},
+		raw:       map[string]any{},
+	}
 	m, ok := v.(map[string]any)
 	if !ok {
 		return set
 	}
 	for attr, raw := range m {
+		set.raw[attr] = raw
 		var refs []string
 		collectRefs(raw, &refs)
 		if len(refs) > 0 {

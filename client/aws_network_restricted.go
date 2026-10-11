@@ -415,9 +415,9 @@ func collectSGIngressSources(sg planResource, resources []planResource, idx conf
 
 // ingressFromInline reads one planned ingress object. Concrete values on that
 // object win. Unknown CIDR always yields unknown (never ignored or outweighed
-// by a peer). Peer/prefix config refs are used only when attributable to this
-// block: a single static ingress (not dynamic/for_each iterations) with a
-// direct same-module managed reference.
+// by a peer). Peer/prefix config refs are attributed to this block's own
+// expression (ingress[i].security_groups / prefix_list_ids), never harvested
+// from sibling blocks or dynamic iterations.
 func ingressFromInline(m map[string]any, sg planResource, idx configIndex, ingressIndex, ingressCount int) ingressSource {
 	src := ingressSource{protocol: strings.ToLower(stringAttr(m["protocol"]))}
 	if from, ok := number(m["from_port"]); ok {
@@ -440,20 +440,20 @@ func ingressFromInline(m map[string]any, sg planResource, idx configIndex, ingre
 		src.sgRefs = append(src.sgRefs, ids...)
 	} else if self, ok := m["self"].(bool); ok && self {
 		src.sgRefs = append(src.sgRefs, "self")
-	} else if ref, ok, unk := resolveInlineUnknownPeer(sg, idx, ingressIndex, ingressCount); unk {
+	} else if refs, ok, unk := resolveInlineUnknownPeers(sg, idx, ingressIndex, ingressCount); unk {
 		src.unknown = true
 		return src
 	} else if ok {
-		src.sgRefs = append(src.sgRefs, ref)
+		src.sgRefs = append(src.sgRefs, refs...)
 	}
 
 	if ids := stringList(m["prefix_list_ids"]); len(ids) > 0 {
 		src.prefixListIDs = append(src.prefixListIDs, ids...)
-	} else if ref, ok, unk := resolveInlineUnknownPrefix(sg, idx, ingressIndex, ingressCount); unk {
+	} else if refs, ok, unk := resolveInlineUnknownPrefixes(sg, idx, ingressIndex, ingressCount); unk {
 		src.unknown = true
 		return src
 	} else if ok {
-		src.prefixListRefs = append(src.prefixListRefs, ref)
+		src.prefixListRefs = append(src.prefixListRefs, refs...)
 	}
 
 	if len(src.cidrs) == 0 && len(src.sgRefs) == 0 && len(src.prefixListIDs) == 0 && len(src.prefixListRefs) == 0 {
@@ -462,74 +462,126 @@ func ingressFromInline(m map[string]any, sg planResource, idx configIndex, ingre
 	return src
 }
 
-// resolveInlineUnknownPeer resolves security_groups when planned IDs are
-// unknown. Only a single static ingress block with a direct same-module SG
-// reference is attributable; dynamic/for_each (multiple blocks or each.value)
-// stays unknown.
-func resolveInlineUnknownPeer(sg planResource, idx configIndex, ingressIndex, ingressCount int) (ref string, ok bool, unk bool) {
+// resolveInlineUnknownPeers resolves security_groups when planned IDs are
+// unknown, using this block's own expression. Each direct same-module managed
+// SG in that expression becomes a peer ref (list elements included). Indirect
+// refs or unattributable blocks (dynamic/shared expression across iterations)
+// stay unknown.
+func resolveInlineUnknownPeers(sg planResource, idx configIndex, ingressIndex, ingressCount int) (refs []string, ok bool, unk bool) {
 	if !inlineAttrUnknown(sg, ingressIndex, "security_groups") {
-		return "", false, false
+		return nil, false, false
 	}
-	if ingressCount != 1 {
-		return "", false, true
+	exprRefs, attributable := inlineBlockAttrRefs(sg, idx, ingressIndex, ingressCount, "security_groups")
+	if !attributable || len(exprRefs) == 0 {
+		return nil, false, true
 	}
-	refs := idx.attrRefs(sg.address, "ingress")
-	if len(refs) == 0 {
-		return "", false, true
-	}
-	for _, r := range refs {
+	for _, r := range exprRefs {
 		if isIndirectIngressRef(r) {
-			return "", false, true
+			return nil, false, true
 		}
 	}
 	ruleMod, _, _, _ := splitResourceAddress(sg.address)
-	var names []string
+	var out []string
 	seen := map[string]bool{}
-	for _, r := range refs {
+	for _, r := range exprRefs {
 		name := securityGroupNameFromRef(r)
 		if name == "" || seen[name] {
 			continue
 		}
 		seen[name] = true
-		names = append(names, name)
+		out = append(out, resourceAddress(ruleMod, "aws_security_group", name))
 	}
-	if len(names) != 1 {
-		return "", false, true
+	if len(out) == 0 {
+		return nil, false, true
 	}
-	return resourceAddress(ruleMod, "aws_security_group", names[0]), true, false
+	return out, true, false
 }
 
-func resolveInlineUnknownPrefix(sg planResource, idx configIndex, ingressIndex, ingressCount int) (ref string, ok bool, unk bool) {
+func resolveInlineUnknownPrefixes(sg planResource, idx configIndex, ingressIndex, ingressCount int) (refs []string, ok bool, unk bool) {
 	if !inlineAttrUnknown(sg, ingressIndex, "prefix_list_ids") {
-		return "", false, false
+		return nil, false, false
 	}
-	if ingressCount != 1 {
-		return "", false, true
+	exprRefs, attributable := inlineBlockAttrRefs(sg, idx, ingressIndex, ingressCount, "prefix_list_ids")
+	if !attributable || len(exprRefs) == 0 {
+		return nil, false, true
 	}
-	refs := idx.attrRefs(sg.address, "ingress")
-	if len(refs) == 0 {
-		return "", false, true
-	}
-	for _, r := range refs {
+	for _, r := range exprRefs {
 		if isIndirectIngressRef(r) {
-			return "", false, true
+			return nil, false, true
 		}
 	}
 	ruleMod, _, _, _ := splitResourceAddress(sg.address)
-	var names []string
+	var out []string
 	seen := map[string]bool{}
-	for _, r := range refs {
+	for _, r := range exprRefs {
 		name := managedPrefixListNameFromRef(r)
 		if name == "" || seen[name] {
 			continue
 		}
 		seen[name] = true
-		names = append(names, name)
+		out = append(out, resourceAddress(ruleMod, "aws_ec2_managed_prefix_list", name))
 	}
-	if len(names) != 1 {
-		return "", false, true
+	if len(out) == 0 {
+		return nil, false, true
 	}
-	return resourceAddress(ruleMod, "aws_ec2_managed_prefix_list", names[0]), true, false
+	return out, true, false
+}
+
+// inlineBlockAttrRefs returns configuration references for nestedAttr on the
+// ingress block at ingressIndex. attributable is false when the expression
+// cannot be bound to that planned block (dynamic/shared tree, index mismatch).
+//
+// ingressCount is len(planned values.ingress) — the number of inline ingress
+// objects on this security-group resource instance, not resource instances and
+// not sources inside a block.
+func inlineBlockAttrRefs(sg planResource, idx configIndex, ingressIndex, ingressCount int, nestedAttr string) (refs []string, attributable bool) {
+	key, ok := resourceKey(sg.address)
+	if !ok {
+		return nil, false
+	}
+	set := idx.resources[key]
+	raw, hasRaw := set.raw["ingress"]
+	if !hasRaw {
+		// Unit-test / collapsed fallback: only a single planned block can use
+		// the flattened attrRefs harvest.
+		if ingressCount == 1 && ingressIndex == 0 {
+			return set.refs["ingress"], true
+		}
+		return nil, false
+	}
+	switch t := raw.(type) {
+	case []any:
+		if len(t) != ingressCount || ingressIndex < 0 || ingressIndex >= len(t) {
+			return nil, false
+		}
+		return refsFromIngressExprBlock(t[ingressIndex], nestedAttr), true
+	case map[string]any:
+		// Single expression object — only when exactly one planned block.
+		if ingressCount != 1 || ingressIndex != 0 {
+			return nil, false
+		}
+		return refsFromIngressExprBlock(t, nestedAttr), true
+	default:
+		return nil, false
+	}
+}
+
+func refsFromIngressExprBlock(block any, nestedAttr string) []string {
+	var out []string
+	m, ok := block.(map[string]any)
+	if !ok {
+		collectRefs(block, &out)
+		return out
+	}
+	if nested, ok := m[nestedAttr]; ok {
+		collectRefs(nested, &out)
+		return out
+	}
+	// Terraform sometimes collapses a single-attr block to top-level references.
+	if _, has := m["references"]; has {
+		collectRefs(m, &out)
+	}
+	return out
 }
 
 func inlineCIDRUnknown(m map[string]any, sg planResource, ingressIndex int) bool {

@@ -196,6 +196,126 @@ func TestLBPublicTable(t *testing.T) {
 			wantVal: false, wantKnown: false,
 		},
 		{
+			// 0d(a): two static peer ingress blocks — first apply → not public.
+			name: "inline two peer blocks first-apply → not public",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				app := planResource{typ: "aws_security_group", address: "aws_security_group.app", values: map[string]any{}}
+				bastion := planResource{typ: "aws_security_group", address: "aws_security_group.bastion", values: map[string]any{}}
+				resources[1].values = map[string]any{
+					"ingress": []any{
+						map[string]any{"from_port": float64(80), "to_port": float64(80), "protocol": "tcp", "security_groups": nil},
+						map[string]any{"from_port": float64(80), "to_port": float64(80), "protocol": "tcp", "security_groups": nil},
+					},
+				}
+				resources[1].afterUnknown = map[string]any{
+					"ingress": []any{
+						map[string]any{"security_groups": true},
+						map[string]any{"security_groups": true},
+					},
+				}
+				idx.resources["aws_security_group.alb"] = exprSet{
+					refs: map[string][]string{"ingress": {
+						"aws_security_group.app.id", "aws_security_group.app",
+						"aws_security_group.bastion.id", "aws_security_group.bastion",
+					}},
+					raw: map[string]any{"ingress": []any{
+						ingressSGExpr("app"),
+						ingressSGExpr("bastion"),
+					}},
+				}
+				return lb, append(resources, app, bastion), idx
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
+			// 0d(b): one block with two peers — first apply → not public.
+			name: "inline one block two peers first-apply → not public",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				app := planResource{typ: "aws_security_group", address: "aws_security_group.app", values: map[string]any{}}
+				bastion := planResource{typ: "aws_security_group", address: "aws_security_group.bastion", values: map[string]any{}}
+				resources[1].values = map[string]any{
+					"ingress": []any{map[string]any{
+						"from_port": float64(80), "to_port": float64(80), "protocol": "tcp", "security_groups": nil,
+					}},
+				}
+				resources[1].afterUnknown = map[string]any{
+					"ingress": []any{map[string]any{"security_groups": true}},
+				}
+				idx.resources["aws_security_group.alb"] = exprSet{
+					refs: map[string][]string{"ingress": {
+						"aws_security_group.app.id", "aws_security_group.app",
+						"aws_security_group.bastion.id", "aws_security_group.bastion",
+					}},
+					raw: map[string]any{"ingress": []any{ingressSGExpr("app", "bastion")}},
+				}
+				return lb, append(resources, app, bastion), idx
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
+			// 0d(c): peer block + unknown CIDR block → absent.
+			name: "inline peer + unknown cidr sibling block → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				app := planResource{typ: "aws_security_group", address: "aws_security_group.app", values: map[string]any{}}
+				resources[1].values = map[string]any{
+					"ingress": []any{
+						map[string]any{"from_port": float64(80), "to_port": float64(80), "protocol": "tcp", "security_groups": nil},
+						map[string]any{"from_port": float64(80), "to_port": float64(80), "protocol": "tcp", "cidr_blocks": nil},
+					},
+				}
+				resources[1].afterUnknown = map[string]any{
+					"ingress": []any{
+						map[string]any{"security_groups": true},
+						map[string]any{"cidr_blocks": true},
+					},
+				}
+				idx.resources["aws_security_group.alb"] = exprSet{
+					refs: map[string][]string{"ingress": {
+						"aws_security_group.app.id", "aws_security_group.app", "var.allowed",
+					}},
+					raw: map[string]any{"ingress": []any{
+						ingressSGExpr("app"),
+						map[string]any{"cidr_blocks": map[string]any{"references": []any{"var.allowed"}}},
+					}},
+				}
+				return lb, append(resources, app), idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			// 0d(d): sg_rule count=2 direct peer → not public.
+			name: "sg_rule count=2 first-apply direct peer → not public",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				app := planResource{typ: "aws_security_group", address: "aws_security_group.app", values: map[string]any{}}
+				r0 := planResource{
+					typ: "aws_security_group_rule", address: "aws_security_group_rule.peer[0]",
+					values: map[string]any{
+						"type": "ingress", "from_port": float64(80), "to_port": float64(80),
+						"protocol": "tcp", "source_security_group_id": nil,
+					},
+					afterUnknown: map[string]any{"source_security_group_id": true},
+				}
+				r1 := planResource{
+					typ: "aws_security_group_rule", address: "aws_security_group_rule.peer[1]",
+					values: map[string]any{
+						"type": "ingress", "from_port": float64(80), "to_port": float64(80),
+						"protocol": "tcp", "source_security_group_id": nil,
+					},
+					afterUnknown: map[string]any{"source_security_group_id": true},
+				}
+				idx.resources["aws_security_group_rule.peer"] = exprSet{refs: map[string][]string{
+					"security_group_id":        {"aws_security_group.alb.id", "aws_security_group.alb"},
+					"source_security_group_id": {"aws_security_group.app.id", "aws_security_group.app"},
+				}}
+				return lb, append(resources, app, r0, r1), idx
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
 			name: "vpc rule first-apply direct peer → not public",
 			build: func() (planResource, []planResource, configIndex) {
 				lb, resources, idx := rootLBBare(t, false)
