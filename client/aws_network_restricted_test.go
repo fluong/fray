@@ -99,6 +99,33 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 			wantVal: false, wantKnown: true,
 		},
 		{
+			// Module for_each plans set unused optional source fields to null while
+			// still listing each.value.* refs. Before f1e2ed1 those nulls poisoned
+			// classification to unknown (absent); after → world → restricted=false.
+			name: "vpc rule null optionals + ip_protocol world",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.open",
+					values: map[string]any{
+						"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
+						"cidr_ipv4": "0.0.0.0/0", "cidr_ipv6": nil,
+						"prefix_list_id": nil, "referenced_security_group_id": nil,
+						"security_group_id": nil,
+					},
+				}
+				idx.resources[rule.address] = exprSet{refs: map[string][]string{
+					"security_group_id":            {"aws_security_group.db.id", "aws_security_group.db"},
+					"cidr_ipv4":                    {"each.value.cidr_ipv4", "each.value"},
+					"cidr_ipv6":                    {"each.value.cidr_ipv6", "each.value"},
+					"prefix_list_id":               {"each.value.prefix_list_id", "each.value"},
+					"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
+				}}
+				return db, append(resources, rule), idx
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
 			name: "::/0 world",
 			build: func() (planResource, []planResource, configIndex) {
 				return rootDBWithInlineSG(t, map[string]any{
