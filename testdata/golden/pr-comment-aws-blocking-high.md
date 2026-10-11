@@ -26,4 +26,4 @@ waivers:
 ```
 </details>
 
-Nothing else changed (14 findings unchanged). Rules: FR-010
+Nothing else changed (14 findings unchanged). Rules: [FR-010](https://github.com/fluong/fray/blob/main/docs/rules/FR-010.md)

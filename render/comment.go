@@ -9,6 +9,7 @@ import (
 	apiv1 "github.com/fluong/fray/api/v1"
 	"github.com/fluong/fray/client"
 	"github.com/fluong/fray/usermsg"
+	"github.com/fluong/fray/version"
 )
 
 // NoBaselineNote is the PR-comment line when there is no stored baseline yet.
@@ -238,7 +239,19 @@ func footer(current []apiv1.Finding, base map[findingKey]apiv1.Finding, groups [
 	if len(ids) == 0 {
 		return lead + "."
 	}
-	return lead + ". Rules: " + strings.Join(ids, ", ")
+	linked := make([]string, len(ids))
+	for i, id := range ids {
+		linked[i] = ruleDocMarkdown(id)
+	}
+	return lead + ". Rules: " + strings.Join(linked, ", ")
+}
+
+// ruleDocMarkdown links a catalog rule id; non-matching ids stay plain text.
+func ruleDocMarkdown(id string) string {
+	if u := version.RuleDocURL(id); u != "" {
+		return "[" + id + "](" + u + ")"
+	}
+	return id
 }
 
 // issueGroups puts findings that share a causing resource in one block.

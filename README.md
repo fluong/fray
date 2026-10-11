@@ -130,6 +130,12 @@ repository’s) scan data and archive objects. Details:
 | `scripts/` | Internal-identifier denylist + `install-hooks.sh` |
 | `.githooks/` | Pre-push (actionlint, gitleaks, denylist, pins, docs); install via `scripts/install-hooks.sh` |
 
+## Rules
+
+Public descriptions of the controls Fray evaluates live in
+[docs/rules/](docs/rules/README.md). SARIF results and PR comments link each
+finding’s rule id to its page.
+
 ## What leaves your CI
 
 Redaction is **on by default**. Before Fray receives a scan, the client replaces

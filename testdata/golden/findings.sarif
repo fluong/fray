@@ -16,6 +16,7 @@
               "shortDescription": {
                 "text": "Example medium"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-001.md",
               "properties": {
                 "security-severity": "5.0",
                 "tags": [
@@ -29,6 +30,7 @@
               "shortDescription": {
                 "text": "Example low"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-003.md",
               "properties": {
                 "security-severity": "3.0",
                 "tags": [
@@ -42,6 +44,7 @@
               "shortDescription": {
                 "text": "Object storage is not public"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-010.md",
               "properties": {
                 "security-severity": "7.5",
                 "tags": [

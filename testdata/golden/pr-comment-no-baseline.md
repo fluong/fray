@@ -160,4 +160,4 @@ waivers:
 ```
 </details>
 
-Nothing else changed (0 findings unchanged). Rules: FR-001, FR-003, FR-005, FR-009, FR-010, FR-012, FR-014
+Nothing else changed (0 findings unchanged). Rules: [FR-001](https://github.com/fluong/fray/blob/main/docs/rules/FR-001.md), [FR-003](https://github.com/fluong/fray/blob/main/docs/rules/FR-003.md), [FR-005](https://github.com/fluong/fray/blob/main/docs/rules/FR-005.md), [FR-009](https://github.com/fluong/fray/blob/main/docs/rules/FR-009.md), [FR-010](https://github.com/fluong/fray/blob/main/docs/rules/FR-010.md), [FR-012](https://github.com/fluong/fray/blob/main/docs/rules/FR-012.md), [FR-014](https://github.com/fluong/fray/blob/main/docs/rules/FR-014.md)

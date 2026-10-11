@@ -37,7 +37,7 @@ const partialFingerprintKey = "fray/v1"
 // Fray's high-severity gate: high→7.5, medium→5.0, low→3.0, critical→9.0.
 // Rule properties.tags always includes "security" so security-severity counts.
 //
-// helpUri is omitted: public docs have no per-rule anchors yet.
+// helpUri points at docs/rules/<ID>.md on fluong/fray for catalog rule ids.
 func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string) ([]byte, error) {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
@@ -219,6 +219,7 @@ func sarifRules(open []apiv1.Finding, texts map[string]apiv1.RuleText) []sarifRe
 			ID:               id,
 			Name:             name,
 			ShortDescription: sarifMessage{Text: name},
+			HelpURI:          version.RuleDocURL(id),
 			Properties: &sarifProperties{
 				SecuritySeverity: sarifSecuritySeverity(severityByRule[id]),
 				Tags:             []string{"security"},

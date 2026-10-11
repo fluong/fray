@@ -16,6 +16,7 @@
               "shortDescription": {
                 "text": "Network entry is not anonymous"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-001.md",
               "properties": {
                 "security-severity": "5.0",
                 "tags": [
@@ -29,6 +30,7 @@
               "shortDescription": {
                 "text": "Credentials are not injected through the environment"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-003.md",
               "properties": {
                 "security-severity": "3.0",
                 "tags": [
@@ -42,6 +44,7 @@
               "shortDescription": {
                 "text": "Container image is pinned by digest"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-005.md",
               "properties": {
                 "security-severity": "5.0",
                 "tags": [
@@ -55,6 +58,7 @@
               "shortDescription": {
                 "text": "Secrets are rotated"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-009.md",
               "properties": {
                 "security-severity": "3.0",
                 "tags": [
@@ -68,6 +72,7 @@
               "shortDescription": {
                 "text": "Object storage cannot be destroyed by the tool"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-012.md",
               "properties": {
                 "security-severity": "5.0",
                 "tags": [
@@ -81,6 +86,7 @@
               "shortDescription": {
                 "text": "Object storage keeps prior versions"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-014.md",
               "properties": {
                 "security-severity": "5.0",
                 "tags": [
@@ -94,6 +100,7 @@
               "shortDescription": {
                 "text": "Object storage blocks public access"
               },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-025.md",
               "properties": {
                 "security-severity": "7.5",
                 "tags": [

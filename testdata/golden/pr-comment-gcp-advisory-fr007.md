@@ -25,4 +25,4 @@ waivers:
 ```
 </details>
 
-Nothing else changed (0 findings unchanged). Rules: FR-007
+Nothing else changed (0 findings unchanged). Rules: [FR-007](https://github.com/fluong/fray/blob/main/docs/rules/FR-007.md)
