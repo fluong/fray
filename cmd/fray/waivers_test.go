@@ -39,6 +39,57 @@ waivers:
 	}
 }
 
+func TestLoadWaiversRuleIDPattern(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	valid := []string{"FR-010", "FR-AWS-0001"}
+	for _, rule := range valid {
+		t.Run("valid/"+rule, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "w.yml")
+			raw := fmt.Sprintf(`version: 1
+waivers:
+  - id: ok-rule
+    rule: %s
+    address: aws_s3_bucket.assets
+    reason: "long enough reason text"
+    owner: "@sec"
+    expires: "2026-12-01"
+`, rule)
+			if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, err := loadWaivers(path, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0].Rule != rule {
+				t.Fatalf("%+v", got)
+			}
+		})
+	}
+	invalid := []string{"FR_AWS_0001", "FR-aws-0001", "FR-AWS-1"}
+	for _, rule := range invalid {
+		t.Run("invalid/"+rule, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "w.yml")
+			raw := fmt.Sprintf(`version: 1
+waivers:
+  - id: bad-rule
+    rule: %s
+    address: aws_s3_bucket.assets
+    reason: "long enough reason text"
+    owner: "@sec"
+    expires: "2026-12-01"
+`, rule)
+			if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := loadWaivers(path, now)
+			if err == nil || !strings.Contains(err.Error(), "pattern") {
+				t.Fatalf("err=%v want pattern rejection", err)
+			}
+		})
+	}
+}
+
 func TestLoadWaiversMissingOK(t *testing.T) {
 	got, err := loadWaivers(filepath.Join(t.TempDir(), "missing.yml"), time.Now())
 	if err != nil || len(got) != 0 {

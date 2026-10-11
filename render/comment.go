@@ -356,7 +356,11 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 		explanation = dropACLAlternative(explanation)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "**%s**\n", title)
+	fmt.Fprintf(&b, "**%s**", title)
+	if anyNewRule(g.items) {
+		b.WriteString(" — new rule; not blocking until the default branch is rescanned")
+	}
+	b.WriteByte('\n')
 	fmt.Fprintf(&b, "%s\n\n", metaLine(g, rule, locs, mod, hasMod))
 	fmt.Fprintf(&b, "%s\n\n", wrap(pluralizeCounts(fill(explanation, repl)), 90))
 	if why != "" {
@@ -655,6 +659,15 @@ func previouslyMitigated(items []apiv1.Finding, base map[findingKey]apiv1.Findin
 		}
 	}
 	return true
+}
+
+func anyNewRule(items []apiv1.Finding) bool {
+	for _, f := range items {
+		if f.NewRule {
+			return true
+		}
+	}
+	return false
 }
 
 func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLocation, mod client.ModuleCause, hasMod bool) string {

@@ -491,6 +491,42 @@ func TestPRCommentNoDeltaWithWaivers(t *testing.T) {
 	}
 }
 
+func TestPRCommentNewRuleSuffix(t *testing.T) {
+	doc := client.DFD{
+		Elements: []client.Element{{
+			ID: "e1111111111111111", Name: "uploads bucket", Kind: "object_storage",
+			Evidence: client.Evidence{Addresses: []string{"aws_s3_bucket.uploads"}},
+		}},
+	}
+	base := apiv1.Findings{SchemaVersion: "finding/v1"}
+	cur := apiv1.Findings{Findings: []apiv1.Finding{{
+		RuleID: "FR-AWS-0001", Target: "e1111111111111111", Status: "open",
+		Severity: "high", Stride: []string{"information_disclosure"}, NewRule: true,
+	}}}
+	texts := map[string]apiv1.RuleText{
+		"FR-AWS-0001": {
+			ID: "FR-AWS-0001", Title: "Object storage is encrypted",
+			Threat: "Bucket is not encrypted at rest",
+			GroupTitle: "{label} is not encrypted at rest",
+			Explanation: "{element} is not encrypted at rest.",
+			Mitigation: "Enable encryption at rest.",
+			Severity: "high", Stride: []string{"information_disclosure"},
+			Pass: []apiv1.Condition{{Op: "equals", Field: "attributes.encrypted_at_rest", Value: true}},
+		},
+	}
+	got := PRComment(doc, cur, base, texts, nil, nil, "", nil, nil, nil, true)
+	const suffix = " — new rule; not blocking until the default branch is rescanned"
+	if !strings.Contains(got, "**Uploads bucket is not encrypted at rest**"+suffix) {
+		t.Fatalf("missing new-rule suffix:\n%s", got)
+	}
+	// Without new_rule the suffix must not appear (older servers).
+	cur.Findings[0].NewRule = false
+	got = PRComment(doc, cur, base, texts, nil, nil, "", nil, nil, nil, true)
+	if strings.Contains(got, "new rule; not blocking") {
+		t.Fatalf("suffix must be omitted when new_rule is false:\n%s", got)
+	}
+}
+
 func TestNoChangeSummary(t *testing.T) {
 	if got := noChangeSummary(nil); got != "No change in open findings.\n" {
 		t.Fatalf("empty: %q", got)

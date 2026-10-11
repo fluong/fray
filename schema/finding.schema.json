@@ -42,6 +42,10 @@
           "type": "array",
           "description": "Optional rule-specific facts (absolute ids / closed action names only).",
           "items": { "type": "string", "minLength": 1, "maxLength": 400 }
+        },
+        "new_rule": {
+          "type": "boolean",
+          "description": "True when the baseline never evaluated this rule. Omitted by older servers."
         }
       }
     }

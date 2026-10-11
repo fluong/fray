@@ -12,6 +12,9 @@ type Finding struct {
 	Stride   []string `json:"stride"`
 	// Evidence is optional rule-specific facts (e.g. inbound writers for FR-027).
 	Evidence []string `json:"evidence,omitempty"`
+	// NewRule is set by the server when the baseline never evaluated this rule.
+	// Omitted by older servers; does not affect SARIF.
+	NewRule bool `json:"new_rule,omitempty"`
 }
 
 // Findings is the findings.json document shape.

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- PR comments mark findings with `new_rule` (rules the baseline never evaluated)
+  with “new rule; not blocking until the default branch is rescanned”.
+- Waiver `rule` accepts platform-scoped ids (`FR-AWS-0001`) alongside `FR-0xx`.
+
 ## [0.11.0] — 2026-10-10
 
 ### Added
