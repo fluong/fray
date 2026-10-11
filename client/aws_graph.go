@@ -400,57 +400,6 @@ func serviceMax(service planResource, resources []planResource, idx configIndex)
 	return 0, false, ""
 }
 
-func lbPublic(lb planResource, resources []planResource, idx configIndex) (bool, bool) {
-	internal, ok := lb.values["internal"].(bool)
-	if !ok {
-		return false, false
-	}
-	if internal {
-		return false, true
-	}
-	return len(lbWorldCIDRs(lb, resources, idx)) > 0, true
-}
-
-func lbWorldCIDRs(lb planResource, resources []planResource, idx configIndex) []string {
-	sgs := lbSecurityGroups(lb, resources, idx)
-	var cidrs []string
-	for _, sg := range sgs {
-		cidrs = append(cidrs, worldCIDRs(sg.values)...)
-		for _, rule := range resources {
-			if rule.typ != "aws_vpc_security_group_ingress_rule" {
-				continue
-			}
-			if !ruleOnSG(rule, sg, idx) {
-				continue
-			}
-			cidrs = append(cidrs, worldCIDRs(rule.values)...)
-		}
-	}
-	return uniqueStrings(cidrs)
-}
-
-func lbSecurityGroups(lb planResource, resources []planResource, idx configIndex) []planResource {
-	var out []planResource
-	for _, ref := range idx.attrRefs(lb.address, "security_groups") {
-		for _, sg := range resources {
-			if sg.typ != "aws_security_group" {
-				continue
-			}
-			_, _, name, ok := splitResourceAddress(sg.address)
-			if ok && containsResource(ref, "aws_security_group", name) && sameModule(lb.address, sg.address) {
-				out = append(out, sg)
-			}
-		}
-	}
-	return uniqueResources(out)
-}
-
-func sameModule(a, b string) bool {
-	am, _, _, aok := splitResourceAddress(a)
-	bm, _, _, bok := splitResourceAddress(b)
-	return aok && bok && am == bm
-}
-
 func ruleOnSG(rule, sg planResource, idx configIndex) bool {
 	_, _, name, ok := splitResourceAddress(sg.address)
 	if !ok {
@@ -462,37 +411,6 @@ func ruleOnSG(rule, sg planResource, idx configIndex) bool {
 		}
 	}
 	return false
-}
-
-func worldCIDRs(values map[string]any) []string {
-	var out []string
-	if s, ok := values["cidr_ipv4"].(string); ok && worldCIDR(s) {
-		out = append(out, s)
-	}
-	if s, ok := values["cidr_ipv6"].(string); ok && worldCIDR(s) {
-		out = append(out, s)
-	}
-	for _, ing := range asList(values["ingress"]) {
-		m, ok := ing.(map[string]any)
-		if !ok {
-			continue
-		}
-		for _, c := range stringList(m["cidr_blocks"]) {
-			if worldCIDR(c) {
-				out = append(out, c)
-			}
-		}
-		for _, c := range stringList(m["ipv6_cidr_blocks"]) {
-			if worldCIDR(c) {
-				out = append(out, c)
-			}
-		}
-	}
-	return out
-}
-
-func worldCIDR(s string) bool {
-	return s == "0.0.0.0/0" || s == "::/0"
 }
 
 func stringList(v any) []string {
@@ -510,30 +428,14 @@ func stringList(v any) []string {
 	return out
 }
 
+// publicListener picks transport and anonymity from this LB's listeners.
+// Caller already decided the LB is internet-exposed (attributes.public=true).
 func publicListener(lb planResource, resources []planResource, idx configIndex) (string, string, bool) {
-	ports := map[int]bool{}
-	for _, sg := range lbSecurityGroups(lb, resources, idx) {
-		for _, rule := range resources {
-			if rule.typ != "aws_vpc_security_group_ingress_rule" || !ruleOnSG(rule, sg, idx) {
-				continue
-			}
-			if len(worldCIDRs(rule.values)) == 0 {
-				continue
-			}
-			if n, ok := number(rule.values["from_port"]); ok {
-				ports[n] = true
-			}
-		}
-	}
 	transport := "unknown"
 	anonymous := false
 	addr := ""
 	found := false
 	for _, ln := range listenersFor(lb, resources, idx) {
-		port, ok := number(ln.values["port"])
-		if ok && len(ports) > 0 && !ports[port] {
-			continue
-		}
 		found = true
 		addr = ln.address
 		switch strings.ToUpper(stringAttr(ln.values["protocol"])) {

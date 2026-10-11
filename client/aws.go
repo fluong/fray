@@ -246,19 +246,13 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		if lbEl == nil || lbEl.Attributes["public"] != true {
 			continue
 		}
-		cidrs := lbWorldCIDRs(lb, resources, idx)
-		if len(cidrs) == 0 {
-			continue
-		}
 		if public == nil {
-			var sigs []Signal
-			for _, c := range cidrs {
-				sigs = append(sigs, Signal{Type: "network_ingress", Name: c})
-			}
+			// Closed class label for world exposure — not a harvested CIDR.
+			// Kept as "0.0.0.0/0" so public_client identity matches prior plans.
 			public = &Element{
 				Name: "Public client", Type: "external_entity", Kind: "public_client",
 				Provenance: "inferred",
-				Evidence:   Evidence{Signals: sigs},
+				Evidence:   Evidence{Signals: []Signal{{Type: "network_ingress", Name: "0.0.0.0/0"}}},
 			}
 			extra = append(extra, public)
 		}
