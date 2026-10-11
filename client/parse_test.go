@@ -200,6 +200,68 @@ func TestCloudRunSecretVolumeDelivery(t *testing.T) {
 	}
 }
 
+func TestR2BucketLockSetsObjectLock(t *testing.T) {
+	plan := []byte(`{
+	  "resource_changes": [
+	    {"address":"cloudflare_r2_bucket.archive","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"demo-archive"}}},
+	    {"address":"cloudflare_r2_bucket_lock.archive","mode":"managed","type":"cloudflare_r2_bucket_lock","change":{"after":{
+	      "bucket_name":"demo-archive",
+	      "rules":[{"id":"all","enabled":true,"prefix":"","condition":{"type":"Indefinite"}}]
+	    }}}
+	  ]
+	}`)
+	doc, warnings, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "cloudflare_r2_bucket_lock") {
+			t.Fatalf("unexpected warning: %s", w)
+		}
+	}
+	var bucket *Element
+	for i := range doc.Elements {
+		if doc.Elements[i].Kind == "object_storage" {
+			bucket = &doc.Elements[i]
+			break
+		}
+	}
+	if bucket == nil {
+		t.Fatal("no object_storage")
+	}
+	if bucket.Attributes["object_lock"] != true {
+		t.Fatalf("object_lock=%#v want true", bucket.Attributes["object_lock"])
+	}
+	if bucket.Causes["object_lock"] != "cloudflare_r2_bucket_lock.archive" {
+		t.Fatalf("cause=%q", bucket.Causes["object_lock"])
+	}
+}
+
+func TestR2NoLockObjectLockFalse(t *testing.T) {
+	plan := []byte(`{
+	  "resource_changes": [
+	    {"address":"cloudflare_r2_bucket.archive","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"demo-archive"}}}
+	  ]
+	}`)
+	doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bucket *Element
+	for i := range doc.Elements {
+		if doc.Elements[i].Kind == "object_storage" {
+			bucket = &doc.Elements[i]
+			break
+		}
+	}
+	if bucket == nil {
+		t.Fatal("no object_storage")
+	}
+	if bucket.Attributes["object_lock"] != false {
+		t.Fatalf("object_lock=%#v want false", bucket.Attributes["object_lock"])
+	}
+}
+
 func TestR2DevDomainMakesBucketPublic(t *testing.T) {
 	plan := []byte(`{
 	  "resource_changes": [

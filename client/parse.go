@@ -197,6 +197,8 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			// Mapped in buildAWS. Not warned as unknown.
 		case "cloudflare_r2_managed_domain", "cloudflare_r2_custom_domain":
 			// Read later to decide whether a bucket is public. Not an element.
+		case "cloudflare_r2_bucket_lock":
+			// Read later for object_lock. Not an element.
 		case "cloudflare_api_token", "cloudflare_account_token":
 			// Policies feed R2 service→bucket authz_scope. Not an element.
 		default:
@@ -487,8 +489,7 @@ func r2Element(r planResource, resources []planResource, prevent bool) *Element 
 	attrs := map[string]any{
 		"acls_disabled": true,
 		"audit_logging": false,
-		// object_lock omitted: Cloudflare R2 lock / retention is not parsed yet
-		// (roadmap). Absent → FR-027 stays unverified rather than false-open.
+		"object_lock":   r2ObjectLock(name, resources),
 	}
 	causes := map[string]string{}
 	if cause, public := r2PublicCause(name, resources); public {
@@ -500,6 +501,9 @@ func r2Element(r planResource, resources []planResource, prevent bool) *Element 
 		attrs["public_access_blocked"] = true
 		attrs["public"] = false
 	}
+	if cause, ok := r2ObjectLockCause(name, resources); ok {
+		causes["object_lock"] = cause
+	}
 	setObjectDeletion(attrs, r.values, prevent)
 	return &Element{
 		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "cloudflare",
@@ -508,6 +512,38 @@ func r2Element(r planResource, resources []planResource, prevent bool) *Element 
 		Attributes: attrs,
 		Causes:     causes,
 	}
+}
+
+// r2ObjectLock is true when a cloudflare_r2_bucket_lock for this bucket has at
+// least one enabled rule. No lock resource → false (known off in this root).
+func r2ObjectLock(bucketName string, resources []planResource) bool {
+	_, ok := r2ObjectLockCause(bucketName, resources)
+	return ok
+}
+
+func r2ObjectLockCause(bucketName string, resources []planResource) (cause string, locked bool) {
+	if bucketName == "" {
+		return "", false
+	}
+	for _, r := range resources {
+		if r.typ != "cloudflare_r2_bucket_lock" {
+			continue
+		}
+		name, _ := r.values["bucket_name"].(string)
+		if name != bucketName {
+			continue
+		}
+		for _, rule := range asList(r.values["rules"]) {
+			rm, ok := rule.(map[string]any)
+			if !ok {
+				continue
+			}
+			if rm["enabled"] == true {
+				return r.address, true
+			}
+		}
+	}
+	return "", false
 }
 
 func setDeletionProtection(attrs, values map[string]any, prevent bool) {
