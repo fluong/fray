@@ -118,33 +118,38 @@ func TestLBPublicTable(t *testing.T) {
 			wantVal: true, wantKnown: true,
 		},
 		{
-			name: "vpc rule cidr null + peer SG unknown-after-apply → absent",
+			name: "vpc rule first-apply direct peer → not public",
 			build: func() (planResource, []planResource, configIndex) {
 				lb, resources, idx := rootLBBare(t, false)
+				app := planResource{
+					typ: "aws_security_group", address: "aws_security_group.app",
+					values: map[string]any{},
+				}
 				rule := planResource{
 					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.peer",
 					values: map[string]any{
 						"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
 						"cidr_ipv4": nil, "referenced_security_group_id": nil,
 					},
+					afterUnknown: map[string]any{"referenced_security_group_id": true},
 				}
 				idx.resources[rule.address] = exprSet{refs: map[string][]string{
 					"security_group_id":            {"aws_security_group.alb.id", "aws_security_group.alb"},
-					"referenced_security_group_id": {"aws_security_group.tasks.id", "aws_security_group.tasks"},
+					"referenced_security_group_id": {"aws_security_group.app.id", "aws_security_group.app"},
 				}}
-				return lb, append(resources, rule), idx
+				return lb, append(resources, app, rule), idx
 			},
-			wantVal: false, wantKnown: false,
+			wantVal: false, wantKnown: true,
 		},
 		{
-			name: "vpc rule cidr null + prefix_list_id unknown-after-apply → absent",
+			name: "vpc rule first-apply direct private prefix → not public",
 			build: func() (planResource, []planResource, configIndex) {
 				lb, resources, idx := rootLBBare(t, false)
 				pl := planResource{
-					typ: "aws_ec2_managed_prefix_list", address: "aws_ec2_managed_prefix_list.world",
+					typ: "aws_ec2_managed_prefix_list", address: "aws_ec2_managed_prefix_list.priv",
 					values: map[string]any{
-						"id":    "pl-world",
-						"entry": []any{map[string]any{"cidr": "0.0.0.0/0"}},
+						"id":    "pl-priv",
+						"entry": []any{map[string]any{"cidr": "10.0.0.0/8"}},
 					},
 				}
 				rule := planResource{
@@ -153,12 +158,33 @@ func TestLBPublicTable(t *testing.T) {
 						"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
 						"cidr_ipv4": nil, "prefix_list_id": nil,
 					},
+					afterUnknown: map[string]any{"prefix_list_id": true},
 				}
 				idx.resources[rule.address] = exprSet{refs: map[string][]string{
 					"security_group_id": {"aws_security_group.alb.id", "aws_security_group.alb"},
-					"prefix_list_id":    {"aws_ec2_managed_prefix_list.world.id", "aws_ec2_managed_prefix_list.world"},
+					"prefix_list_id":    {"aws_ec2_managed_prefix_list.priv.id", "aws_ec2_managed_prefix_list.priv"},
 				}}
-				return lb, append(resources, rule, pl), idx
+				return lb, append(resources, pl, rule), idx
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
+			name: "vpc rule for_each each.value peer unknown → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				lb, resources, idx := rootLBBare(t, false)
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: `aws_vpc_security_group_ingress_rule.this["db"]`,
+					values: map[string]any{
+						"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "referenced_security_group_id": nil,
+					},
+					afterUnknown: map[string]any{"referenced_security_group_id": true},
+				}
+				idx.resources["aws_vpc_security_group_ingress_rule.this"] = exprSet{refs: map[string][]string{
+					"security_group_id":            {"aws_security_group.alb.id", "aws_security_group.alb"},
+					"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
+				}}
+				return lb, append(resources, rule), idx
 			},
 			wantVal: false, wantKnown: false,
 		},
@@ -364,6 +390,46 @@ func TestLBPublicTable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestForEachVPCRuleInstancesLB(t *testing.T) {
+	sharedCfg := exprSet{refs: map[string][]string{
+		"security_group_id":            {"aws_security_group.alb.id", "aws_security_group.alb"},
+		"cidr_ipv4":                    {"each.value.cidr_ipv4", "each.value"},
+		"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
+	}}
+	app := planResource{typ: "aws_security_group", address: "aws_security_group.app", values: map[string]any{}}
+
+	t.Run("http key world", func(t *testing.T) {
+		lb, resources, idx := rootLBBare(t, false)
+		rule := planResource{
+			typ: "aws_vpc_security_group_ingress_rule", address: `aws_vpc_security_group_ingress_rule.this["http"]`,
+			values: map[string]any{
+				"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
+				"cidr_ipv4": "0.0.0.0/0", "referenced_security_group_id": nil,
+			},
+		}
+		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
+		got, known := lbPublic(lb, append(resources, app, rule), idx)
+		if !known || !got {
+			t.Fatalf("http key: got (%v,%v) want (true,true) world", got, known)
+		}
+	})
+	t.Run("db key peer", func(t *testing.T) {
+		lb, resources, idx := rootLBBare(t, false)
+		rule := planResource{
+			typ: "aws_vpc_security_group_ingress_rule", address: `aws_vpc_security_group_ingress_rule.this["db"]`,
+			values: map[string]any{
+				"from_port": float64(80), "to_port": float64(80), "ip_protocol": "tcp",
+				"cidr_ipv4": nil, "referenced_security_group_id": "sg-app",
+			},
+		}
+		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
+		got, known := lbPublic(lb, append(resources, app, rule), idx)
+		if !known || got {
+			t.Fatalf("db key: got (%v,%v) want (false,true) peer", got, known)
+		}
+	})
 }
 
 func TestLBPublicDemoPlan(t *testing.T) {

@@ -126,26 +126,33 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 			wantVal: false, wantKnown: true,
 		},
 		{
-			name: "vpc rule cidr null + peer SG unknown-after-apply → absent",
+			// Case 1: first-apply direct peer SG reference.
+			name: "vpc rule first-apply direct peer → restricted",
 			build: func() (planResource, []planResource, configIndex) {
 				db, resources, idx := rootDBBare(t)
+				app := planResource{
+					typ: "aws_security_group", address: "aws_security_group.app",
+					values: map[string]any{},
+				}
 				rule := planResource{
 					typ: "aws_vpc_security_group_ingress_rule", address: "aws_vpc_security_group_ingress_rule.peer",
 					values: map[string]any{
 						"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
 						"cidr_ipv4": nil, "referenced_security_group_id": nil,
 					},
+					afterUnknown: map[string]any{"referenced_security_group_id": true},
 				}
 				idx.resources[rule.address] = exprSet{refs: map[string][]string{
 					"security_group_id":            {"aws_security_group.db.id", "aws_security_group.db"},
-					"referenced_security_group_id": {"aws_security_group.tasks.id", "aws_security_group.tasks"},
+					"referenced_security_group_id": {"aws_security_group.app.id", "aws_security_group.app"},
 				}}
-				return db, append(resources, rule), idx
+				return db, append(resources, app, rule), idx
 			},
-			wantVal: false, wantKnown: false,
+			wantVal: true, wantKnown: true,
 		},
 		{
-			name: "vpc rule cidr null + prefix_list_id unknown-after-apply → absent",
+			// Case 2: first-apply direct private prefix list.
+			name: "vpc rule first-apply direct prefix list private → restricted",
 			build: func() (planResource, []planResource, configIndex) {
 				db, resources, idx := rootDBBare(t)
 				pl := planResource{
@@ -161,16 +168,39 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 						"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
 						"cidr_ipv4": nil, "prefix_list_id": nil,
 					},
+					afterUnknown: map[string]any{"prefix_list_id": true},
 				}
 				idx.resources[rule.address] = exprSet{refs: map[string][]string{
 					"security_group_id": {"aws_security_group.db.id", "aws_security_group.db"},
 					"prefix_list_id":    {"aws_ec2_managed_prefix_list.priv.id", "aws_ec2_managed_prefix_list.priv"},
 				}}
-				return db, append(resources, rule, pl), idx
+				return db, append(resources, pl, rule), idx
+			},
+			wantVal: true, wantKnown: true,
+		},
+		{
+			// Case 4: for_each each.value peer unknown → absent.
+			name: "vpc rule for_each each.value peer unknown → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				db, resources, idx := rootDBBare(t)
+				rule := planResource{
+					typ: "aws_vpc_security_group_ingress_rule", address: `aws_vpc_security_group_ingress_rule.this["db"]`,
+					values: map[string]any{
+						"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
+						"cidr_ipv4": nil, "referenced_security_group_id": nil,
+					},
+					afterUnknown: map[string]any{"referenced_security_group_id": true},
+				}
+				idx.resources["aws_vpc_security_group_ingress_rule.this"] = exprSet{refs: map[string][]string{
+					"security_group_id":            {"aws_security_group.db.id", "aws_security_group.db"},
+					"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
+				}}
+				return db, append(resources, rule), idx
 			},
 			wantVal: false, wantKnown: false,
 		},
 		{
+			// eb00c1c degenerate: all null, after_unknown unset → ignore → absent.
 			name: "vpc rule all sources null → absent (degenerate)",
 			build: func() (planResource, []planResource, configIndex) {
 				db, resources, idx := rootDBBare(t)
@@ -499,6 +529,48 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Case 3: for_each instances share configuration (each.value.*) but planned
+// values differ — must not harvest sibling keys from the module input map.
+func TestForEachVPCRuleInstancesDB(t *testing.T) {
+	sharedCfg := exprSet{refs: map[string][]string{
+		"security_group_id":            {"aws_security_group.db.id", "aws_security_group.db"},
+		"cidr_ipv4":                    {"each.value.cidr_ipv4", "each.value"},
+		"referenced_security_group_id": {"each.value.referenced_security_group_id", "each.value"},
+	}}
+	app := planResource{typ: "aws_security_group", address: "aws_security_group.app", values: map[string]any{}}
+
+	t.Run("http key world", func(t *testing.T) {
+		db, resources, idx := rootDBBare(t)
+		rule := planResource{
+			typ: "aws_vpc_security_group_ingress_rule", address: `aws_vpc_security_group_ingress_rule.this["http"]`,
+			values: map[string]any{
+				"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
+				"cidr_ipv4": "0.0.0.0/0", "referenced_security_group_id": nil,
+			},
+		}
+		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
+		got, known := dbNetworkRestricted(db, append(resources, app, rule), idx)
+		if !known || got {
+			t.Fatalf("http key: got (%v,%v) want (false,true) world", got, known)
+		}
+	})
+	t.Run("db key peer", func(t *testing.T) {
+		db, resources, idx := rootDBBare(t)
+		rule := planResource{
+			typ: "aws_vpc_security_group_ingress_rule", address: `aws_vpc_security_group_ingress_rule.this["db"]`,
+			values: map[string]any{
+				"from_port": float64(5432), "to_port": float64(5432), "ip_protocol": "tcp",
+				"cidr_ipv4": nil, "referenced_security_group_id": "sg-app",
+			},
+		}
+		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
+		got, known := dbNetworkRestricted(db, append(resources, app, rule), idx)
+		if !known || !got {
+			t.Fatalf("db key: got (%v,%v) want (true,true) peer", got, known)
+		}
+	})
 }
 
 func TestDBNetworkRestrictedDemoPlan(t *testing.T) {

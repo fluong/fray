@@ -74,9 +74,10 @@ var ignoredTypes = map[string]bool{
 var regionPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 type planResource struct {
-	address string
-	typ     string
-	values  map[string]any
+	address      string
+	typ          string
+	values       map[string]any
+	afterUnknown map[string]any // change.after_unknown; attribute → true when unknown after apply
 }
 
 type frayConfig struct {
@@ -337,7 +338,8 @@ func loadResources(plan []byte) ([]planResource, error) {
 			Mode    string `json:"mode"`
 			Type    string `json:"type"`
 			Change  struct {
-				After map[string]any `json:"after"`
+				After        map[string]any `json:"after"`
+				AfterUnknown map[string]any `json:"after_unknown"`
 			} `json:"change"`
 		} `json:"resource_changes"`
 	}
@@ -354,7 +356,12 @@ func loadResources(plan []byte) ([]planResource, error) {
 		if r.Change.After == nil {
 			continue
 		}
-		out = append(out, planResource{address: r.Address, typ: r.Type, values: r.Change.After})
+		out = append(out, planResource{
+			address:      r.Address,
+			typ:          r.Type,
+			values:       r.Change.After,
+			afterUnknown: r.Change.AfterUnknown,
+		})
 	}
 	return out, nil
 }

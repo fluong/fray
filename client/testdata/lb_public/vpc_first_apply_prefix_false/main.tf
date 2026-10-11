@@ -1,5 +1,5 @@
-# Fixture: vpc_prefix_unknown_absent
-# cidr null; prefix_list_id unknown after apply → public absent
+# Fixture: vpc_first_apply_prefix_false
+# Direct private prefix list, id unknown after apply → public=false
 terraform {
   required_providers {
     aws = { source = "hashicorp/aws" }
@@ -7,11 +7,11 @@ terraform {
 }
 provider "aws" { region = "us-east-1" }
 
-resource "aws_ec2_managed_prefix_list" "world" {
-  name           = "world"
+resource "aws_ec2_managed_prefix_list" "priv" {
+  name           = "priv"
   address_family = "IPv4"
   max_entries    = 1
-  entry { cidr = "0.0.0.0/0" }
+  entry { cidr = "10.0.0.0/8" }
 }
 resource "aws_security_group" "alb" { name = "alb"; vpc_id = "vpc-1" }
 resource "aws_vpc_security_group_ingress_rule" "pl" {
@@ -19,7 +19,7 @@ resource "aws_vpc_security_group_ingress_rule" "pl" {
   from_port         = 80
   to_port           = 80
   ip_protocol       = "tcp"
-  prefix_list_id    = aws_ec2_managed_prefix_list.world.id
+  prefix_list_id    = aws_ec2_managed_prefix_list.priv.id
 }
 resource "aws_lb" "main" {
   name               = "alb"

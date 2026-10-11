@@ -500,36 +500,184 @@ func ingressFromVPCRule(r planResource, idx configIndex) ingressSource {
 		src.portSet = true
 	}
 
-	// Only concrete planned values count as resolved sources.
-	//
-	// for_each modules list each.value.* refs on every optional source attribute
-	// even when the value is null (unused). Those nulls are ignored — a sibling
-	// concrete CIDR still classifies the rule.
-	//
-	// A null/absent value with a real configuration reference (aws_security_group,
-	// aws_ec2_managed_prefix_list, var.*, after_unknown) is configured-but-unknown:
-	// we must NOT promote config refs into resolved peer/prefix sources (that
-	// would yield network_restricted=true / public=false). Leave the source set
-	// empty → unknown below.
-	_ = idx // configuration refs intentionally not harvested for null sources
+	// Per-source resolution:
+	//   concrete planned value → use it
+	//   null and after_unknown not true → unused (ignore; for_each sibling keys)
+	//   after_unknown + exactly one direct same-module managed SG / prefix list
+	//     → resolve (peer → restricted; prefix list → classify entries)
+	//   after_unknown + indirect expr (each.value/var/local/module/data) or
+	//     ambiguous candidates → unknown
 	if s, ok := r.values["cidr_ipv4"].(string); ok {
 		src.cidrs = append(src.cidrs, s)
+	} else if r.attrAfterUnknown("cidr_ipv4") {
+		// CIDR cannot be resolved from a resource reference.
+		src.unknown = true
 	}
 	if s, ok := r.values["cidr_ipv6"].(string); ok {
 		src.cidrs = append(src.cidrs, s)
+	} else if r.attrAfterUnknown("cidr_ipv6") {
+		src.unknown = true
 	}
-	if s, ok := r.values["referenced_security_group_id"].(string); ok && s != "" {
-		src.sgRefs = append(src.sgRefs, s)
+
+	switch ref, ok, unk := resolveUnknownVPCPeer(r, idx); {
+	case unk:
+		src.unknown = true
+	case ok:
+		src.sgRefs = append(src.sgRefs, ref)
+	default:
+		if s, ok := r.values["referenced_security_group_id"].(string); ok && s != "" {
+			src.sgRefs = append(src.sgRefs, s)
+		}
 	}
-	if s, ok := r.values["prefix_list_id"].(string); ok && s != "" {
-		src.prefixListIDs = append(src.prefixListIDs, s)
+
+	switch ref, ok, unk := resolveUnknownVPCPrefix(r, idx); {
+	case unk:
+		src.unknown = true
+	case ok:
+		src.prefixListRefs = append(src.prefixListRefs, ref)
+	default:
+		if s, ok := r.values["prefix_list_id"].(string); ok && s != "" {
+			src.prefixListIDs = append(src.prefixListIDs, s)
+		}
+	}
+
+	if src.unknown {
+		return src
 	}
 	if len(src.cidrs) == 0 && len(src.sgRefs) == 0 && len(src.prefixListIDs) == 0 && len(src.prefixListRefs) == 0 {
-		// Degenerate all-null / unknown-after-apply with no concrete source:
-		// cannot classify as world or restricted.
 		src.unknown = true
 	}
 	return src
+}
+
+func (r planResource) attrAfterUnknown(attr string) bool {
+	if r.afterUnknown == nil {
+		return false
+	}
+	v, ok := r.afterUnknown[attr]
+	if !ok {
+		return false
+	}
+	b, ok := v.(bool)
+	return ok && b
+}
+
+// resolveUnknownVPCPeer resolves referenced_security_group_id when the planned
+// value is unknown after apply. ok means a single direct same-module managed SG
+// was found; unk means the attribute is configured-but-unresolvable.
+func resolveUnknownVPCPeer(r planResource, idx configIndex) (ref string, ok bool, unk bool) {
+	if s, is := r.values["referenced_security_group_id"].(string); is && s != "" {
+		return "", false, false
+	}
+	if !r.attrAfterUnknown("referenced_security_group_id") {
+		return "", false, false // null unused optional — ignore
+	}
+	refs := idx.attrRefs(r.address, "referenced_security_group_id")
+	if len(refs) == 0 {
+		return "", false, true
+	}
+	for _, ref := range refs {
+		if isIndirectIngressRef(ref) {
+			return "", false, true
+		}
+	}
+	ruleMod, _, _, _ := splitResourceAddress(r.address)
+	var names []string
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		name := securityGroupNameFromRef(ref)
+		if name == "" {
+			continue
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) != 1 {
+		return "", false, true
+	}
+	return resourceAddress(ruleMod, "aws_security_group", names[0]), true, false
+}
+
+func resolveUnknownVPCPrefix(r planResource, idx configIndex) (ref string, ok bool, unk bool) {
+	if s, is := r.values["prefix_list_id"].(string); is && s != "" {
+		return "", false, false
+	}
+	if !r.attrAfterUnknown("prefix_list_id") {
+		return "", false, false
+	}
+	refs := idx.attrRefs(r.address, "prefix_list_id")
+	if len(refs) == 0 {
+		return "", false, true
+	}
+	for _, ref := range refs {
+		if isIndirectIngressRef(ref) {
+			return "", false, true
+		}
+	}
+	ruleMod, _, _, _ := splitResourceAddress(r.address)
+	var names []string
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		name := managedPrefixListNameFromRef(ref)
+		if name == "" {
+			continue
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) != 1 {
+		return "", false, true
+	}
+	return resourceAddress(ruleMod, "aws_ec2_managed_prefix_list", names[0]), true, false
+}
+
+func isIndirectIngressRef(ref string) bool {
+	switch {
+	case strings.HasPrefix(ref, "each.") || strings.Contains(ref, ".each."):
+		return true
+	case strings.HasPrefix(ref, "var.") || strings.Contains(ref, ".var."):
+		return true
+	case strings.HasPrefix(ref, "local.") || strings.Contains(ref, ".local."):
+		return true
+	case strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group."):
+		return true
+	case strings.Contains(ref, "data.aws_ec2_managed_prefix_list.") || strings.Contains(ref, ".data.aws_ec2_managed_prefix_list."):
+		return true
+	case strings.HasPrefix(ref, "module.") || strings.Contains(ref, ".module."):
+		// Child-module resources and module outputs are not same-module directs.
+		return true
+	default:
+		return false
+	}
+}
+
+func managedPrefixListNameFromRef(ref string) string {
+	needle := "aws_ec2_managed_prefix_list."
+	i := strings.Index(ref, needle)
+	if i < 0 {
+		return ""
+	}
+	if i >= 5 && ref[i-5:i] == "data." {
+		return ""
+	}
+	if i >= 6 && strings.HasSuffix(ref[:i], ".data.") {
+		return ""
+	}
+	rest := ref[i+len(needle):]
+	end := len(rest)
+	for j := 0; j < len(rest); j++ {
+		if rest[j] == '.' || rest[j] == '[' {
+			end = j
+			break
+		}
+	}
+	return rest[:end]
 }
 
 func ingressFromSGRule(r planResource, idx configIndex) ingressSource {
