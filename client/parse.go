@@ -684,9 +684,9 @@ func serviceEnvs(r planResource) []envRef {
 	return out
 }
 
-// serviceVolumeSecrets returns Secret Manager secret ids mounted into the
-// Cloud Run service as volumes (template.volumes[].secret) that at least one
-// container mounts. These are secret_delivery=volume, not env.
+// serviceVolumeSecrets returns Secret Manager secret ids from
+// template.volumes[].secret that at least one container mounts. Declared but
+// unmounted volumes are ignored (no delivery).
 func serviceVolumeSecrets(r planResource) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -801,56 +801,68 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 			continue
 		}
 		sa, _ := serviceAccount(svc)
-		volumeSecretEls := map[string]bool{} // secret element canonical key
-		for _, id := range serviceVolumeSecrets(svc) {
+		// Per (service, secret): volume only when every delivery of that secret
+		// to this service is a mounted volume. Env anywhere → env (FR-003 open).
+		type secretDelivery struct {
+			el     *Element
+			id     string
+			hasEnv bool
+			hasVol bool
+		}
+		bySecret := map[string]*secretDelivery{} // secret element canonical key
+		resolveSecret := func(id, warnPrefix string) (*Element, string) {
 			sec := secretByID[id]
 			if sec == nil {
 				for sid, el := range secretByID {
 					if secretMatch(id, sid) {
-						sec = el
-						id = sid
-						break
+						return el, sid
 					}
 				}
+				*warnings = append(*warnings, warnPrefix+id+" on "+svc.address+" with no element")
+				return nil, ""
 			}
-			if sec == nil {
-				*warnings = append(*warnings, "volume secret "+id+" on "+svc.address+" with no element")
-				continue
-			}
-			volumeSecretEls[sec.canonicalKey()] = true
-			flow := &Flow{
-				From: secTemp(sec), To: secTemp(svcEl),
-				DataClass: "credentials", Transport: "local", SecretDelivery: "volume",
-				Causes: map[string]string{"secret_delivery": svc.address},
-			}
-			if scope, grants, cause := secretScope(id, sa, secretIAM, projectIAM); scope != "" {
-				flow.AuthzScope = scope
-				flow.AuthzGrants = grants
-				if cause != "" {
-					flow.Causes["authz_scope"] = cause
-				}
-			}
-			flows = append(flows, flow)
+			return sec, id
 		}
 		for _, env := range serviceEnvs(svc) {
 			if env.secret == "" {
 				continue
 			}
-			sec := secretByID[env.secret]
+			sec, id := resolveSecret(env.secret, "env "+env.name+" references secret ")
 			if sec == nil {
-				*warnings = append(*warnings, "env "+env.name+" references secret "+env.secret+" with no element")
 				continue
 			}
-			// Volume mount for the same secret already emits a mitigated path.
-			if volumeSecretEls[sec.canonicalKey()] {
+			d := bySecret[sec.canonicalKey()]
+			if d == nil {
+				d = &secretDelivery{el: sec, id: id}
+				bySecret[sec.canonicalKey()] = d
+			}
+			d.hasEnv = true
+		}
+		for _, id := range serviceVolumeSecrets(svc) {
+			sec, sid := resolveSecret(id, "volume secret ")
+			if sec == nil {
+				continue
+			}
+			d := bySecret[sec.canonicalKey()]
+			if d == nil {
+				d = &secretDelivery{el: sec, id: sid}
+				bySecret[sec.canonicalKey()] = d
+			}
+			d.hasVol = true
+		}
+		for _, d := range bySecret {
+			delivery := "volume"
+			if d.hasEnv {
+				delivery = "env"
+			} else if !d.hasVol {
 				continue
 			}
 			flow := &Flow{
-				From: secTemp(sec), To: secTemp(svcEl),
-				DataClass: "credentials", Transport: "local", SecretDelivery: "env",
+				From: secTemp(d.el), To: secTemp(svcEl),
+				DataClass: "credentials", Transport: "local", SecretDelivery: delivery,
 				Causes: map[string]string{"secret_delivery": svc.address},
 			}
-			if scope, grants, cause := secretScope(env.secret, sa, secretIAM, projectIAM); scope != "" {
+			if scope, grants, cause := secretScope(d.id, sa, secretIAM, projectIAM); scope != "" {
 				flow.AuthzScope = scope
 				flow.AuthzGrants = grants
 				if cause != "" {

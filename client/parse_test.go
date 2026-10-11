@@ -164,39 +164,94 @@ func TestProjectScopeCoversEverySecret(t *testing.T) {
 	}
 }
 
-func TestCloudRunSecretVolumeDelivery(t *testing.T) {
-	plan := []byte(`{
+func TestCloudRunSecretDelivery(t *testing.T) {
+	secretResources := `
+	    {"address":"google_secret_manager_secret.app","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"app-secret","rotation":[]}}},
+	    {"address":"google_secret_manager_secret_iam_member.app","mode":"managed","type":"google_secret_manager_secret_iam_member","change":{"after":{"secret_id":"app-secret","role":"roles/secretmanager.secretAccessor","member":"serviceAccount:api@example.iam.gserviceaccount.com"}}}`
+	cases := []struct {
+		name       string
+		template   string
+		wantDeliv  string // "" = no credentials flow for app-secret
+		wantFR003  string // mitigated | open | (none)
+	}{
+		{
+			name: "volume-only → volume (FR-003 mitigated)",
+			template: `[{
+	        "volumes":[{"name":"secvol","secret":[{"secret":"app-secret","items":[{"path":"token","version":"latest"}]}]}],
+	        "containers":[{"image":"gcr.io/x/y@sha256:abc","volume_mounts":[{"name":"secvol","mount_path":"/secrets"}]}]
+	      }]`,
+			wantDeliv: "volume", wantFR003: "mitigated",
+		},
+		{
+			name: "env-only → env (FR-003 open)",
+			template: `[{
+	        "containers":[{"image":"gcr.io/x/y@sha256:abc",
+	          "env":[{"name":"TOK","value_source":[{"secret_key_ref":[{"secret":"app-secret","version":"latest"}]}]}]}]
+	      }]`,
+			wantDeliv: "env", wantFR003: "open",
+		},
+		{
+			name: "both mount and env → env (FR-003 open)",
+			template: `[{
+	        "volumes":[{"name":"secvol","secret":[{"secret":"app-secret","items":[{"path":"token","version":"latest"}]}]}],
+	        "containers":[{"image":"gcr.io/x/y@sha256:abc","volume_mounts":[{"name":"secvol","mount_path":"/secrets"}],
+	          "env":[{"name":"TOK","value_source":[{"secret_key_ref":[{"secret":"app-secret","version":"latest"}]}]}]}]
+	      }]`,
+			wantDeliv: "env", wantFR003: "open",
+		},
+		{
+			name: "declared volume not mounted → no flow",
+			template: `[{
+	        "volumes":[{"name":"secvol","secret":[{"secret":"app-secret","items":[{"path":"token","version":"latest"}]}]}],
+	        "containers":[{"image":"gcr.io/x/y@sha256:abc"}]
+	      }]`,
+			wantDeliv: "", wantFR003: "(none)",
+		},
+		{
+			name: "two containers: one mounts, one env → env (FR-003 open)",
+			template: `[{
+	        "volumes":[{"name":"secvol","secret":[{"secret":"app-secret","items":[{"path":"token","version":"latest"}]}]}],
+	        "containers":[
+	          {"image":"gcr.io/x/y@sha256:abc","volume_mounts":[{"name":"secvol","mount_path":"/secrets"}]},
+	          {"image":"gcr.io/x/y@sha256:def","env":[{"name":"TOK","value_source":[{"secret_key_ref":[{"secret":"app-secret","version":"latest"}]}]}]}
+	        ]
+	      }]`,
+			wantDeliv: "env", wantFR003: "open",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := []byte(`{
 	  "resource_changes": [
 	    {"address":"google_cloud_run_v2_service.api","mode":"managed","type":"google_cloud_run_v2_service","change":{"after":{
 	      "name":"api","location":"us-central1",
-	      "template":[{
-	        "volumes":[{"name":"secvol","secret":[{"secret":"app-secret","items":[{"path":"token","version":"latest"}]}]}],
-	        "containers":[{"image":"gcr.io/x/y@sha256:abc","volume_mounts":[{"name":"secvol","mount_path":"/secrets"}],
-	          "env":[{"name":"OTHER","value_source":[{"secret_key_ref":[{"secret":"other-secret","version":"latest"}]}]}]}]
-	      }]
-	    }}},
-	    {"address":"google_secret_manager_secret.app","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"app-secret","rotation":[]}}},
-	    {"address":"google_secret_manager_secret.other","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"other-secret","rotation":[]}}},
-	    {"address":"google_secret_manager_secret_iam_member.app","mode":"managed","type":"google_secret_manager_secret_iam_member","change":{"after":{"secret_id":"app-secret","role":"roles/secretmanager.secretAccessor","member":"serviceAccount:api@example.iam.gserviceaccount.com"}}},
-	    {"address":"google_secret_manager_secret_iam_member.other","mode":"managed","type":"google_secret_manager_secret_iam_member","change":{"after":{"secret_id":"other-secret","role":"roles/secretmanager.secretAccessor","member":"serviceAccount:api@example.iam.gserviceaccount.com"}}}
+	      "template":` + tc.template + `
+	    }}},` + secretResources + `
 	  ]
 	}`)
-	doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]string{}
-	for _, f := range doc.Flows {
-		if f.DataClass != "credentials" {
-			continue
-		}
-		got[f.SecretDelivery] = got[f.SecretDelivery] + "1"
-	}
-	if got["volume"] != "1" {
-		t.Fatalf("want one volume credential flow, got %#v", got)
-	}
-	if got["env"] != "1" {
-		t.Fatalf("want one env credential flow, got %#v", got)
+			doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got string
+			n := 0
+			for _, f := range doc.Flows {
+				if f.DataClass != "credentials" {
+					continue
+				}
+				n++
+				got = f.SecretDelivery
+			}
+			if tc.wantDeliv == "" {
+				if n != 0 {
+					t.Fatalf("want no credentials flow, got %d delivery=%q", n, got)
+				}
+				return
+			}
+			if n != 1 || got != tc.wantDeliv {
+				t.Fatalf("got n=%d delivery=%q want 1 %q (FR-003 %s)", n, got, tc.wantDeliv, tc.wantFR003)
+			}
+		})
 	}
 }
 
