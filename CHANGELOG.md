@@ -17,8 +17,9 @@
 - Cloud Run secrets mounted via `template.volumes[].secret` emit
   `secret_delivery: volume` only when that secret is not also injected as
   an environment variable on the same service.
-- R2 `object_lock` is set from `cloudflare_r2_bucket_lock` enabled rules
-  (false when none in this root).
+- R2 `object_lock` reflects whole-bucket retention on a matching
+  `cloudflare_r2_bucket_lock` (true/false/absent); R2 always sets
+  `encrypted_at_rest=true`.
 
 ## [0.14.0] — 2026-10-11
 

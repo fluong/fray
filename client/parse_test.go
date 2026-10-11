@@ -255,65 +255,138 @@ func TestCloudRunSecretDelivery(t *testing.T) {
 	}
 }
 
-func TestR2BucketLockSetsObjectLock(t *testing.T) {
-	plan := []byte(`{
-	  "resource_changes": [
-	    {"address":"cloudflare_r2_bucket.archive","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"demo-archive"}}},
-	    {"address":"cloudflare_r2_bucket_lock.archive","mode":"managed","type":"cloudflare_r2_bucket_lock","change":{"after":{
-	      "bucket_name":"demo-archive",
-	      "rules":[{"id":"all","enabled":true,"prefix":"","condition":{"type":"Indefinite"}}]
-	    }}}
-	  ]
-	}`)
-	doc, warnings, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, w := range warnings {
-		if strings.Contains(w, "cloudflare_r2_bucket_lock") {
-			t.Fatalf("unexpected warning: %s", w)
+func TestR2ObjectLockTable(t *testing.T) {
+	const acct = "023e105f4ecef8ad9ca31a8372d0c353"
+	bucket := func(name, jurisdiction string) string {
+		j := ""
+		if jurisdiction != "" {
+			j = `,"jurisdiction":"` + jurisdiction + `"`
 		}
+		return `{"address":"cloudflare_r2_bucket.` + name + `","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"` + name + `","account_id":"` + acct + `"` + j + `}}}`
 	}
-	var bucket *Element
-	for i := range doc.Elements {
-		if doc.Elements[i].Kind == "object_storage" {
-			bucket = &doc.Elements[i]
-			break
+	lock := func(addr, bucketName, jurisdiction, rules string) string {
+		j := ""
+		if jurisdiction != "" {
+			j = `,"jurisdiction":"` + jurisdiction + `"`
 		}
+		return `{"address":"` + addr + `","mode":"managed","type":"cloudflare_r2_bucket_lock","change":{"after":{"account_id":"` + acct + `","bucket_name":"` + bucketName + `"` + j + `,"rules":` + rules + `}}}`
 	}
-	if bucket == nil {
-		t.Fatal("no object_storage")
+	cases := []struct {
+		name       string
+		resources  string
+		config     string // optional configuration JSON fragment for root_module.resources
+		bucketName string
+		wantLock   any    // true, false, or nil (absent)
+		wantFR027  string // mitigated | open | unverified (purpose=audit_archive + writer)
+	}{
+		{
+			name:       "indefinite whole-bucket",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":true,"prefix":"","condition":{"type":"Indefinite"}}]`),
+			bucketName: "archive", wantLock: true, wantFR027: "mitigated",
+		},
+		{
+			name:       "age whole-bucket",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":true,"condition":{"type":"Age","max_age_seconds":86400}}]`),
+			bucketName: "archive", wantLock: true, wantFR027: "mitigated",
+		},
+		{
+			name:       "age=0",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":true,"condition":{"type":"Age","max_age_seconds":0}}]`),
+			bucketName: "archive", wantLock: nil, wantFR027: "unverified",
+		},
+		{
+			name:       "prefix-only",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"p","enabled":true,"prefix":"logs/","condition":{"type":"Indefinite"}}]`),
+			bucketName: "archive", wantLock: nil, wantFR027: "unverified",
+		},
+		{
+			name:       "empty-string prefix (whole-bucket)",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":true,"prefix":"","condition":{"type":"Indefinite"}}]`),
+			bucketName: "archive", wantLock: true, wantFR027: "mitigated",
+		},
+		{
+			name:       "disabled",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":false,"prefix":"","condition":{"type":"Indefinite"}}]`),
+			bucketName: "archive", wantLock: nil, wantFR027: "unverified",
+		},
+		{
+			name:       "date-only",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":true,"condition":{"type":"Date","date":"2026-01-01T00:00:00Z"}}]`),
+			bucketName: "archive", wantLock: nil, wantFR027: "unverified",
+		},
+		{
+			name:       "empty rules",
+			resources:  bucket("archive", "") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[]`),
+			bucketName: "archive", wantLock: false, wantFR027: "open",
+		},
+		{
+			name:       "no lock resource",
+			resources:  bucket("archive", ""),
+			bucketName: "archive", wantLock: nil, wantFR027: "unverified",
+		},
+		{
+			name:       "eu jurisdiction mismatch",
+			resources:  bucket("archive", "eu") + `,` + lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":true,"condition":{"type":"Indefinite"}}]`),
+			bucketName: "archive", wantLock: nil, wantFR027: "unverified",
+		},
+		{
+			name: "reference-resolved bucket_name",
+			resources: bucket("archive", "") + `,` +
+				`{"address":"cloudflare_r2_bucket_lock.archive","mode":"managed","type":"cloudflare_r2_bucket_lock","change":{"after":{"account_id":"` + acct + `","bucket_name":null,"rules":[{"id":"all","enabled":true,"condition":{"type":"Indefinite"}}]}}}`,
+			config: `{"configuration":{"root_module":{"resources":[
+			  {"address":"cloudflare_r2_bucket.archive","type":"cloudflare_r2_bucket","name":"archive","mode":"managed","expressions":{"name":{"constant_value":"archive"},"account_id":{"constant_value":"` + acct + `"}}},
+			  {"address":"cloudflare_r2_bucket_lock.archive","type":"cloudflare_r2_bucket_lock","name":"archive","mode":"managed","expressions":{"bucket_name":{"references":["cloudflare_r2_bucket.archive.name","cloudflare_r2_bucket.archive"]},"account_id":{"constant_value":"` + acct + `"}}}
+			]}}}`,
+			bucketName: "archive", wantLock: true, wantFR027: "mitigated",
+		},
+		{
+			name: "two buckets one locked",
+			resources: bucket("archive", "") + `,` + bucket("other", "") + `,` +
+				lock("cloudflare_r2_bucket_lock.archive", "archive", "", `[{"id":"all","enabled":true,"condition":{"type":"Indefinite"}}]`),
+			bucketName: "other", wantLock: nil, wantFR027: "unverified",
+		},
 	}
-	if bucket.Attributes["object_lock"] != true {
-		t.Fatalf("object_lock=%#v want true", bucket.Attributes["object_lock"])
-	}
-	if bucket.Causes["object_lock"] != "cloudflare_r2_bucket_lock.archive" {
-		t.Fatalf("cause=%q", bucket.Causes["object_lock"])
-	}
-}
-
-func TestR2NoLockObjectLockFalse(t *testing.T) {
-	plan := []byte(`{
-	  "resource_changes": [
-	    {"address":"cloudflare_r2_bucket.archive","mode":"managed","type":"cloudflare_r2_bucket","change":{"after":{"name":"demo-archive"}}}
-	  ]
-	}`)
-	doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var bucket *Element
-	for i := range doc.Elements {
-		if doc.Elements[i].Kind == "object_storage" {
-			bucket = &doc.Elements[i]
-			break
-		}
-	}
-	if bucket == nil {
-		t.Fatal("no object_storage")
-	}
-	if bucket.Attributes["object_lock"] != false {
-		t.Fatalf("object_lock=%#v want false", bucket.Attributes["object_lock"])
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := `{"resource_changes":[` + tc.resources + `]}`
+			if tc.config != "" {
+				body := strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(tc.config), "}"), "{")
+				plan = `{"resource_changes":[` + tc.resources + `],` + body + `}`
+			}
+			doc, warnings, err := Parse([]byte(plan), []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{Repo: "a/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, w := range warnings {
+				if strings.Contains(w, "cloudflare_r2_bucket_lock") {
+					t.Fatalf("unexpected warning: %s", w)
+				}
+			}
+			var bucket *Element
+			for i := range doc.Elements {
+				if doc.Elements[i].Kind == "object_storage" && doc.Elements[i].Name == tc.bucketName {
+					bucket = &doc.Elements[i]
+					break
+				}
+			}
+			if bucket == nil {
+				t.Fatal("no object_storage " + tc.bucketName)
+			}
+			if bucket.Attributes["encrypted_at_rest"] != true {
+				t.Fatalf("encrypted_at_rest=%#v want true", bucket.Attributes["encrypted_at_rest"])
+			}
+			got, ok := bucket.Attributes["object_lock"]
+			switch want := tc.wantLock.(type) {
+			case nil:
+				if ok {
+					t.Fatalf("object_lock=%#v want absent (FR-027 %s)", got, tc.wantFR027)
+				}
+			case bool:
+				if !ok || got != want {
+					t.Fatalf("object_lock=%#v (ok=%v) want %v (FR-027 %s)", got, ok, want, tc.wantFR027)
+				}
+			}
+		})
 	}
 }
 
