@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-10-11
+
 ### Added
 - PR comments mark findings with `new_rule` (rules the baseline never evaluated)
   with “new rule; not blocking until the default branch is rescanned”.
