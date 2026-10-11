@@ -3,23 +3,20 @@
 ## [Unreleased]
 
 ### Fixed
-- Load balancer internet exposure uses the same security-group classifier as
-  RDS (`network_restricted`), including cross-module associations, separate
-  ingress-rule resources, and managed prefix lists.
-- S3 `audit_logging` is bound to per-bucket logging / CloudTrail data-event
-  selectors (not a plan-wide string match). WriteOnly selectors stay unverified.
-- Databases behind for_each-style `aws_vpc_security_group_ingress_rule`s that
-  are open to the internet are now reported (FR-029 open instead of unverified).
-- Unknown CIDR ingress on `aws_security_group` / `aws_security_group_rule`
-  fails closed (never ignored or outweighed by a resolved peer SG).
-- Inline ingress peer refs resolve per block / list element (multi-block and
-  multi-peer first-apply no longer stay unverified).
-- Cloud Run secrets mounted via `template.volumes[].secret` emit
-  `secret_delivery: volume` only when that secret is not also injected as
-  an environment variable on the same service.
-- R2 `object_lock` reflects whole-bucket retention on a matching
-  `cloudflare_r2_bucket_lock` (true/false/absent); R2 always sets
-  `encrypted_at_rest=true`.
+- Load balancers use the same security-group exposure checks as databases
+  (cross-module associations, separate ingress rules, and managed prefix lists).
+- S3 audit logging is decided per bucket from that bucket’s logging
+  configuration or CloudTrail data-event selectors (not a plan-wide string
+  match). Write-only selectors stay unverified.
+- Unknown CIDR sources on security-group ingress fail closed: they are never
+  ignored and never outweighed by a resolved peer group.
+- Databases open to the internet through for_each-style VPC ingress rules are
+  now reported (FR-029 open instead of unverified).
+- Cloud Run secrets mounted as volumes are treated as volume delivery for
+  FR-003, unless the same secret is also injected as an environment variable
+  on that service (then environment wins).
+- R2 object lock reflects whole-bucket retention rules in this root (true,
+  false, or omitted when unclear). R2 always reports encryption at rest.
 
 ## [0.14.0] — 2026-10-11
 
