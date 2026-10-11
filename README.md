@@ -457,7 +457,7 @@ waivers:
 | Rule | Detail |
 |------|--------|
 | `id` | `^[a-z0-9][a-z0-9-]{0,63}$`, unique in the file. **Must not contain personal data** (no names, emails, logins). |
-| `rule` | `^FR-[0-9]{3}$` |
+| `rule` | `^FR-([0-9]{3}|[A-Z][A-Z0-9]{1,9}-[0-9]{4})$` |
 | `address` | Terraform / flow address (1–512 chars; no `://`, no `=`), same language as the old mitigations file |
 | `reason` | Required (≥10 chars); **stays in the repo** — never sent to Fray |
 | `owner` | Required (team or handle as text); **stays in the repo** — never sent |

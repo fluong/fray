@@ -19,7 +19,7 @@
       "additionalProperties": false,
       "required": ["rule_id", "target", "status", "severity", "stride"],
       "properties": {
-        "rule_id": { "type": "string", "pattern": "^FR-[0-9]{3}$" },
+        "rule_id": { "type": "string", "pattern": "^FR-([0-9]{3}|[A-Z][A-Z0-9]{1,9}-[0-9]{4})$" },
         "target": { "type": "string", "pattern": "^[ef][0-9a-f]{16}$" },
         "status": { "enum": ["open", "mitigated", "unverified", "waived", "accepted"] },
         "severity": { "enum": ["low", "medium", "high"] },

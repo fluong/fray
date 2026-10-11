@@ -25,7 +25,7 @@
           "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
           "description": "Stable customer id; must not contain personal data (no names, emails, logins)."
         },
-        "rule": { "type": "string", "pattern": "^FR-[0-9]{3}$" },
+        "rule": { "type": "string", "pattern": "^FR-([0-9]{3}|[A-Z][A-Z0-9]{1,9}-[0-9]{4})$" },
         "address": {
           "type": "string",
           "minLength": 1,

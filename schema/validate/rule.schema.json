@@ -5,9 +5,9 @@
   "description": "A rule selects elements or flows, then checks a pass condition. when and pass are conjunctions: every condition must hold. There is no or. Operators are equals, in, exists, not, lte, and gte. A when condition that reads an absent attribute does not match, so the rule emits nothing. Once when matches, pass true is mitigated and pass false is open. equals, in, lte, and gte yield unverified when the attribute is absent; not of an unverified read is unverified. exists is true or false, including when the attribute is absent. A false condition wins over an unverified sibling. Unverified does not gate CI. boundary equals kind/direction and matches one crossing of the flow. The evaluator rejects a field that does not apply to target.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "title", "threat", "explanation", "stride", "severity", "target", "when", "pass", "rationale", "mitigation"],
+  "required": ["id", "title", "threat", "explanation", "stride", "severity", "platforms", "target", "when", "pass", "rationale", "mitigation"],
   "properties": {
-    "id": { "type": "string", "pattern": "^FR-[0-9]{3}$" },
+    "id": { "type": "string", "pattern": "^FR-([0-9]{3}|[A-Z][A-Z0-9]{1,9}-[0-9]{4})$" },
     "title": { "type": "string", "minLength": 1, "maxLength": 120 },
     "threat": { "type": "string", "minLength": 1, "maxLength": 160 },
     "explanation": { "type": "string", "minLength": 1, "maxLength": 400 },
@@ -35,6 +35,16 @@
         "provider": { "enum": ["low", "medium", "high"] },
         "operator": { "enum": ["low", "medium", "high"] }
       }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["aws", "gcp", "azure", "cloudflare", "kubernetes"] },
+      "description": "Parsers that emit the element kinds this rule reads."
+    },
+    "category": {
+      "enum": ["exposure", "encryption", "identity", "logging", "resilience", "supply_chain", "data_flow"]
     },
     "target": { "enum": ["element", "flow"] },
     "when": {
@@ -111,10 +121,10 @@
     "reference": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title"],
+      "required": ["framework", "id"],
       "properties": {
-        "title": { "type": "string", "minLength": 1 },
-        "url": { "type": "string", "pattern": "^https://\\S+$" }
+        "framework": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 }
       }
     },
     "condition": {
