@@ -108,59 +108,115 @@ const (
 // TestNoNetworkDetailsInScanRequest ensures network_restricted is derived as a
 // boolean and that CIDRs, ports, SG IDs, and prefix-list IDs never leave the client.
 func TestNoNetworkDetailsInScanRequest(t *testing.T) {
-	plan := []byte(networkRestrictedProbePlanJSON())
 	cfg := []byte("schema_version: fray-config/v1\n")
-	doc, _, err := client.Parse(plan, cfg, "fray.yaml", client.Source{
+	src := client.Source{
 		Repo: "probe/network", Commit: "abcdef1234567", Tool: "terraform", Fidelity: "plan",
-	}, t.TempDir())
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	var db *client.Element
-	for i := range doc.Elements {
-		if doc.Elements[i].Kind == "relational_db" {
-			db = &doc.Elements[i]
-			break
-		}
-	}
-	if db == nil {
-		t.Fatal("expected relational_db element")
-	}
-	v, ok := db.Attributes["network_restricted"]
-	if !ok {
-		t.Fatal("network_restricted absent; want boolean")
-	}
-	if _, ok := v.(bool); !ok {
-		t.Fatalf("network_restricted: got %T (%#v) want bool", v, v)
-	}
-
-	leaks := []struct{ name, val string }{
-		{"office CIDR", netCIDROffice},
-		{"private CIDR", netCIDRPrivate},
-		{"prefix list ID", netPrefixListID},
-		{"security group ID", netSGID},
-		{"DB port", netDBPort},
 	}
 	key := mustSecretsKey(t)
-	for _, mode := range []struct {
-		name   string
-		redact bool
+
+	cases := []struct {
+		name  string
+		plan  string
+		leaks []struct{ name, val string }
 	}{
-		{"redaction_on", true},
-		{"redaction_off", false},
-	} {
-		t.Run(mode.name, func(t *testing.T) {
-			body := buildScanRequestBody(t, doc, key, mode.redact)
-			for _, s := range leaks {
-				if bytes.Contains(body, []byte(s.val)) {
-					t.Errorf("FAIL: %s (%q) PRESENT in ScanRequest", s.name, s.val)
+		{
+			name: "aws_rds",
+			plan: networkRestrictedProbePlanJSON(),
+			leaks: []struct{ name, val string }{
+				{"office CIDR", netCIDROffice},
+				{"private CIDR", netCIDRPrivate},
+				{"prefix list ID", netPrefixListID},
+				{"security group ID", netSGID},
+				{"DB port", netDBPort},
+			},
+		},
+		{
+			name: "cloud_sql",
+			plan: cloudSQLNetworkRestrictedProbePlanJSON(),
+			leaks: []struct{ name, val string }{
+				{"office CIDR", netCIDROffice},
+				{"private CIDR", netCIDRPrivate},
+				{"world CIDR", "0.0.0.0/0"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc, _, err := client.Parse([]byte(tc.plan), cfg, "fray.yaml", src, t.TempDir())
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			var db *client.Element
+			for i := range doc.Elements {
+				if doc.Elements[i].Kind == "relational_db" && doc.Elements[i].Provenance == "iac" {
+					db = &doc.Elements[i]
+					break
 				}
 			}
-			if !bytes.Contains(body, []byte(`"network_restricted"`)) {
-				t.Error("network_restricted key missing from ScanRequest body")
+			if db == nil {
+				t.Fatal("expected relational_db element")
+			}
+			v, ok := db.Attributes["network_restricted"]
+			if !ok {
+				t.Fatal("network_restricted absent; want boolean")
+			}
+			if _, ok := v.(bool); !ok {
+				t.Fatalf("network_restricted: got %T (%#v) want bool", v, v)
+			}
+			for _, mode := range []struct {
+				name   string
+				redact bool
+			}{
+				{"redaction_on", true},
+				{"redaction_off", false},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					body := buildScanRequestBody(t, doc, key, mode.redact)
+					for _, s := range tc.leaks {
+						if bytes.Contains(body, []byte(s.val)) {
+							t.Errorf("FAIL: %s (%q) PRESENT in ScanRequest", s.name, s.val)
+						}
+					}
+					if !bytes.Contains(body, []byte(`"network_restricted"`)) {
+						t.Error("network_restricted key missing from ScanRequest body")
+					}
+				})
 			}
 		})
 	}
+}
+
+// cloudSQLNetworkRestrictedProbePlanJSON plants distinctive CIDRs on a Cloud SQL
+// instance whose authorized networks are restricted — booleans only in the DFD.
+func cloudSQLNetworkRestrictedProbePlanJSON() string {
+	return `{
+  "resource_changes": [
+    {
+      "address": "google_sql_database_instance.main",
+      "mode": "managed",
+      "type": "google_sql_database_instance",
+      "change": {
+        "after": {
+          "name": "probe-db",
+          "database_version": "POSTGRES_15",
+          "region": "europe-west1",
+          "project": "demo",
+          "connection_name": "demo:europe-west1:probe-db",
+          "deletion_protection": true,
+          "settings": [{
+            "ip_configuration": [{
+              "ipv4_enabled": true,
+              "authorized_networks": [
+                {"name": "office", "value": "` + netCIDROffice + `"},
+                {"name": "vpc", "value": "` + netCIDRPrivate + `"}
+              ]
+            }]
+          }]
+        }
+      }
+    }
+  ]
+}`
 }
 
 // TestSensitiveMarkedValueNeverInParsedDFD asserts StripSensitive-before-Parse:
