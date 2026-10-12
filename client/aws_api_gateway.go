@@ -92,6 +92,12 @@ func awsAPIEntries(
 		}
 		flows = append(flows, flow)
 		addInside(apiEl)
+		for _, f := range restAPIBackendFlows(api, apiEl, resources, idx, byAddr, ensureLambda, &warnings) {
+			flows = append(flows, f)
+			if to := byAddrElement(byAddr, f.To); to != nil {
+				addInside(to)
+			}
+		}
 	}
 
 	for _, api := range resources {
@@ -119,6 +125,12 @@ func awsAPIEntries(
 		}
 		flows = append(flows, flow)
 		addInside(apiEl)
+		for _, f := range httpAPIBackendFlows(api, apiEl, resources, idx, byAddr, ensureLambda, &warnings) {
+			flows = append(flows, f)
+			if to := byAddrElement(byAddr, f.To); to != nil {
+				addInside(to)
+			}
+		}
 	}
 
 	for _, url := range resources {
@@ -152,6 +164,18 @@ func awsAPIEntries(
 	return flows, warnings
 }
 
+func byAddrElement(byAddr map[string]*Element, canonicalOrAddr string) *Element {
+	for _, el := range byAddr {
+		if el.canonicalKey() == canonicalOrAddr {
+			return el
+		}
+	}
+	return nil
+}
+
+// restAPIInternetEntry is true for EDGE/REGIONAL APIs that have a stage (or
+// deployment with stage_name) and no resource policy. A set policy means
+// exposure is unknown — same fail-closed stance as an unresolved ALB SG.
 func restAPIInternetEntry(api planResource, resources []planResource, idx configIndex) bool {
 	if restAPIHasPolicy(api) {
 		return false
@@ -214,11 +238,25 @@ func restAPIHasStage(api planResource, resources []planResource, idx configIndex
 	return false
 }
 
+func httpAPIInternetEntry(api planResource) bool {
+	if v, ok := api.values["disable_execute_api_endpoint"].(bool); ok && v {
+		return false
+	}
+	return true
+}
+
 func restAPIHasOpenAPIBody(api planResource) bool {
 	s, ok := api.values["body"].(string)
 	return ok && strings.TrimSpace(s) != ""
 }
 
+func httpAPIHasOpenAPIBody(api planResource) bool {
+	s, ok := api.values["body"].(string)
+	return ok && strings.TrimSpace(s) != ""
+}
+
+// restAPIEdgeAuth returns the edge authz_scope. ok is false when the scope
+// must be omitted (CUSTOM, OpenAPI body, undeterminable methods).
 func restAPIEdgeAuth(api planResource, resources []planResource, idx configIndex) (scope, cause string, ok bool) {
 	if restAPIHasOpenAPIBody(api) {
 		return "", "", false
@@ -233,6 +271,22 @@ func restAPIEdgeAuth(api planResource, resources []planResource, idx configIndex
 		return "", "", false
 	}
 	return aggregateMethodAuth(methods)
+}
+
+func httpAPIEdgeAuth(api planResource, resources []planResource, idx configIndex) (scope, cause string, ok bool) {
+	if httpAPIHasOpenAPIBody(api) {
+		return "", "", false
+	}
+	var routes []planResource
+	for _, r := range resources {
+		if r.typ == "aws_apigatewayv2_route" && refsAPI(r, idx, "api_id", api) {
+			routes = append(routes, r)
+		}
+	}
+	if len(routes) == 0 {
+		return "", "", false
+	}
+	return aggregateRouteAuth(routes)
 }
 
 func aggregateMethodAuth(methods []planResource) (scope, cause string, ok bool) {
@@ -267,47 +321,6 @@ func aggregateMethodAuth(methods []planResource) (scope, cause string, ok bool) 
 	return "", "", false
 }
 
-func refsAPI(r planResource, idx configIndex, attr string, api planResource) bool {
-	_, _, name, ok := splitResourceAddress(api.address)
-	if !ok {
-		return false
-	}
-	for _, ref := range idx.attrRefs(r.address, attr) {
-		if containsResource(ref, api.typ, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func httpAPIInternetEntry(api planResource) bool {
-	if v, ok := api.values["disable_execute_api_endpoint"].(bool); ok && v {
-		return false
-	}
-	return true
-}
-
-func httpAPIHasOpenAPIBody(api planResource) bool {
-	s, ok := api.values["body"].(string)
-	return ok && strings.TrimSpace(s) != ""
-}
-
-func httpAPIEdgeAuth(api planResource, resources []planResource, idx configIndex) (scope, cause string, ok bool) {
-	if httpAPIHasOpenAPIBody(api) {
-		return "", "", false
-	}
-	var routes []planResource
-	for _, r := range resources {
-		if r.typ == "aws_apigatewayv2_route" && refsAPI(r, idx, "api_id", api) {
-			routes = append(routes, r)
-		}
-	}
-	if len(routes) == 0 {
-		return "", "", false
-	}
-	return aggregateRouteAuth(routes)
-}
-
 func aggregateRouteAuth(routes []planResource) (scope, cause string, ok bool) {
 	hasNone, hasIdentity, hasCustom, hasUnknown := false, false, false, false
 	noneCause := ""
@@ -339,6 +352,131 @@ func aggregateRouteAuth(routes []planResource) (scope, cause string, ok bool) {
 	return "", "", false
 }
 
+func restAPIBackendFlows(
+	api planResource, apiEl *Element, resources []planResource, idx configIndex,
+	byAddr map[string]*Element, ensureLambda func(planResource) *Element, warnings *[]string,
+) []*Flow {
+	var flows []*Flow
+	seen := map[string]bool{}
+	for _, integ := range resources {
+		if integ.typ != "aws_api_gateway_integration" || !refsAPI(integ, idx, "rest_api_id", api) {
+			continue
+		}
+		f, ok := integrationBackendFlow(apiEl, integ, resources, idx, byAddr, ensureLambda, warnings)
+		if !ok {
+			continue
+		}
+		key := f.From + "\n" + f.To + "\n" + f.Transport
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		flows = append(flows, f)
+	}
+	return flows
+}
+
+func httpAPIBackendFlows(
+	api planResource, apiEl *Element, resources []planResource, idx configIndex,
+	byAddr map[string]*Element, ensureLambda func(planResource) *Element, warnings *[]string,
+) []*Flow {
+	var flows []*Flow
+	seen := map[string]bool{}
+	for _, integ := range resources {
+		if integ.typ != "aws_apigatewayv2_integration" || !refsAPI(integ, idx, "api_id", api) {
+			continue
+		}
+		f, ok := integrationBackendFlow(apiEl, integ, resources, idx, byAddr, ensureLambda, warnings)
+		if !ok {
+			continue
+		}
+		key := f.From + "\n" + f.To + "\n" + f.Transport
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		flows = append(flows, f)
+	}
+	return flows
+}
+
+func integrationBackendFlow(
+	apiEl *Element, integ planResource, resources []planResource, idx configIndex,
+	byAddr map[string]*Element, ensureLambda func(planResource) *Element, warnings *[]string,
+) (*Flow, bool) {
+	transport, kind := integrationTransport(integ)
+	switch kind {
+	case "lambda":
+		fn, ok := resolveLambdaFromIntegration(integ, resources, idx)
+		if !ok {
+			*warnings = append(*warnings, "unresolved Lambda integration on "+integ.address)
+			return nil, false
+		}
+		fnEl := ensureLambda(fn)
+		return &Flow{
+			From: apiEl.canonicalKey(), To: fnEl.canonicalKey(),
+			DataClass: "unknown", Transport: transport,
+		}, true
+	case "http", "vpc_link":
+		// HTTP URLs and VPC links are not modeled as DFD elements in this
+		// change — no peer → no backend flow (transport classification is
+		// covered by integrationTransport unit tests).
+		return nil, false
+	default:
+		return nil, false
+	}
+}
+
+// integrationTransport classifies an API Gateway integration.
+// kind is "lambda", "http", "vpc_link", or "".
+func integrationTransport(integ planResource) (transport, kind string) {
+	typ := strings.ToUpper(stringAttr(integ.values["integration_type"]))
+	if typ == "" {
+		typ = strings.ToUpper(stringAttr(integ.values["type"]))
+	}
+	conn := strings.ToUpper(stringAttr(integ.values["connection_type"]))
+	if conn == "VPC_LINK" || typ == "VPC_LINK" {
+		return "unknown", "vpc_link"
+	}
+	switch typ {
+	case "AWS", "AWS_PROXY":
+		return "tls", "lambda"
+	case "HTTP", "HTTP_PROXY":
+		uri := stringAttr(integ.values["uri"])
+		if uri == "" {
+			uri = stringAttr(integ.values["integration_uri"])
+		}
+		return httpURITransport(uri), "http"
+	default:
+		return "", ""
+	}
+}
+
+func httpURITransport(uri string) string {
+	u := strings.ToLower(strings.TrimSpace(uri))
+	switch {
+	case strings.HasPrefix(u, "https://"):
+		return "tls"
+	case strings.HasPrefix(u, "http://"):
+		return "plaintext"
+	default:
+		return ""
+	}
+}
+
+func refsAPI(r planResource, idx configIndex, attr string, api planResource) bool {
+	_, _, name, ok := splitResourceAddress(api.address)
+	if !ok {
+		return false
+	}
+	for _, ref := range idx.attrRefs(r.address, attr) {
+		if containsResource(ref, api.typ, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func resolveLambdaFromURL(url planResource, resources []planResource, idx configIndex) (planResource, bool) {
 	for _, ref := range idx.attrRefs(url.address, "function_name") {
 		if fn, ok := findLambdaByRef(ref, resources); ok {
@@ -350,6 +488,24 @@ func resolveLambdaFromURL(url planResource, resources []planResource, idx config
 		return planResource{}, false
 	}
 	return findLambdaByNameOrARN(name, resources)
+}
+
+func resolveLambdaFromIntegration(integ planResource, resources []planResource, idx configIndex) (planResource, bool) {
+	for _, attr := range []string{"uri", "integration_uri"} {
+		for _, ref := range idx.attrRefs(integ.address, attr) {
+			if fn, ok := findLambdaByRef(ref, resources); ok {
+				return fn, true
+			}
+		}
+	}
+	uri := stringAttr(integ.values["uri"])
+	if uri == "" {
+		uri = stringAttr(integ.values["integration_uri"])
+	}
+	if fn, ok := findLambdaByNameOrARN(uri, resources); ok {
+		return fn, true
+	}
+	return planResource{}, false
 }
 
 func findLambdaByRef(ref string, resources []planResource) (planResource, bool) {
