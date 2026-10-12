@@ -1,23 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [0.17.0] — 2026-10-13
 
 ### Added
-- Internet entries for API Gateway REST (`aws_api_gateway_rest_api`), HTTP and
-  WebSocket (`aws_apigatewayv2_api`), and Lambda function URLs
-  (`aws_lambda_function_url`), reusing `api_gateway` and `serverless_function`
-  element kinds. Edge authz aggregates methods/routes pessimistically
-  (`NONE` → public, IAM/JWT/Cognito → authenticated; `CUSTOM` or OpenAPI body →
-  omit). REST APIs with a resource policy are not treated as internet entries
-  (exposure unknown). Lambda integrations emit tls backend flows; HTTP and
-  VPC_LINK backends are not modeled as DFD peers yet.
+- AWS API Gateway (REST and HTTP/WebSocket) and Lambda function URLs are modelled as internet entry points, so FR-001 and FR-026 apply to them. An API is treated as anonymous if any method or route allows unauthenticated access; APIs that use custom (Lambda) authorizers, are defined by an OpenAPI body, have a resource policy, have no stage, or use private endpoints are not assumed to be public or authenticated.
+- Lambda integrations behind API Gateway are shown as backend flows over TLS.
 
 ### Changed
-- ALB edge `authz_scope` aggregates the listener default action and
-  `aws_lb_listener_rule` resources: Cognito/OIDC on every app path is
-  `authenticated`; any forward without an authenticate step first is
-  `public`. Redirect and fixed-response alone do not make the entry
-  anonymous.
+- Load balancer listeners that require Cognito or OIDC authentication on every forwarding path now count as authenticated for FR-001 (mitigated instead of unverified). A listener rule that forwards without authentication makes the entry anonymous; rules that cannot be attributed to a listener leave the result unverified. Requires a Fray service that accepts the authenticated scope (the current service does).
 
 ## [0.16.1] — 2026-10-12
 
