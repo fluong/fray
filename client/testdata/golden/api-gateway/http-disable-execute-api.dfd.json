@@ -1,0 +1,12 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "example/api-gw",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "iac_tool": "terraform",
+    "fidelity": "plan"
+  },
+  "elements": [],
+  "trust_boundaries": [],
+  "flows": []
+}
