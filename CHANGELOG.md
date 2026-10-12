@@ -3,13 +3,16 @@
 ## [Unreleased]
 
 ### Fixed
-- On Google Cloud, Secret Manager and GCS data-access audit coverage now
-  recognises `allServices` and folder/organisation IAM audit configs with
+- On Google Cloud, Secret Manager and Cloud Storage data-access audit coverage
+  now recognises `allServices` and folder/organisation IAM audit configs with
   `DATA_READ`, not only a project config for the exact service.
-- On Google Cloud, `attributes.audit_logging` is emitted only when
-  `audit_config: owned_by_this_root` (same gate as S3). Without that setting,
+- Audit evidence present in the plan always counts: GCP Secret Manager / Cloud
+  Storage `DATA_READ` configs and S3 bucket logging or a covering CloudTrail
+  data-event selector set `audit_logging: true` even without
+  `audit_config: owned_by_this_root`. That setting only decides whether
+  *missing* evidence is reported as off (open) or left unset (unverified), so
   FR-006 and FR-023 may move from open to unverified when no audit
-  configuration is in the plan.
+  configuration is in the plan and ownership is not declared.
 
 ## [0.15.0] — 2026-10-12
 
