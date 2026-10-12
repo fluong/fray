@@ -1,0 +1,70 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "example/api-gw",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "iac_tool": "terraform",
+    "fidelity": "plan"
+  },
+  "elements": [
+    {
+      "id": "ec231c07bd00303c5",
+      "name": "api",
+      "type": "process",
+      "kind": "api_gateway",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "aws_apigatewayv2_api.api"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "public": true
+      }
+    },
+    {
+      "id": "ec948ee4e90f845ac",
+      "name": "Public client",
+      "type": "external_entity",
+      "kind": "public_client",
+      "provenance": "inferred",
+      "evidence": {
+        "signals": [
+          {
+            "type": "network_ingress",
+            "name": "0.0.0.0/0"
+          }
+        ]
+      }
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "b5da59c606857d734",
+      "kind": "network",
+      "inside": [
+        "ec231c07bd00303c5"
+      ],
+      "outside": [
+        "ec948ee4e90f845ac"
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "ffe058df4559a827a",
+      "from": "ec948ee4e90f845ac",
+      "to": "ec231c07bd00303c5",
+      "data_class": "unknown",
+      "transport": "tls",
+      "boundaries": [
+        "b5da59c606857d734"
+      ],
+      "authz_scope": "public",
+      "authz_grants": [
+        "public"
+      ]
+    }
+  ]
+}
