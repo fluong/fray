@@ -24,6 +24,15 @@ func awsAPIGatewayElement(r planResource) *Element {
 	}
 }
 
+func awsLambdaFunctionElement(r planResource) *Element {
+	name, _ := r.values["function_name"].(string)
+	return &Element{
+		Name: DisplayName(r.address, name, "serverless_function"), Type: "process", Kind: "serverless_function", Provider: "aws",
+		Provenance: "iac",
+		Evidence:   Evidence{Addresses: []string{r.address}},
+	}
+}
+
 // awsAPIEntries appends public_client edge flows and backend flows for REST,
 // HTTP/WebSocket APIs, and Lambda function URLs. public may be nil; a new
 // inferred public_client is created on first entry.
@@ -46,6 +55,15 @@ func awsAPIEntries(
 		}
 		*extra = append(*extra, el)
 		*public = el
+		return el
+	}
+	ensureLambda := func(fn planResource) *Element {
+		if el := byAddr[fn.address]; el != nil {
+			return el
+		}
+		el := awsLambdaFunctionElement(fn)
+		*extra = append(*extra, el)
+		byAddr[fn.address] = el
 		return el
 	}
 
@@ -101,6 +119,35 @@ func awsAPIEntries(
 		}
 		flows = append(flows, flow)
 		addInside(apiEl)
+	}
+
+	for _, url := range resources {
+		if url.typ != "aws_lambda_function_url" {
+			continue
+		}
+		fn, ok := resolveLambdaFromURL(url, resources, idx)
+		if !ok {
+			warnings = append(warnings, "unresolved function for "+url.address)
+			continue
+		}
+		fnEl := ensureLambda(fn)
+		pub := ensurePublic()
+		flow := &Flow{
+			From: pub.canonicalKey(), To: fnEl.canonicalKey(),
+			DataClass: "unknown", Transport: "tls",
+		}
+		switch strings.ToUpper(stringAttr(url.values["authorization_type"])) {
+		case "NONE":
+			flow.AuthzScope = "public"
+			flow.AuthzGrants = normalizeAuthzGrants("public")
+			flow.Causes = map[string]string{"authz_scope": url.address}
+		case "AWS_IAM":
+			flow.AuthzScope = "authenticated"
+			flow.AuthzGrants = normalizeAuthzGrants("authenticated")
+			flow.Causes = map[string]string{"authz_scope": url.address}
+		}
+		flows = append(flows, flow)
+		addInside(fnEl)
 	}
 	return flows, warnings
 }
@@ -290,4 +337,58 @@ func aggregateRouteAuth(routes []planResource) (scope, cause string, ok bool) {
 		return "authenticated", "", true
 	}
 	return "", "", false
+}
+
+func resolveLambdaFromURL(url planResource, resources []planResource, idx configIndex) (planResource, bool) {
+	for _, ref := range idx.attrRefs(url.address, "function_name") {
+		if fn, ok := findLambdaByRef(ref, resources); ok {
+			return fn, true
+		}
+	}
+	name := stringAttr(url.values["function_name"])
+	if name == "" {
+		return planResource{}, false
+	}
+	return findLambdaByNameOrARN(name, resources)
+}
+
+func findLambdaByRef(ref string, resources []planResource) (planResource, bool) {
+	for _, r := range resources {
+		if r.typ != "aws_lambda_function" {
+			continue
+		}
+		_, _, name, ok := splitResourceAddress(r.address)
+		if !ok {
+			continue
+		}
+		if containsResource(ref, "aws_lambda_function", name) {
+			return r, true
+		}
+	}
+	return planResource{}, false
+}
+
+func findLambdaByNameOrARN(nameOrARN string, resources []planResource) (planResource, bool) {
+	needle := nameOrARN
+	if i := strings.Index(needle, ":function:"); i >= 0 {
+		rest := needle[i+len(":function:"):]
+		if j := strings.IndexByte(rest, '/'); j >= 0 {
+			rest = rest[:j]
+		}
+		needle = rest
+	}
+	var hits []planResource
+	for _, r := range resources {
+		if r.typ != "aws_lambda_function" {
+			continue
+		}
+		fn, _ := r.values["function_name"].(string)
+		if fn == needle || r.address == needle || strings.HasSuffix(r.address, "."+needle) {
+			hits = append(hits, r)
+		}
+	}
+	if len(hits) == 1 {
+		return hits[0], true
+	}
+	return planResource{}, false
 }

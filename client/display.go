@@ -49,6 +49,8 @@ func kindNoun(kind string) string {
 		return "load balancer"
 	case "api_gateway":
 		return "API"
+	case "serverless_function":
+		return "function"
 	default:
 		return ""
 	}
