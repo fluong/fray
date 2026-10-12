@@ -18,7 +18,7 @@
     },
     "audit_config": {
       "const": "owned_by_this_root",
-      "description": "Set when this root owns object-storage data-access audit configuration. When omitted, a missing CloudTrail data event or GCP audit config is unknown rather than off."
+      "description": "Only affects missing audit evidence. When set, absent S3 logging/CloudTrail coverage, GCP Secret Manager DATA_READ config, or GCS DATA_READ config is reported as off (open). When omitted, missing evidence leaves audit_logging unset (unverified). Logging or audit configs present in the plan always count as covered regardless of this setting."
     },
     "elements": {
       "type": "array",

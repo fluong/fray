@@ -423,6 +423,14 @@ Minimal `fray.yaml` (redaction on by default — omit `redaction`):
 schema_version: fray-config/v1
 ```
 
+`audit_config: owned_by_this_root` only affects **missing** audit evidence for
+S3, GCP Secret Manager, and Cloud Storage. Configurations present in the plan
+(S3 bucket logging or a covering CloudTrail data-event selector; GCP
+`DATA_READ` on the service or `allServices`, including folder/organisation
+configs) always set `audit_logging: true`. Without ownership, missing evidence
+leaves the attribute unset (FR-006 / FR-023 unverified); with ownership,
+missing evidence is reported as off (open).
+
 **Breaking (v0.5.0):** purpose is no longer inferred from resource names. It is set
 from resource type, plan relations (CloudTrail / S3 access-log / GCS sink targets),
 or declared in `fray.yaml` — declare `purpose: audit_archive` etc. for buckets you
