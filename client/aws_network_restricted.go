@@ -86,17 +86,10 @@ func resolveLBSecurityGroups(lb planResource, resources []planResource, idx conf
 		if isVarRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
-			return nil, false
-		}
-		name := securityGroupNameFromRef(ref)
-		if name == "" {
-			if looksLikeSecurityGroupRef(ref) {
-				return nil, false
-			}
+		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, idx)
+		if skip {
 			continue
 		}
-		sg, ok := findSecurityGroup(resources, name, ref)
 		if !ok {
 			return nil, false
 		}
@@ -177,17 +170,10 @@ func resolveDBSecurityGroups(db planResource, resources []planResource, idx conf
 		if isVarRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
-			return nil, false
-		}
-		name := securityGroupNameFromRef(ref)
-		if name == "" {
-			if looksLikeSecurityGroupRef(ref) {
-				return nil, false
-			}
+		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, idx)
+		if skip {
 			continue
 		}
-		sg, ok := findSecurityGroup(resources, name, ref)
 		if !ok {
 			return nil, false
 		}
@@ -201,6 +187,68 @@ func resolveDBSecurityGroups(db planResource, resources []planResource, idx conf
 		return nil, false
 	}
 	return out, true
+}
+
+// resolveSecurityGroupRef resolves a config reference to a managed
+// aws_security_group, including module.<m>.<output> chains (depth ≤ 3).
+// ok=false with skip=true means the ref is ignorable noise (bare module path).
+func resolveSecurityGroupRef(ref string, resources []planResource, idx configIndex) (planResource, bool) {
+	sg, ok, _ := resolveSecurityGroupRefDetailed(ref, resources, idx)
+	return sg, ok
+}
+
+func resolveSecurityGroupRefDetailed(ref string, resources []planResource, idx configIndex) (sg planResource, ok, skip bool) {
+	if strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
+		return planResource{}, false, false
+	}
+	if isModuleOutputRef(ref) {
+		sg, ok := resolveModuleOutputResource(ref, "aws_security_group", idx, resources, 0)
+		return sg, ok, false
+	}
+	// Terraform often lists module.foo alongside module.foo.output; the bare
+	// module path is not a security-group ref.
+	if isBareModuleRef(ref) {
+		return planResource{}, false, true
+	}
+	name := securityGroupNameFromRef(ref)
+	if name == "" {
+		return planResource{}, false, false
+	}
+	sg, ok = findSecurityGroup(resources, name, ref)
+	return sg, ok, false
+}
+
+func isBareModuleRef(ref string) bool {
+	if !strings.HasPrefix(ref, "module.") {
+		return false
+	}
+	// No resource type and not an output (single trailing identifier already
+	// handled by isModuleOutputRef). Bare module.a or module.a.module.b.
+	rest := ref
+	for strings.HasPrefix(rest, "module.") {
+		rest = strings.TrimPrefix(rest, "module.")
+		i := 0
+		for i < len(rest) && rest[i] != '.' && rest[i] != '[' {
+			i++
+		}
+		if i == 0 {
+			return false
+		}
+		rest = rest[i:]
+		if strings.HasPrefix(rest, "[") {
+			end := strings.IndexByte(rest, ']')
+			if end < 0 {
+				return false
+			}
+			rest = rest[end+1:]
+		}
+		if strings.HasPrefix(rest, ".") {
+			rest = rest[1:]
+			continue
+		}
+		return rest == ""
+	}
+	return rest == ""
 }
 
 func dbVpcSecurityGroupRefs(db planResource, idx configIndex) []string {
@@ -475,15 +523,27 @@ func resolveInlineUnknownPeers(sg planResource, idx configIndex, ingressIndex, i
 	if !attributable || len(exprRefs) == 0 {
 		return nil, false, true
 	}
-	for _, r := range exprRefs {
-		if isIndirectIngressRef(r) {
-			return nil, false, true
-		}
-	}
 	ruleMod, _, _, _ := splitResourceAddress(sg.address)
 	var out []string
 	seen := map[string]bool{}
 	for _, r := range exprRefs {
+		if isBareModuleRef(r) {
+			continue
+		}
+		if isModuleOutputRef(r) {
+			addr, ok := resolveModuleOutputAddress(r, "aws_security_group", idx, 0)
+			if !ok {
+				return nil, false, true
+			}
+			if !seen[addr] {
+				seen[addr] = true
+				out = append(out, addr)
+			}
+			continue
+		}
+		if isIndirectIngressRef(r) {
+			return nil, false, true
+		}
 		name := securityGroupNameFromRef(r)
 		if name == "" || seen[name] {
 			continue
@@ -734,29 +794,41 @@ func resolveUnknownVPCPeer(r planResource, idx configIndex) (ref string, ok bool
 	if len(refs) == 0 {
 		return "", false, true
 	}
+	ruleMod, _, _, _ := splitResourceAddress(r.address)
+	var addrs []string
+	seen := map[string]bool{}
 	for _, ref := range refs {
+		if isBareModuleRef(ref) {
+			continue
+		}
+		if isModuleOutputRef(ref) {
+			addr, ok := resolveModuleOutputAddress(ref, "aws_security_group", idx, 0)
+			if !ok {
+				return "", false, true
+			}
+			if !seen[addr] {
+				seen[addr] = true
+				addrs = append(addrs, addr)
+			}
+			continue
+		}
 		if isIndirectIngressRef(ref) {
 			return "", false, true
 		}
-	}
-	ruleMod, _, _, _ := splitResourceAddress(r.address)
-	var names []string
-	seen := map[string]bool{}
-	for _, ref := range refs {
 		name := securityGroupNameFromRef(ref)
 		if name == "" {
 			continue
 		}
-		if seen[name] {
-			continue
+		addr := resourceAddress(ruleMod, "aws_security_group", name)
+		if !seen[addr] {
+			seen[addr] = true
+			addrs = append(addrs, addr)
 		}
-		seen[name] = true
-		names = append(names, name)
 	}
-	if len(names) != 1 {
+	if len(addrs) != 1 {
 		return "", false, true
 	}
-	return resourceAddress(ruleMod, "aws_security_group", names[0]), true, false
+	return addrs[0], true, false
 }
 
 func resolveUnknownVPCPrefix(r planResource, idx configIndex) (ref string, ok bool, unk bool) {
@@ -770,29 +842,38 @@ func resolveUnknownVPCPrefix(r planResource, idx configIndex) (ref string, ok bo
 	if len(refs) == 0 {
 		return "", false, true
 	}
+	ruleMod, _, _, _ := splitResourceAddress(r.address)
+	var addrs []string
+	seen := map[string]bool{}
 	for _, ref := range refs {
+		if isModuleOutputRef(ref) {
+			addr, ok := resolveModuleOutputAddress(ref, "aws_ec2_managed_prefix_list", idx, 0)
+			if !ok {
+				return "", false, true
+			}
+			if !seen[addr] {
+				seen[addr] = true
+				addrs = append(addrs, addr)
+			}
+			continue
+		}
 		if isIndirectIngressRef(ref) {
 			return "", false, true
 		}
-	}
-	ruleMod, _, _, _ := splitResourceAddress(r.address)
-	var names []string
-	seen := map[string]bool{}
-	for _, ref := range refs {
 		name := managedPrefixListNameFromRef(ref)
 		if name == "" {
 			continue
 		}
-		if seen[name] {
-			continue
+		addr := resourceAddress(ruleMod, "aws_ec2_managed_prefix_list", name)
+		if !seen[addr] {
+			seen[addr] = true
+			addrs = append(addrs, addr)
 		}
-		seen[name] = true
-		names = append(names, name)
 	}
-	if len(names) != 1 {
+	if len(addrs) != 1 {
 		return "", false, true
 	}
-	return resourceAddress(ruleMod, "aws_ec2_managed_prefix_list", names[0]), true, false
+	return addrs[0], true, false
 }
 
 func isIndirectIngressRef(ref string) bool {
@@ -807,10 +888,9 @@ func isIndirectIngressRef(ref string) bool {
 		return true
 	case strings.Contains(ref, "data.aws_ec2_managed_prefix_list.") || strings.Contains(ref, ".data.aws_ec2_managed_prefix_list."):
 		return true
-	case strings.HasPrefix(ref, "module.") || strings.Contains(ref, ".module."):
-		// Child-module resources and module outputs are not same-module directs.
-		return true
 	default:
+		// module.<m>.aws_security_group.* is resolved via findSecurityGroup;
+		// module.<m>.<output> via resolveModuleOutputAddress at call sites.
 		return false
 	}
 }
@@ -908,26 +988,41 @@ func resolveUnknownSGRulePeer(r planResource, idx configIndex) (ref string, ok b
 	if len(refs) == 0 {
 		return "", false, true
 	}
+	ruleMod, _, _, _ := splitResourceAddress(r.address)
+	var addrs []string
+	seen := map[string]bool{}
 	for _, ref := range refs {
+		if isBareModuleRef(ref) {
+			continue
+		}
+		if isModuleOutputRef(ref) {
+			addr, ok := resolveModuleOutputAddress(ref, "aws_security_group", idx, 0)
+			if !ok {
+				return "", false, true
+			}
+			if !seen[addr] {
+				seen[addr] = true
+				addrs = append(addrs, addr)
+			}
+			continue
+		}
 		if isIndirectIngressRef(ref) {
 			return "", false, true
 		}
-	}
-	ruleMod, _, _, _ := splitResourceAddress(r.address)
-	var names []string
-	seen := map[string]bool{}
-	for _, ref := range refs {
 		name := securityGroupNameFromRef(ref)
-		if name == "" || seen[name] {
+		if name == "" {
 			continue
 		}
-		seen[name] = true
-		names = append(names, name)
+		addr := resourceAddress(ruleMod, "aws_security_group", name)
+		if !seen[addr] {
+			seen[addr] = true
+			addrs = append(addrs, addr)
+		}
 	}
-	if len(names) != 1 {
+	if len(addrs) != 1 {
 		return "", false, true
 	}
-	return resourceAddress(ruleMod, "aws_security_group", names[0]), true, false
+	return addrs[0], true, false
 }
 
 func resolveUnknownSGRulePrefix(r planResource, idx configIndex) (ref string, ok bool, unk bool) {

@@ -19,6 +19,7 @@ type exprSet struct {
 type configIndex struct {
 	resources map[string]exprSet
 	calls     map[string]exprSet
+	outputs   map[string]exprSet // module call address → output name → refs
 }
 
 func (idx configIndex) attrRefs(address, attr string) []string {
@@ -56,6 +57,7 @@ func indexConfig(plan []byte) (configIndex, error) {
 	idx := configIndex{
 		resources: map[string]exprSet{},
 		calls:     map[string]exprSet{},
+		outputs:   map[string]exprSet{},
 	}
 	if root.Configuration.RootModule != nil {
 		walkModule(root.Configuration.RootModule, "", &idx)
@@ -92,6 +94,7 @@ func walkModule(mod map[string]any, prefix string, idx *configIndex) {
 		}
 		idx.calls[full] = parseExprs(call["expressions"])
 		if child, ok := call["module"].(map[string]any); ok {
+			indexModuleOutputs(child, full, idx)
 			walkModule(child, full, idx)
 		}
 	}
