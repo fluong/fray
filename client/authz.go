@@ -9,11 +9,12 @@ import (
 // authzRank orders scopes from narrowest to broadest. Effective authz_scope is
 // the maximum rank among authz_grants.
 var authzRank = map[string]int{
-	"resource":     1,
-	"project":      2,
-	"account":      3,
-	"organization": 4,
-	"public":       5,
+	"resource":      1,
+	"project":       2,
+	"account":       3,
+	"organization":  4,
+	"authenticated": 5,
+	"public":        6,
 }
 
 // normalizeAuthzGrants dedupes and sorts scopes narrowest-first. Unknown values

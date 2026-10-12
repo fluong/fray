@@ -18,3 +18,23 @@ func TestNormalizeAuthzGrants(t *testing.T) {
 		t.Fatal("empty should be nil")
 	}
 }
+
+func TestEffectiveAuthzScopeAuthenticated(t *testing.T) {
+	got := normalizeAuthzGrants("resource", "authenticated")
+	want := []string{"resource", "authenticated"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %#v want %#v", got, want)
+	}
+	if effectiveAuthzScope(got) != "authenticated" {
+		t.Fatalf("effective %q want authenticated", effectiveAuthzScope(got))
+	}
+
+	got = normalizeAuthzGrants("authenticated", "public")
+	want = []string{"authenticated", "public"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %#v want %#v", got, want)
+	}
+	if effectiveAuthzScope(got) != "public" {
+		t.Fatalf("effective %q want public", effectiveAuthzScope(got))
+	}
+}
