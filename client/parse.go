@@ -494,7 +494,9 @@ func r2Element(r planResource, resources []planResource, idx configIndex, preven
 	name, _ := r.values["name"].(string)
 	attrs := map[string]any{
 		"acls_disabled":     true,
-		"audit_logging":     false,
+		// R2 Data Access Logs are enabled per bucket in the dashboard and have
+		// no Terraform resource in the Cloudflare v5 provider, so the plan
+		// cannot show them — omit (FR-023 unverified) rather than false.
 		"encrypted_at_rest": true, // R2 always encrypts objects at rest
 	}
 	causes := map[string]string{}
