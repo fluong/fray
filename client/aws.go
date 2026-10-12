@@ -137,6 +137,9 @@ func awsDBElement(r planResource, resources []planResource, idx configIndex, pre
 	if restricted, ok := dbNetworkRestricted(r, resources, idx); ok {
 		attrs["network_restricted"] = restricted
 	}
+	if tls, ok := dbTLSEnforced(r, resources, idx); ok {
+		attrs["tls_enforced"] = tls
+	}
 	return &Element{
 		Name: DisplayName(r.address, name, "relational_db"), Type: "datastore", Kind: "relational_db", Provider: "aws",
 		Provenance: "iac",
