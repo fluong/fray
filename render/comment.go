@@ -698,10 +698,7 @@ func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLo
 		return fmt.Sprintf("`%s` · %s · %s · %s", mod.Call, where, sev, stride)
 	}
 	where := g.cause
-	field := ""
-	if len(rule.Pass) > 0 {
-		field = rule.Pass[0].Field
-	}
+	field := primaryPassField(rule)
 	if loc, ok := client.LookupCauseLocation(locs, g.cause, field); ok {
 		where = loc.String()
 	}
