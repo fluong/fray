@@ -1,0 +1,6 @@
+{
+  "pass_state": "open",
+  "failed_attribute": "attributes.network_restricted",
+  "missing_fields": [],
+  "primary_pass_field": "attributes.public"
+}

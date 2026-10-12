@@ -1,0 +1,6 @@
+{
+  "pass_state": "mitigated",
+  "failed_attribute": "",
+  "missing_fields": [],
+  "primary_pass_field": "attributes.public"
+}

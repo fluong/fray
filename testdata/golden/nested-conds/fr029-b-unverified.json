@@ -1,0 +1,8 @@
+{
+  "pass_state": "unverified",
+  "failed_attribute": "",
+  "missing_fields": [
+    "attributes.network_restricted"
+  ],
+  "primary_pass_field": "attributes.public"
+}

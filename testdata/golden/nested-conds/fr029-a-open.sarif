@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Fray",
+          "version": "0.16.0",
+          "semanticVersion": "0.16.0",
+          "informationUri": "https://github.com/fluong/fray",
+          "rules": [
+            {
+              "id": "FR-029",
+              "name": "Relational database is not directly reachable from the internet",
+              "shortDescription": {
+                "text": "Relational database is not directly reachable from the internet"
+              },
+              "helpUri": "https://github.com/fluong/fray/blob/main/docs/rules/FR-029.md",
+              "properties": {
+                "security-severity": "7.5",
+                "tags": [
+                  "security"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "FR-029",
+          "level": "error",
+          "message": {
+            "text": "Relational database is not directly reachable from the internet"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "fray.yaml"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "fray/v1": "45de3e57b9b2441eb32513cef6763decf61da25bc1da4664931b0e2a638b6da3"
+          },
+          "properties": {
+            "security-severity": "7.5"
+          }
+        }
+      ]
+    }
+  ]
+}
