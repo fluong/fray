@@ -303,6 +303,34 @@ func applyInstanceKey(moduleAddr, instanceKey string) string {
 	return call + `["` + instanceKey + `"]`
 }
 
+// managedResourceNameFromRef extracts the resource name from a ref containing
+// wantType.name (.arn/.id and count/for_each indexes allowed). Skips data sources.
+func managedResourceNameFromRef(ref, wantType string) string {
+	if wantType == "" {
+		return ""
+	}
+	needle := wantType + "."
+	i := strings.Index(ref, needle)
+	if i < 0 {
+		return ""
+	}
+	if i >= 5 && ref[i-5:i] == "data." {
+		return ""
+	}
+	if i >= 6 && strings.HasSuffix(ref[:i], ".data.") {
+		return ""
+	}
+	rest := ref[i+len(needle):]
+	end := len(rest)
+	for j := 0; j < len(rest); j++ {
+		if rest[j] == '.' || rest[j] == '[' {
+			end = j
+			break
+		}
+	}
+	return rest[:end]
+}
+
 func qualifyResourceInModule(moduleAddr, instanceKey, ref, wantType string) (string, bool) {
 	name := ""
 	switch wantType {
@@ -310,6 +338,9 @@ func qualifyResourceInModule(moduleAddr, instanceKey, ref, wantType string) (str
 		name = securityGroupNameFromRef(ref)
 	case "aws_ec2_managed_prefix_list":
 		name = managedPrefixListNameFromRef(ref)
+	default:
+		// Generic managed resource (e.g. aws_lb_listener for ALB rule attachment).
+		name = managedResourceNameFromRef(ref, wantType)
 	}
 	if name == "" {
 		return "", false
