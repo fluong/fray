@@ -702,17 +702,19 @@
           }
         },
         "authz_scope": {
+          "description": "Effective authorization on this flow (broadest of authz_grants). resource: grant limited to one resource; project: project-wide; account: account-wide; organization: organization-wide; authenticated: caller identity is required at this entry (IAM signature, JWT, Cognito, OIDC); the set of permitted callers is not known; public: no caller identity required.",
           "enum": [
             "resource",
             "project",
             "account",
             "organization",
+            "authenticated",
             "public"
           ]
         },
 		"authz_grants": {
           "type": "array",
-          "description": "Every authz_scope value that contributes to this flow. authz_scope remains the effective (broadest) scope; rules use authz_scope. Enum values only — redaction-safe.",
+          "description": "Every authz_scope value that contributes to this flow. authz_scope remains the effective (broadest) scope; rules use authz_scope. Enum values only — redaction-safe. Same values as authz_scope: resource, project, account, organization, authenticated (caller identity required at entry; permitted callers unknown), public.",
           "uniqueItems": true,
           "minItems": 1,
           "items": {
@@ -721,6 +723,7 @@
               "project",
               "account",
               "organization",
+              "authenticated",
               "public"
             ]
           }
