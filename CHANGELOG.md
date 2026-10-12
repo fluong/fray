@@ -5,7 +5,9 @@
 ### Added
 - Database TLS enforcement is derived from RDS/Aurora parameter groups
   (`attributes.tls_enforced`), including groups reached through module inputs,
-  locals, and try()/conditional expressions.
+  locals, and try()/conditional expressions. Known planned names match by
+  `name` only; the locals subtree heuristic applies only when the planned
+  value is unknown.
 - Security groups (and managed prefix lists) passed through module outputs are
   resolved for load-balancer and database associations and ingress peers.
 

@@ -10,12 +10,17 @@ const maxParamGroupDepth = 3
 // dbTLSEnforced reports attributes.tls_enforced for an RDS instance or Aurora
 // cluster from its parameter group.
 //
-// Resolution: planned parameter_group_name / db_cluster_parameter_group_name,
-// or configuration references followed through module input variables, locals,
-// and conditional/try() wrappers (depth ≤ 3) to exactly one managed
-// aws_db_parameter_group / aws_rds_cluster_parameter_group. A literal
+// Resolution when parameter_group_name / db_cluster_parameter_group_name is
+// planned and known: default.* → engine default; equals the planned name of
+// exactly one managed group → that group; otherwise omit (no subtree guess).
+//
+// When the planned value is unknown: follow configuration references through
+// module inputs and try()/conditionals (depth ≤ 3) to exactly one managed
+// group. A local.* (not in plan JSON) may use a subtree heuristic only if
+// exactly one matching group exists under the nearest common module call and
+// that group's name/name_prefix is unknown or prefix-derived. A literal
 // default.* in another branch is a second candidate unless create/count is
-// statically known. Data sources and other unresolvable refs omit the attribute.
+// statically known.
 //
 // Parameters: rds.force_ssl (postgres, aurora-postgresql);
 // require_secure_transport (mysql, mariadb, aurora-mysql). Values
@@ -52,16 +57,17 @@ func dbTLSEnforced(r planResource, resources []planResource, idx configIndex) (e
 
 	switch {
 	case hasPlanned && planned != "":
+		// Known planned name: match by name only — never subtree heuristic.
 		if isDefaultParamGroupName(planned) {
 			return engineTLSDefault(engine, version, r.typ)
 		}
 		g, ok := findParamGroupByPlannedName(resources, groupType, planned)
 		if !ok {
-			return false, false
+			return false, false // external / unmatched group
 		}
 		return paramGroupTLS(g, param, engine, version, r.typ)
 	case unknown:
-		g, def, ok := resolveParamGroupBinding(r, resources, idx, groupAttr, groupType)
+		g, def, ok := resolveParamGroupBinding(r, resources, idx, groupAttr, groupType, true)
 		if !ok {
 			return false, false
 		}
@@ -70,8 +76,8 @@ func dbTLSEnforced(r planResource, resources []planResource, idx configIndex) (e
 		}
 		return paramGroupTLS(g, param, engine, version, r.typ)
 	default:
-		// Absent planned value (not unknown).
-		g, def, ok := resolveParamGroupBinding(r, resources, idx, groupAttr, groupType)
+		// Absent planned value (not unknown): follow refs without local heuristic.
+		g, def, ok := resolveParamGroupBinding(r, resources, idx, groupAttr, groupType, false)
 		if ok {
 			if def != "" {
 				return engineTLSDefault(engine, version, r.typ)
@@ -79,7 +85,6 @@ func dbTLSEnforced(r planResource, resources []planResource, idx configIndex) (e
 			return paramGroupTLS(g, param, engine, version, r.typ)
 		}
 		if len(refs) > 0 {
-			// Configured but not resolvable to a managed group or default.*.
 			return false, false
 		}
 		return engineTLSDefault(engine, version, r.typ)
@@ -110,7 +115,8 @@ type paramGroupCand struct {
 
 // resolveParamGroupBinding follows refs through vars/locals/try up to depth 3
 // and returns either exactly one managed group or a default.* name.
-func resolveParamGroupBinding(r planResource, resources []planResource, idx configIndex, groupAttr, groupType string) (planResource, string, bool) {
+// allowLocalHeuristic enables the locals subtree guess (unknown planned values only).
+func resolveParamGroupBinding(r planResource, resources []planResource, idx configIndex, groupAttr, groupType string, allowLocalHeuristic bool) (planResource, string, bool) {
 	mod, _, _, _ := splitResourceAddress(r.address)
 	refs := idx.attrRefs(r.address, groupAttr)
 	var constNames []string
@@ -119,11 +125,11 @@ func resolveParamGroupBinding(r planResource, resources []planResource, idx conf
 			constNames = append(constNames, cv)
 		}
 	}
-	cands := collectParamGroupCands(refs, constNames, mod, resources, idx, groupType, 0)
+	cands := collectParamGroupCands(refs, constNames, mod, mod, resources, idx, groupType, allowLocalHeuristic, 0)
 	return pickParamGroupCand(cands, mod, idx, groupType)
 }
 
-func collectParamGroupCands(refs, constNames []string, scopeMod string, resources []planResource, idx configIndex, groupType string, depth int) []paramGroupCand {
+func collectParamGroupCands(refs, constNames []string, scopeMod, instanceMod string, resources []planResource, idx configIndex, groupType string, allowLocalHeuristic bool, depth int) []paramGroupCand {
 	if depth > maxParamGroupDepth {
 		return nil
 	}
@@ -160,11 +166,14 @@ func collectParamGroupCands(refs, constNames []string, scopeMod string, resource
 			continue
 		}
 		if isVarRef(ref) {
-			out = append(out, followParamGroupVar(ref, scopeMod, resources, idx, groupType, depth)...)
+			out = append(out, followParamGroupVar(ref, scopeMod, instanceMod, resources, idx, groupType, allowLocalHeuristic, depth)...)
 			continue
 		}
 		if isLocalRef(ref) {
-			out = append(out, expandParamGroupLocal(scopeMod, resources, idx, groupType)...)
+			if !allowLocalHeuristic {
+				continue
+			}
+			out = append(out, expandParamGroupLocal(scopeMod, instanceMod, resources, groupType)...)
 			continue
 		}
 		// module.output → try resolving to a managed group in that module.
@@ -174,19 +183,17 @@ func collectParamGroupCands(refs, constNames []string, scopeMod string, resource
 			continue
 		}
 		if isModuleOutputRef(ref) || strings.HasPrefix(ref, "module.") {
-			// Unresolved module/output branch counts as external.
 			out = append(out, paramGroupCand{external: true})
 		}
 	}
 	return out
 }
 
-func followParamGroupVar(ref, scopeMod string, resources []planResource, idx configIndex, groupType string, depth int) []paramGroupCand {
+func followParamGroupVar(ref, scopeMod, instanceMod string, resources []planResource, idx configIndex, groupType string, allowLocalHeuristic bool, depth int) []paramGroupCand {
 	varName := varNameFromRef(ref)
 	if varName == "" {
 		return []paramGroupCand{{external: true}}
 	}
-	// Module call whose body declares this var is scopeMod (resource's module).
 	call, ok := idx.calls[scopeMod]
 	if !ok {
 		return []paramGroupCand{{external: true}}
@@ -197,27 +204,112 @@ func followParamGroupVar(ref, scopeMod string, resources []planResource, idx con
 	}
 	callRefs := call.refs[varName]
 	if len(callRefs) == 0 && len(constNames) == 0 {
-		// Unknown external name (var not wired or non-constant).
 		return []paramGroupCand{{external: true}}
 	}
 	parent := parentModuleAddr(scopeMod)
-	return collectParamGroupCands(callRefs, constNames, parent, resources, idx, groupType, depth+1)
+	return collectParamGroupCands(callRefs, constNames, parent, instanceMod, resources, idx, groupType, allowLocalHeuristic, depth+1)
 }
 
-func expandParamGroupLocal(scopeMod string, resources []planResource, idx configIndex, groupType string) []paramGroupCand {
-	// Locals are not in plan JSON. Collect managed groups under the module that
-	// owns the local (terraform-aws-modules/rds: local.parameter_group_name_id
-	// → module.db_parameter_group.aws_db_parameter_group.this).
-	groups := paramGroupsUnderModule(resources, scopeMod, groupType)
-	if len(groups) == 0 {
+// expandParamGroupLocal applies the locals subtree heuristic: plan JSON has no
+// local bodies, so when an expression passes through local.* accept exactly one
+// managed group under the nearest common module call that contains the instance
+// (the module that owns the local), provided that group's name/name_prefix is
+// unknown or prefix-derived.
+func expandParamGroupLocal(localMod, instanceMod string, resources []planResource, groupType string) []paramGroupCand {
+	root := nearestCommonModuleForLocal(localMod, instanceMod)
+	groups := paramGroupsUnderModule(resources, root, groupType)
+	if len(groups) != 1 {
 		return nil
 	}
-	var out []paramGroupCand
-	for i := range groups {
-		g := groups[i]
-		out = append(out, paramGroupCand{group: &g})
+	g := groups[0]
+	if !paramGroupEligibleForLocalHeuristic(g) {
+		return nil
 	}
-	return out
+	return []paramGroupCand{{group: &g}}
+}
+
+// nearestCommonModuleForLocal returns the module whose subtree is searched for
+// the locals heuristic: the local's module when it contains the instance,
+// otherwise the deepest shared module prefix.
+func nearestCommonModuleForLocal(localMod, instanceMod string) string {
+	if localMod != "" && moduleContains(localMod, instanceMod) {
+		return localMod
+	}
+	return sharedModulePrefix(localMod, instanceMod)
+}
+
+func moduleContains(ancestor, mod string) bool {
+	if ancestor == "" {
+		return true
+	}
+	return mod == ancestor || strings.HasPrefix(mod, ancestor+".")
+}
+
+func sharedModulePrefix(a, b string) string {
+	pa := modulePath(a)
+	pb := modulePath(b)
+	n := len(pa)
+	if len(pb) < n {
+		n = len(pb)
+	}
+	var shared []string
+	for i := 0; i < n; i++ {
+		if pa[i] != pb[i] {
+			break
+		}
+		shared = append(shared, pa[i])
+	}
+	if len(shared) == 0 {
+		return ""
+	}
+	return "module." + strings.Join(shared, ".module.")
+}
+
+func modulePath(mod string) []string {
+	if mod == "" || !strings.HasPrefix(mod, "module.") {
+		return nil
+	}
+	var parts []string
+	rest := mod
+	for strings.HasPrefix(rest, "module.") {
+		rest = strings.TrimPrefix(rest, "module.")
+		i := 0
+		for i < len(rest) && rest[i] != '.' && rest[i] != '[' {
+			i++
+		}
+		if i == 0 {
+			return nil
+		}
+		parts = append(parts, rest[:i])
+		rest = rest[i:]
+		if strings.HasPrefix(rest, "[") {
+			end := strings.IndexByte(rest, ']')
+			if end < 0 {
+				return nil
+			}
+			rest = rest[end+1:]
+		}
+		if strings.HasPrefix(rest, ".") {
+			rest = rest[1:]
+		}
+	}
+	return parts
+}
+
+// paramGroupEligibleForLocalHeuristic requires the group's name or name_prefix
+// to be unknown after apply, or a name_prefix-derived name (empty name with
+// prefix set). A concrete known name is rejected — it cannot be verified against
+// an unknown instance parameter_group_name.
+func paramGroupEligibleForLocalHeuristic(g planResource) bool {
+	if g.attrAfterUnknown("name") || g.attrAfterUnknown("name_prefix") {
+		return true
+	}
+	name, _ := g.values["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		prefix, _ := g.values["name_prefix"].(string)
+		return strings.TrimSpace(prefix) != ""
+	}
+	return false
 }
 
 func pickParamGroupCand(cands []paramGroupCand, scopeMod string, idx configIndex, groupType string) (planResource, string, bool) {
@@ -440,11 +532,8 @@ func findParamGroupByPlannedName(resources []planResource, groupType, plannedNam
 		if r.typ != groupType {
 			continue
 		}
-		if n, _ := r.values["name"].(string); n == plannedName {
-			hits = append(hits, r)
-			continue
-		}
-		if id, _ := r.values["id"].(string); id == plannedName {
+		n, _ := r.values["name"].(string)
+		if n == plannedName {
 			hits = append(hits, r)
 		}
 	}
