@@ -243,10 +243,28 @@ func TestGCPAuditOwnedGate(t *testing.T) {
 			wantSecret: false, wantBucket: true,
 		},
 		{
-			name:       "covered secret not owned absent",
+			name:       "covered secret not owned true",
 			plan:       gcpAuditPlanJSON("google_project_iam_audit_config", "secretmanager.googleapis.com", []any{map[string]any{"log_type": "DATA_READ"}}),
 			cfg:        plainCfg,
-			wantSecret: nil, wantBucket: nil,
+			wantSecret: true, wantBucket: nil,
+		},
+		{
+			name:       "allServices not owned true both",
+			plan:       gcpAuditPlanJSON("google_project_iam_audit_config", "allServices", []any{map[string]any{"log_type": "DATA_READ"}}),
+			cfg:        plainCfg,
+			wantSecret: true, wantBucket: true,
+		},
+		{
+			name:       "storage covered not owned bucket true",
+			plan:       gcpAuditPlanJSON("google_project_iam_audit_config", "storage.googleapis.com", []any{map[string]any{"log_type": "DATA_READ"}}),
+			cfg:        plainCfg,
+			wantSecret: nil, wantBucket: true,
+		},
+		{
+			name:       "folder-level not owned true",
+			plan:       gcpAuditPlanJSON("google_folder_iam_audit_config", "secretmanager.googleapis.com", []any{map[string]any{"log_type": "DATA_READ"}}),
+			cfg:        plainCfg,
+			wantSecret: true, wantBucket: nil,
 		},
 	}
 	for _, tc := range cases {
