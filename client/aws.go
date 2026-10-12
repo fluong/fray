@@ -4,7 +4,7 @@ package client
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
 func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle preventIndex, auditOwned bool) ([]*Element, []*Flow, []*Boundary, []string, error) {
-	var lbs, services, dbs, buckets, secrets []planResource
+	var lbs, services, dbs, buckets, secrets, restAPIs []planResource
 	for _, r := range resources {
 		switch r.typ {
 		case "aws_lb":
@@ -17,9 +17,11 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			buckets = append(buckets, r)
 		case "aws_secretsmanager_secret":
 			secrets = append(secrets, r)
+		case "aws_api_gateway_rest_api":
+			restAPIs = append(restAPIs, r)
 		}
 	}
-	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets) == 0 {
+	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs) == 0 {
 		return nil, nil, nil, nil, nil
 	}
 	idx, err := indexConfig(plan)
@@ -59,6 +61,11 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	}
 	for _, r := range services {
 		add(awsServiceElement(r, resources, idx, containers, &warnings))
+	}
+	for _, r := range restAPIs {
+		if restAPIInternetEntry(r, resources, idx) {
+			add(awsAPIGatewayElement(r))
+		}
 	}
 
 	flows, bounds, extra, flowWarns := awsConnections(resources, data, idx, elements, byAddr, containers)
@@ -287,6 +294,10 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 			addInside(svc)
 		}
 	}
+
+	apiFlows, apiWarns := awsAPIEntries(resources, idx, byAddr, &public, &extra, addInside)
+	flows = append(flows, apiFlows...)
+	warnings = append(warnings, apiWarns...)
 
 	for _, svc := range resources {
 		if svc.typ != "aws_ecs_service" {

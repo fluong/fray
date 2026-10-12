@@ -47,6 +47,8 @@ func kindNoun(kind string) string {
 		return "database"
 	case "load_balancer":
 		return "load balancer"
+	case "api_gateway":
+		return "API"
 	default:
 		return ""
 	}
