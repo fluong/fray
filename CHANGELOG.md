@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Internet entries for API Gateway REST (`aws_api_gateway_rest_api`), HTTP and
+  WebSocket (`aws_apigatewayv2_api`), and Lambda function URLs
+  (`aws_lambda_function_url`), reusing `api_gateway` and `serverless_function`
+  element kinds. Edge authz aggregates methods/routes pessimistically
+  (`NONE` → public, IAM/JWT/Cognito → authenticated; `CUSTOM` or OpenAPI body →
+  omit). REST APIs with a resource policy are not treated as internet entries
+  (exposure unknown). Lambda integrations emit tls backend flows; HTTP and
+  VPC_LINK backends are not modeled as DFD peers yet.
+
+### Changed
+- ALB listeners with Cognito or OIDC default actions set edge
+  `authz_scope=authenticated` instead of omitting it.
+
 ## [0.16.1] — 2026-10-12
 
 ### Fixed
