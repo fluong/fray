@@ -214,9 +214,14 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		}
 	}
 
-	secretAudit := auditDataRead(audits, "secretmanager.googleapis.com")
-	var storageAudit *bool
-	if cfg.AuditConfig == "owned_by_this_root" {
+	// Mirror S3: emit attributes.audit_logging only when this root owns
+	// audit configuration (fray.yaml audit_config: owned_by_this_root).
+	// Covered → true; not covered → false; not owned → omit (unverified).
+	owned := cfg.AuditConfig == "owned_by_this_root"
+	var secretAudit, storageAudit *bool
+	if owned {
+		s := auditDataRead(audits, "secretmanager.googleapis.com")
+		secretAudit = &s
 		v := auditDataRead(audits, "storage.googleapis.com")
 		storageAudit = &v
 	}
@@ -446,11 +451,13 @@ func cloudRunElement(r planResource, invokers []planResource, prevent bool) (*El
 	}, warnings
 }
 
-func secretElement(r planResource, audit, prevent bool) *Element {
+func secretElement(r planResource, audit *bool, prevent bool) *Element {
 	name, _ := r.values["secret_id"].(string)
 	attrs := map[string]any{
-		"audit_logging":       audit,
 		"rotation_configured": rotationOn(r.values["rotation"]),
+	}
+	if audit != nil {
+		attrs["audit_logging"] = *audit
 	}
 	setDeletionProtection(attrs, r.values, prevent)
 	return &Element{
