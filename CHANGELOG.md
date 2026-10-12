@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Google Cloud SQL instances are modelled as relational databases, so FR-029 (internet exposure), FR-030 (encryption at rest), FR-031 (TLS) and FR-033 (destroy protection) apply on Google Cloud. Fray does not assume a default ssl_mode; FR-033 counts the Terraform deletion_protection argument, settings.deletion_protection_enabled or lifecycle.prevent_destroy.
+
 ## [0.17.0] — 2026-10-13
 
 ### Added
