@@ -151,9 +151,33 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 		},
 		{
 			name: "alb_cognito",
-			plan: albCognitoPlan(t),
+			plan: albCognitoPlan(t, albCognitoOpts{}),
 			entryKind: "load_balancer", authz: "authenticated", transport: "tls",
 			fr001: "mitigated", fr026: "mitigated", golden: "alb-cognito.dfd.json",
+		},
+		{
+			name: "alb_cognito_public_rule",
+			plan: albCognitoPlan(t, albCognitoOpts{rules: []albRuleOpt{{
+				name: "health", auth: false, forward: true,
+			}}}),
+			entryKind: "load_balancer", authz: "public", transport: "tls",
+			fr001: "open", fr026: "mitigated", golden: "alb-cognito-public-rule.dfd.json",
+		},
+		{
+			name: "alb_cognito_all_rules_auth",
+			plan: albCognitoPlan(t, albCognitoOpts{rules: []albRuleOpt{{
+				name: "app", auth: true, forward: true,
+			}}}),
+			entryKind: "load_balancer", authz: "authenticated", transport: "tls",
+			fr001: "mitigated", fr026: "mitigated", golden: "alb-cognito-all-rules-auth.dfd.json",
+		},
+		{
+			name: "alb_cognito_unknown_rule",
+			plan: albCognitoPlan(t, albCognitoOpts{rules: []albRuleOpt{{
+				name: "dyn", unknownActions: true,
+			}}}),
+			entryKind: "load_balancer", authz: "", transport: "tls",
+			fr001: "unverified", fr026: "mitigated", golden: "alb-cognito-unknown-rule.dfd.json",
 		},
 	}
 
@@ -471,7 +495,18 @@ func lambdaURLPlan(t *testing.T, auth string) string {
 	return marshalPlan(t, resources, cfgResources)
 }
 
-func albCognitoPlan(t *testing.T) string {
+type albRuleOpt struct {
+	name           string
+	auth           bool // authenticate-cognito before forward
+	forward        bool
+	unknownActions bool // non-determinable action type
+}
+
+type albCognitoOpts struct {
+	rules []albRuleOpt
+}
+
+func albCognitoPlan(t *testing.T, o albCognitoOpts) string {
 	t.Helper()
 	resources := []map[string]any{
 		{
@@ -517,6 +552,45 @@ func albCognitoPlan(t *testing.T) string {
 				"load_balancer_arn": map[string]any{"references": []any{"aws_lb.app.arn", "aws_lb.app"}},
 			},
 		},
+	}
+	for _, rule := range o.rules {
+		addr := "aws_lb_listener_rule." + rule.name
+		var actions []any
+		switch {
+		case rule.unknownActions:
+			actions = []any{map[string]any{"type": "jwt-validation"}}
+		default:
+			if rule.auth {
+				actions = append(actions, map[string]any{
+					"type": "authenticate-cognito", "order": float64(1),
+					"authenticate_cognito": []any{map[string]any{
+						"user_pool_arn": "arn:aws:cognito-idp:us-east-1:1:userpool/x",
+					}},
+				})
+			}
+			if rule.forward {
+				order := float64(1)
+				if rule.auth {
+					order = 2
+				}
+				actions = append(actions, map[string]any{
+					"type": "forward", "order": order,
+					"target_group_arn": "arn:aws:elasticloadbalancing:us-east-1:1:targetgroup/app/x",
+				})
+			}
+		}
+		resources = append(resources, map[string]any{
+			"address": addr, "mode": "managed", "type": "aws_lb_listener_rule",
+			"name": rule.name, "change": map[string]any{"after": map[string]any{
+				"action": actions,
+			}},
+		})
+		cfgResources = append(cfgResources, map[string]any{
+			"address": addr, "type": "aws_lb_listener_rule", "name": rule.name,
+			"expressions": map[string]any{
+				"listener_arn": map[string]any{"references": []any{"aws_lb_listener.https.arn", "aws_lb_listener.https"}},
+			},
+		})
 	}
 	return marshalPlan(t, resources, cfgResources)
 }
@@ -574,6 +648,9 @@ func TestAPIGatewayOutcomeTable(t *testing.T) {
 		{"rest_integration_lambda", "open", "mitigated"},
 		{"https/http/vpc_link backends", "n/a (no peer element)", "n/a"},
 		{"alb_cognito", "mitigated", "mitigated"},
+		{"alb_cognito_public_rule", "open", "mitigated"},
+		{"alb_cognito_all_rules_auth", "mitigated", "mitigated"},
+		{"alb_cognito_unknown_rule", "unverified", "mitigated"},
 	}
 	for _, r := range rows {
 		b.WriteString("| " + r.name + " | " + r.fr001 + " | " + r.fr026 + " |\n")
