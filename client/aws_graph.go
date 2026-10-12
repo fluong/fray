@@ -668,18 +668,28 @@ func stringList(v any) []string {
 	return out
 }
 
-// publicListener picks transport and edge authz_scope from this LB's listeners.
-// Caller already decided the LB is internet-exposed (attributes.public=true).
-// scope is "public" (anonymous forward/redirect), "authenticated" (Cognito/OIDC
-// default action), or "" when undeterminable.
-func publicListener(lb planResource, resources []planResource, idx configIndex) (addr, transport, scope string) {
+// publicListener picks transport and edge authz_scope from this LB's listeners
+// and their aws_lb_listener_rule resources. Caller already decided the LB is
+// internet-exposed (attributes.public=true).
+//
+// scope is "public" when any default action or rule forwards to the app without
+// an authenticate-cognito/authenticate-oidc step first (causeAddr is that
+// listener or rule address); "authenticated" when every app path is gated
+// (default action and every forwarding rule); "" when a path is undeterminable
+// (unknown listener_arn attachment or dynamic/unknown actions).
+//
+// Redirect-only and fixed-response actions do not make the entry anonymous for
+// the app: they are ignored for authz_scope (neither public nor required to be
+// authenticated).
+func publicListener(lb planResource, resources []planResource, idx configIndex) (causeAddr, transport, scope string) {
 	transport = "unknown"
-	anonymous := false
-	authenticated := false
-	found := false
-	for _, ln := range listenersFor(lb, resources, idx) {
-		found = true
-		addr = ln.address
+	listeners := listenersFor(lb, resources, idx)
+	if len(listeners) == 0 {
+		return "", "unknown", ""
+	}
+
+	hasPublic, hasAuth, hasUnknown := false, false, false
+	for _, ln := range listeners {
 		switch strings.ToUpper(stringAttr(ln.values["protocol"])) {
 		case "HTTP":
 			transport = "plaintext"
@@ -688,36 +698,137 @@ func publicListener(lb planResource, resources []planResource, idx configIndex) 
 				transport = "tls"
 			}
 		}
-		if listenerAnonymous(ln.values) {
-			anonymous = true
-		}
-		if listenerAuthenticated(ln.values) {
-			authenticated = true
-		}
-	}
-	if !found {
-		return "", "unknown", ""
-	}
-	if anonymous {
-		return addr, transport, "public"
-	}
-	if authenticated {
-		return addr, transport, "authenticated"
-	}
-	return addr, transport, ""
-}
 
-func listenerAuthenticated(values map[string]any) bool {
-	for _, action := range asList(values["default_action"]) {
-		m, ok := action.(map[string]any)
-		if !ok {
+		switch classifyListenerActions(asList(ln.values["default_action"])) {
+		case pathPublic:
+			hasPublic = true
+			if causeAddr == "" {
+				causeAddr = ln.address
+			}
+		case pathAuthenticated:
+			hasAuth = true
+		case pathUnknown:
+			hasUnknown = true
+		}
+
+		rules, rulesOK := listenerRulesFor(ln, resources, idx)
+		if !rulesOK {
+			hasUnknown = true
 			continue
 		}
-		if len(asList(m["authenticate_cognito"])) > 0 || len(asList(m["authenticate_oidc"])) > 0 {
-			return true
+		for _, rule := range rules {
+			switch classifyListenerActions(asList(rule.values["action"])) {
+			case pathPublic:
+				hasPublic = true
+				if causeAddr == "" {
+					causeAddr = rule.address
+				}
+			case pathAuthenticated:
+				hasAuth = true
+			case pathUnknown:
+				hasUnknown = true
+			}
 		}
 	}
-	return false
+
+	if hasPublic {
+		return causeAddr, transport, "public"
+	}
+	if hasUnknown {
+		return "", transport, ""
+	}
+	if hasAuth {
+		return "", transport, "authenticated"
+	}
+	return "", transport, ""
+}
+
+// pathClass is how a listener default action or listener rule affects edge authz.
+type pathClass int
+
+const (
+	pathNeutral pathClass = iota
+	pathPublic
+	pathAuthenticated
+	pathUnknown
+)
+
+// classifyListenerActions classifies ordered ALB actions for edge authz_scope.
+// Forward without a prior authenticate-* step is public. Authenticate (with or
+// without a following forward) is authenticated. Redirect and fixed-response
+// alone are neutral. Unknown or dynamic action types are pathUnknown.
+func classifyListenerActions(actions []any) pathClass {
+	if len(actions) == 0 {
+		return pathUnknown
+	}
+	ordered := orderedListenerActions(actions)
+	seenAuth := false
+	sawForward := false
+	publicForward := false
+	sawAuthAction := false
+	for _, action := range ordered {
+		m, ok := action.(map[string]any)
+		if !ok {
+			return pathUnknown
+		}
+		t := strings.ToLower(stringAttr(m["type"]))
+		isAuth := t == "authenticate-cognito" || t == "authenticate-oidc" ||
+			len(asList(m["authenticate_cognito"])) > 0 || len(asList(m["authenticate_oidc"])) > 0
+		isForward := t == "forward" || stringAttr(m["target_group_arn"]) != "" ||
+			len(asList(m["forward"])) > 0
+		isRedirect := t == "redirect" || len(asList(m["redirect"])) > 0
+		isFixed := t == "fixed-response" || len(asList(m["fixed_response"])) > 0
+		switch {
+		case isAuth:
+			seenAuth = true
+			sawAuthAction = true
+		case isForward:
+			sawForward = true
+			if !seenAuth {
+				publicForward = true
+			}
+		case isRedirect, isFixed:
+			// Not app exposure for FR-001: ignore.
+		default:
+			return pathUnknown
+		}
+	}
+	if publicForward {
+		return pathPublic
+	}
+	if sawForward || sawAuthAction {
+		return pathAuthenticated
+	}
+	return pathNeutral
+}
+
+func orderedListenerActions(actions []any) []any {
+	type item struct {
+		order int
+		idx   int
+		v     any
+	}
+	items := make([]item, 0, len(actions))
+	for i, a := range actions {
+		order := i + 1
+		if m, ok := a.(map[string]any); ok {
+			if n, ok := number(m["order"]); ok {
+				order = n
+			}
+		}
+		items = append(items, item{order: order, idx: i, v: a})
+	}
+	slices.SortFunc(items, func(a, b item) int {
+		if a.order != b.order {
+			return a.order - b.order
+		}
+		return a.idx - b.idx
+	})
+	out := make([]any, len(items))
+	for i, it := range items {
+		out[i] = it.v
+	}
+	return out
 }
 
 func listenersFor(lb planResource, resources []planResource, idx configIndex) []planResource {
@@ -748,27 +859,46 @@ func listenersFor(lb planResource, resources []planResource, idx configIndex) []
 	return out
 }
 
-func listenerAnonymous(values map[string]any) bool {
-	actions := asList(values["default_action"])
-	if len(actions) == 0 {
-		return false
+// listenerRulesFor returns aws_lb_listener_rule resources attached to ln.
+// ok is false when a same-module rule has a listener_arn that cannot be
+// resolved to any listener (attachment unknown → omit authz).
+func listenerRulesFor(ln planResource, resources []planResource, idx configIndex) (rules []planResource, ok bool) {
+	mod, _, lnName, lok := splitResourceAddress(ln.address)
+	if !lok {
+		return nil, false
 	}
-	for _, action := range actions {
-		m, ok := action.(map[string]any)
-		if !ok {
-			return false
+	ok = true
+	for _, r := range resources {
+		if r.typ != "aws_lb_listener_rule" {
+			continue
 		}
-		if len(asList(m["authenticate_cognito"])) > 0 || len(asList(m["authenticate_oidc"])) > 0 {
-			return false
+		rm, _, _, rok := splitResourceAddress(r.address)
+		refs := idx.attrRefs(r.address, "listener_arn")
+		if len(refs) == 0 {
+			if rok && rm == mod {
+				ok = false
+			}
+			continue
 		}
-		t, _ := m["type"].(string)
-		switch t {
-		case "forward", "redirect", "fixed-response", "":
-		default:
-			return false
+		matched := false
+		matchedAnyListener := false
+		for _, ref := range refs {
+			if containsResource(ref, "aws_lb_listener", lnName) {
+				matched = true
+			}
+			if strings.Contains(ref, "aws_lb_listener.") {
+				matchedAnyListener = true
+			}
+		}
+		if matched {
+			rules = append(rules, r)
+			continue
+		}
+		if rok && rm == mod && !matchedAnyListener {
+			ok = false
 		}
 	}
-	return true
+	return rules, ok
 }
 
 func servicesFronted(lb planResource, resources []planResource, elements []*Element, idx configIndex, warnings *[]string) []*Element {
