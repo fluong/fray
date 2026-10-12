@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- PR comments and SARIF name the specific attribute for rules with any/all
+  conditions (for example FR-029). Requires a Fray service that sends nested
+  conditions; with older services the attribute is omitted.
+
 ## [0.16.0] — 2026-10-12
 
 ### Added
