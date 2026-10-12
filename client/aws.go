@@ -4,7 +4,7 @@ package client
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
 func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle preventIndex, auditOwned bool) ([]*Element, []*Flow, []*Boundary, []string, error) {
-	var lbs, services, dbs, buckets, secrets, restAPIs, httpAPIs []planResource
+	var lbs, services, dbs, buckets, secrets, restAPIs, httpAPIs, fnURLs []planResource
 	for _, r := range resources {
 		switch r.typ {
 		case "aws_lb":
@@ -21,9 +21,11 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			restAPIs = append(restAPIs, r)
 		case "aws_apigatewayv2_api":
 			httpAPIs = append(httpAPIs, r)
+		case "aws_lambda_function_url":
+			fnURLs = append(fnURLs, r)
 		}
 	}
-	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs)+len(httpAPIs) == 0 {
+	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs) == 0 {
 		return nil, nil, nil, nil, nil
 	}
 	idx, err := indexConfig(plan)
@@ -74,6 +76,8 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			add(awsAPIGatewayElement(r))
 		}
 	}
+	// Lambda function elements are created on demand for function URLs and
+	// API integrations inside awsConnections (not for unused functions).
 
 	flows, bounds, extra, flowWarns := awsConnections(resources, data, idx, elements, byAddr, containers)
 	warnings = append(warnings, flowWarns...)
