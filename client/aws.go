@@ -4,7 +4,7 @@ package client
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
 func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle preventIndex, auditOwned bool) ([]*Element, []*Flow, []*Boundary, []string, error) {
-	var lbs, services, dbs, buckets, secrets, restAPIs []planResource
+	var lbs, services, dbs, buckets, secrets, restAPIs, httpAPIs []planResource
 	for _, r := range resources {
 		switch r.typ {
 		case "aws_lb":
@@ -19,9 +19,11 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			secrets = append(secrets, r)
 		case "aws_api_gateway_rest_api":
 			restAPIs = append(restAPIs, r)
+		case "aws_apigatewayv2_api":
+			httpAPIs = append(httpAPIs, r)
 		}
 	}
-	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs) == 0 {
+	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs)+len(httpAPIs) == 0 {
 		return nil, nil, nil, nil, nil
 	}
 	idx, err := indexConfig(plan)
@@ -64,6 +66,11 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	}
 	for _, r := range restAPIs {
 		if restAPIInternetEntry(r, resources, idx) {
+			add(awsAPIGatewayElement(r))
+		}
+	}
+	for _, r := range httpAPIs {
+		if httpAPIInternetEntry(r) {
 			add(awsAPIGatewayElement(r))
 		}
 	}

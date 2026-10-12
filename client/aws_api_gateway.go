@@ -75,6 +75,33 @@ func awsAPIEntries(
 		flows = append(flows, flow)
 		addInside(apiEl)
 	}
+
+	for _, api := range resources {
+		if api.typ != "aws_apigatewayv2_api" {
+			continue
+		}
+		if !httpAPIInternetEntry(api) {
+			continue
+		}
+		apiEl := byAddr[api.address]
+		if apiEl == nil {
+			continue
+		}
+		pub := ensurePublic()
+		flow := &Flow{
+			From: pub.canonicalKey(), To: apiEl.canonicalKey(),
+			DataClass: "unknown", Transport: "tls",
+		}
+		if scope, cause, ok := httpAPIEdgeAuth(api, resources, idx); ok {
+			flow.AuthzScope = scope
+			flow.AuthzGrants = normalizeAuthzGrants(scope)
+			if cause != "" {
+				flow.Causes = map[string]string{"authz_scope": cause}
+			}
+		}
+		flows = append(flows, flow)
+		addInside(apiEl)
+	}
 	return flows, warnings
 }
 
@@ -204,4 +231,63 @@ func refsAPI(r planResource, idx configIndex, attr string, api planResource) boo
 		}
 	}
 	return false
+}
+
+func httpAPIInternetEntry(api planResource) bool {
+	if v, ok := api.values["disable_execute_api_endpoint"].(bool); ok && v {
+		return false
+	}
+	return true
+}
+
+func httpAPIHasOpenAPIBody(api planResource) bool {
+	s, ok := api.values["body"].(string)
+	return ok && strings.TrimSpace(s) != ""
+}
+
+func httpAPIEdgeAuth(api planResource, resources []planResource, idx configIndex) (scope, cause string, ok bool) {
+	if httpAPIHasOpenAPIBody(api) {
+		return "", "", false
+	}
+	var routes []planResource
+	for _, r := range resources {
+		if r.typ == "aws_apigatewayv2_route" && refsAPI(r, idx, "api_id", api) {
+			routes = append(routes, r)
+		}
+	}
+	if len(routes) == 0 {
+		return "", "", false
+	}
+	return aggregateRouteAuth(routes)
+}
+
+func aggregateRouteAuth(routes []planResource) (scope, cause string, ok bool) {
+	hasNone, hasIdentity, hasCustom, hasUnknown := false, false, false, false
+	noneCause := ""
+	for _, r := range routes {
+		auth := strings.ToUpper(stringAttr(r.values["authorization_type"]))
+		switch auth {
+		case "NONE", "":
+			hasNone = true
+			if noneCause == "" {
+				noneCause = r.address
+			}
+		case "AWS_IAM", "JWT":
+			hasIdentity = true
+		case "CUSTOM":
+			hasCustom = true
+		default:
+			hasUnknown = true
+		}
+	}
+	if hasNone {
+		return "public", noneCause, true
+	}
+	if hasCustom || hasUnknown {
+		return "", "", false
+	}
+	if hasIdentity {
+		return "authenticated", "", true
+	}
+	return "", "", false
 }
