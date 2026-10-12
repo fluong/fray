@@ -108,10 +108,7 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 				}
 			}
 		} else {
-			field := ""
-			if len(rule.Pass) > 0 {
-				field = rule.Pass[0].Field
-			}
+			field := primaryPassField(rule)
 			if loc, ok := client.LookupCauseLocation(locs, cause, field); ok && loc.Path != "" {
 				phys.ArtifactLocation.URI = loc.Path
 				if loc.Line > 0 {

@@ -205,7 +205,7 @@ func unverifiedSection(doc client.DFD, findings apiv1.Findings, texts map[string
 			continue
 		}
 		rule := texts[f.RuleID]
-		missing := missingFields(rule.Pass, f.Target, byID, flows)
+		missing := missingFields(rule, f.Target, byID, flows)
 		lines = append(lines, fmt.Sprintf("- %s %s — %s. %s", f.RuleID, rule.Title, where(f.Target, byID, flows), missingSentence(missing)))
 	}
 	if len(lines) == 0 {
@@ -250,36 +250,41 @@ func placeElement(el client.Element) string {
 	return el.Name
 }
 
+// maxGroupDepth mirrors schema/eval: any/all may nest at most this deep.
+const maxGroupDepth = 3
+
 func failedAttribute(rule apiv1.RuleText, id string, byID map[string]client.Element, flows map[string]client.Flow) (string, string) {
 	el, flow := target(id, byID, flows)
 	for _, c := range rule.Pass {
-		state, field, actual := evalCond(c, el, flow, byID)
-		if state == triFalse {
-			return field, actual
+		if emptyGroup(c) {
+			// Older servers omit conds: never guess an attribute (covers_attributes
+			// can point at the wrong leaf, e.g. attributes.public on FR-029).
+			continue
 		}
+		state, field, actual := evalCond(c, el, flow, byID, 0)
+		if state != triFalse {
+			continue
+		}
+		if c.Op == "any" || c.Op == "all" {
+			if f, a := blameFalse(c, el, flow, byID, 0); f != "" {
+				return f, a
+			}
+			continue
+		}
+		return field, actual
 	}
 	return "", ""
 }
 
-func missingFields(pass []apiv1.Condition, id string, byID map[string]client.Element, flows map[string]client.Flow) []string {
+func missingFields(rule apiv1.RuleText, id string, byID map[string]client.Element, flows map[string]client.Flow) []string {
 	el, flow := target(id, byID, flows)
 	var out []string
-	var walk func(apiv1.Condition)
-	walk = func(c apiv1.Condition) {
-		if c.Op == "not" && c.Cond != nil {
-			state, field, _ := evalCond(*c.Cond, el, flow, byID)
-			if state == triUnverified && field != "" {
-				out = append(out, field)
-			}
-			return
+	for _, c := range rule.Pass {
+		if emptyGroup(c) {
+			// Older servers omit conds: do not invent a missing-field claim.
+			continue
 		}
-		state, field, _ := evalCond(c, el, flow, byID)
-		if state == triUnverified && field != "" {
-			out = append(out, field)
-		}
-	}
-	for _, c := range pass {
-		walk(c)
+		out = append(out, blameUnverified(c, el, flow, byID, 0)...)
 	}
 	return out
 }
@@ -304,9 +309,48 @@ const (
 	triUnverified
 )
 
-func evalCond(c apiv1.Condition, el *client.Element, f *client.Flow, byID map[string]client.Element) (int, string, string) {
-	if c.Op == "not" && c.Cond != nil {
-		state, field, actual := evalCond(*c.Cond, el, f, byID)
+func emptyGroup(c apiv1.Condition) bool {
+	return (c.Op == "any" || c.Op == "all") && len(c.Conds) == 0
+}
+
+// primaryPassField is the first leaf field in pass order (depth-first), used
+// for SARIF / comment location hints. Empty any/all nodes (older servers)
+// contribute no leaf — same as Pass[0].Field being "" today.
+func primaryPassField(rule apiv1.RuleText) string {
+	for _, c := range rule.Pass {
+		if f := firstLeafField(c); f != "" {
+			return f
+		}
+	}
+	return ""
+}
+
+func firstLeafField(c apiv1.Condition) string {
+	switch c.Op {
+	case "any", "all":
+		for _, ch := range c.Conds {
+			if f := firstLeafField(ch); f != "" {
+				return f
+			}
+		}
+		return ""
+	case "not":
+		if c.Cond != nil {
+			return firstLeafField(*c.Cond)
+		}
+		return ""
+	default:
+		return c.Field
+	}
+}
+
+func evalCond(c apiv1.Condition, el *client.Element, f *client.Flow, byID map[string]client.Element, groupDepth int) (int, string, string) {
+	switch c.Op {
+	case "not":
+		if c.Cond == nil {
+			return triTrue, c.Field, ""
+		}
+		state, field, actual := evalCond(*c.Cond, el, f, byID, groupDepth)
 		switch state {
 		case triTrue:
 			return triFalse, field, actual
@@ -315,6 +359,10 @@ func evalCond(c apiv1.Condition, el *client.Element, f *client.Flow, byID map[st
 		default:
 			return triUnverified, field, actual
 		}
+	case "any":
+		return evalAny(c.Conds, el, f, byID, groupDepth)
+	case "all":
+		return evalAll(c.Conds, el, f, byID, groupDepth)
 	}
 	val, ok := lookup(c.Field, el, f, byID)
 	shown := formatValue(val)
@@ -355,6 +403,159 @@ func evalCond(c apiv1.Condition, el *client.Element, f *client.Flow, byID map[st
 		return triFalse, c.Field, shown
 	default:
 		return triTrue, c.Field, shown
+	}
+}
+
+// evalAny: true if any child true; else unverified if any child unverified; else false.
+func evalAny(conds []apiv1.Condition, el *client.Element, f *client.Flow, byID map[string]client.Element, groupDepth int) (int, string, string) {
+	if len(conds) == 0 {
+		return triUnverified, "", ""
+	}
+	next := groupDepth + 1
+	if next > maxGroupDepth {
+		return triUnverified, "", ""
+	}
+	unverified := false
+	for _, ch := range conds {
+		got, field, actual := evalCond(ch, el, f, byID, next)
+		if got == triTrue {
+			return triTrue, field, actual
+		}
+		if got == triUnverified {
+			unverified = true
+		}
+	}
+	if unverified {
+		return triUnverified, "", ""
+	}
+	return triFalse, "", ""
+}
+
+// evalAll: false if any child false; else unverified if any child unverified; else true.
+func evalAll(conds []apiv1.Condition, el *client.Element, f *client.Flow, byID map[string]client.Element, groupDepth int) (int, string, string) {
+	if len(conds) == 0 {
+		return triUnverified, "", ""
+	}
+	next := groupDepth + 1
+	if next > maxGroupDepth {
+		return triUnverified, "", ""
+	}
+	unverified := false
+	var lastField, lastActual string
+	for _, ch := range conds {
+		got, field, actual := evalCond(ch, el, f, byID, next)
+		if got == triFalse {
+			return triFalse, field, actual
+		}
+		if got == triUnverified {
+			unverified = true
+			if lastField == "" {
+				lastField, lastActual = field, actual
+			}
+		} else {
+			lastField, lastActual = field, actual
+		}
+	}
+	if unverified {
+		return triUnverified, lastField, lastActual
+	}
+	return triTrue, lastField, lastActual
+}
+
+// blameFalse names the leaf whose false result made a false group/leaf. For
+// any (every child false), prefer a leaf field that appears only once in the
+// group tree so alternate public==false / public==true branches do not steal
+// the name from the decisive control (e.g. network_restricted on FR-029).
+func blameFalse(c apiv1.Condition, el *client.Element, f *client.Flow, byID map[string]client.Element, groupDepth int) (string, string) {
+	switch c.Op {
+	case "all":
+		next := groupDepth + 1
+		for _, ch := range c.Conds {
+			got, _, _ := evalCond(ch, el, f, byID, next)
+			if got == triFalse {
+				return blameFalse(ch, el, f, byID, next)
+			}
+		}
+		return "", ""
+	case "any":
+		next := groupDepth + 1
+		counts := map[string]int{}
+		for _, field := range leafFields(c) {
+			counts[field]++
+		}
+		var fallback, fallbackActual string
+		for _, ch := range c.Conds {
+			field, actual := blameFalse(ch, el, f, byID, next)
+			if field == "" {
+				continue
+			}
+			if fallback == "" {
+				fallback, fallbackActual = field, actual
+			}
+			if counts[field] == 1 {
+				return field, actual
+			}
+		}
+		return fallback, fallbackActual
+	case "not":
+		if c.Cond == nil {
+			return "", ""
+		}
+		_, field, actual := evalCond(*c.Cond, el, f, byID, groupDepth)
+		return field, actual
+	default:
+		_, field, actual := evalCond(c, el, f, byID, groupDepth)
+		return field, actual
+	}
+}
+
+func blameUnverified(c apiv1.Condition, el *client.Element, f *client.Flow, byID map[string]client.Element, groupDepth int) []string {
+	got, field, _ := evalCond(c, el, f, byID, groupDepth)
+	if got != triUnverified {
+		return nil
+	}
+	switch c.Op {
+	case "any", "all":
+		next := groupDepth + 1
+		var out []string
+		for _, ch := range c.Conds {
+			st, _, _ := evalCond(ch, el, f, byID, next)
+			if st == triUnverified {
+				out = append(out, blameUnverified(ch, el, f, byID, next)...)
+			}
+		}
+		return out
+	case "not":
+		if c.Cond == nil {
+			return nil
+		}
+		return blameUnverified(*c.Cond, el, f, byID, groupDepth)
+	default:
+		if field != "" {
+			return []string{field}
+		}
+		return nil
+	}
+}
+
+func leafFields(c apiv1.Condition) []string {
+	switch c.Op {
+	case "any", "all":
+		var out []string
+		for _, ch := range c.Conds {
+			out = append(out, leafFields(ch)...)
+		}
+		return out
+	case "not":
+		if c.Cond != nil {
+			return leafFields(*c.Cond)
+		}
+		return nil
+	default:
+		if c.Field != "" {
+			return []string{c.Field}
+		}
+		return nil
 	}
 }
 
