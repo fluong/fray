@@ -1,0 +1,207 @@
+package client
+
+import (
+	"strings"
+)
+
+// API Gateway (REST v1 / HTTP·WebSocket v2) and Lambda function URL internet
+// entries. Mirrors the ALB path: inferred public_client → edge flow → network
+// boundary, plus entry → backend integration flows.
+//
+// Known limitation: a REST API with a resource policy (policy attribute set) is
+// treated like an unresolved ALB security group — exposure is unknown, so no
+// entry flow is emitted. Parsing resource policies for internet reachability is
+// out of scope.
+
+func awsAPIGatewayElement(r planResource) *Element {
+	name, _ := r.values["name"].(string)
+	attrs := map[string]any{"public": true}
+	return &Element{
+		Name: DisplayName(r.address, name, "api_gateway"), Type: "process", Kind: "api_gateway", Provider: "aws",
+		Provenance: "iac",
+		Evidence:   Evidence{Addresses: []string{r.address}},
+		Attributes: attrs,
+	}
+}
+
+// awsAPIEntries appends public_client edge flows and backend flows for REST,
+// HTTP/WebSocket APIs, and Lambda function URLs. public may be nil; a new
+// inferred public_client is created on first entry.
+func awsAPIEntries(
+	resources []planResource,
+	idx configIndex,
+	byAddr map[string]*Element,
+	public **Element,
+	extra *[]*Element,
+	addInside func(*Element),
+) (flows []*Flow, warnings []string) {
+	ensurePublic := func() *Element {
+		if *public != nil {
+			return *public
+		}
+		el := &Element{
+			Name: "Public client", Type: "external_entity", Kind: "public_client",
+			Provenance: "inferred",
+			Evidence:   Evidence{Signals: []Signal{{Type: "network_ingress", Name: "0.0.0.0/0"}}},
+		}
+		*extra = append(*extra, el)
+		*public = el
+		return el
+	}
+
+	for _, api := range resources {
+		if api.typ != "aws_api_gateway_rest_api" {
+			continue
+		}
+		if !restAPIInternetEntry(api, resources, idx) {
+			continue
+		}
+		apiEl := byAddr[api.address]
+		if apiEl == nil {
+			continue
+		}
+		pub := ensurePublic()
+		flow := &Flow{
+			From: pub.canonicalKey(), To: apiEl.canonicalKey(),
+			DataClass: "unknown", Transport: "tls",
+		}
+		if scope, cause, ok := restAPIEdgeAuth(api, resources, idx); ok {
+			flow.AuthzScope = scope
+			flow.AuthzGrants = normalizeAuthzGrants(scope)
+			if cause != "" {
+				flow.Causes = map[string]string{"authz_scope": cause}
+			}
+		}
+		flows = append(flows, flow)
+		addInside(apiEl)
+	}
+	return flows, warnings
+}
+
+func restAPIInternetEntry(api planResource, resources []planResource, idx configIndex) bool {
+	if restAPIHasPolicy(api) {
+		return false
+	}
+	if !restAPIHasPublicEndpointType(api) {
+		return false
+	}
+	return restAPIHasStage(api, resources, idx)
+}
+
+func restAPIHasPolicy(api planResource) bool {
+	raw, ok := api.values["policy"]
+	if !ok || raw == nil {
+		return false
+	}
+	if s, is := raw.(string); is {
+		return strings.TrimSpace(s) != ""
+	}
+	return true
+}
+
+func restAPIHasPublicEndpointType(api planResource) bool {
+	for _, t := range restAPIEndpointTypes(api) {
+		if t == "EDGE" || t == "REGIONAL" {
+			return true
+		}
+	}
+	return false
+}
+
+func restAPIEndpointTypes(api planResource) []string {
+	var out []string
+	for _, block := range asList(api.values["endpoint_configuration"]) {
+		m, ok := block.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, t := range asList(m["types"]) {
+			if s, ok := t.(string); ok && s != "" {
+				out = append(out, strings.ToUpper(s))
+			}
+		}
+	}
+	return out
+}
+
+func restAPIHasStage(api planResource, resources []planResource, idx configIndex) bool {
+	for _, r := range resources {
+		switch r.typ {
+		case "aws_api_gateway_stage":
+			if refsAPI(r, idx, "rest_api_id", api) {
+				return true
+			}
+		case "aws_api_gateway_deployment":
+			if refsAPI(r, idx, "rest_api_id", api) && stringAttr(r.values["stage_name"]) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func restAPIHasOpenAPIBody(api planResource) bool {
+	s, ok := api.values["body"].(string)
+	return ok && strings.TrimSpace(s) != ""
+}
+
+func restAPIEdgeAuth(api planResource, resources []planResource, idx configIndex) (scope, cause string, ok bool) {
+	if restAPIHasOpenAPIBody(api) {
+		return "", "", false
+	}
+	var methods []planResource
+	for _, r := range resources {
+		if r.typ == "aws_api_gateway_method" && refsAPI(r, idx, "rest_api_id", api) {
+			methods = append(methods, r)
+		}
+	}
+	if len(methods) == 0 {
+		return "", "", false
+	}
+	return aggregateMethodAuth(methods)
+}
+
+func aggregateMethodAuth(methods []planResource) (scope, cause string, ok bool) {
+	hasNone, hasIdentity, hasCustom, hasUnknown := false, false, false, false
+	noneCause := ""
+	for _, m := range methods {
+		auth := strings.ToUpper(stringAttr(m.values["authorization"]))
+		switch auth {
+		case "NONE", "":
+			// Empty authorization defaults to NONE in the AWS provider.
+			hasNone = true
+			if noneCause == "" {
+				noneCause = m.address
+			}
+		case "AWS_IAM", "COGNITO_USER_POOLS":
+			hasIdentity = true
+		case "CUSTOM":
+			hasCustom = true
+		default:
+			hasUnknown = true
+		}
+	}
+	if hasNone {
+		return "public", noneCause, true
+	}
+	if hasCustom || hasUnknown {
+		return "", "", false
+	}
+	if hasIdentity {
+		return "authenticated", "", true
+	}
+	return "", "", false
+}
+
+func refsAPI(r planResource, idx configIndex, attr string, api planResource) bool {
+	_, _, name, ok := splitResourceAddress(api.address)
+	if !ok {
+		return false
+	}
+	for _, ref := range idx.attrRefs(r.address, attr) {
+		if containsResource(ref, api.typ, name) {
+			return true
+		}
+	}
+	return false
+}
