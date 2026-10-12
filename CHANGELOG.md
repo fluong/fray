@@ -2,21 +2,38 @@
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-10-12
+
+Upgrading may change results on existing repositories; see "Changed".
+
+### Added
+- Cloud Run secrets mounted as files are recognised as file delivery, so
+  FR-003 can be mitigated. A secret that is also exposed as an environment
+  variable is still reported as environment delivery.
+- R2 bucket locks are read from Terraform: an enabled retention rule covering
+  the whole bucket satisfies FR-027. Locks managed outside Terraform are
+  reported as unverified.
+- R2 buckets are reported as encrypted at rest.
+
+### Changed
+- Load balancer exposure uses the same security-group analysis as databases.
+  Load balancers opened to the internet through aws_security_group_rule,
+  security groups defined in another module, or prefix lists are now
+  detected, so FR-001 may report new findings.
+- S3 audit logging is credited only when a trail or logging configuration
+  covers that specific bucket. Previously any trail with S3 data events
+  counted for every bucket, so some FR-023 findings may move from mitigated
+  to open or unverified.
+- Databases behind for_each-style ingress rules open to the internet are now
+  reported (FR-029 open instead of unverified).
+
 ### Fixed
-- Load balancers use the same security-group exposure checks as databases
-  (cross-module associations, separate ingress rules, and managed prefix lists).
-- S3 audit logging is decided per bucket from that bucket’s logging
-  configuration or CloudTrail data-event selectors (not a plan-wide string
-  match). Write-only selectors stay unverified.
-- Unknown CIDR sources on security-group ingress fail closed: they are never
-  ignored and never outweighed by a resolved peer group.
-- Databases open to the internet through for_each-style VPC ingress rules are
-  now reported (FR-029 open instead of unverified).
-- Cloud Run secrets mounted as volumes are treated as volume delivery for
-  FR-003, unless the same secret is also injected as an environment variable
-  on that service (then environment wins).
-- R2 object lock reflects whole-bucket retention rules in this root (true,
-  false, or omitted when unclear). R2 always reports encryption at rest.
+- Load balancers whose exposure cannot be determined are no longer reported
+  as private.
+- Security-group ingress sources that are unknown at plan time are treated as
+  unknown and are never outweighed by a resolved peer group. Direct
+  references to security groups created in the same plan are still
+  recognised as restricted.
 
 ## [0.14.0] — 2026-10-11
 
