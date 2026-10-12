@@ -1,20 +1,21 @@
 # Changelog
 
-## [Unreleased]
+## [0.16.0] — 2026-10-12
 
 ### Added
-- Database TLS enforcement is derived from RDS/Aurora parameter groups
-  (`attributes.tls_enforced`), including groups reached through module inputs,
-  locals, and try()/conditional expressions. Known planned names match by
-  `name` only; the locals subtree heuristic applies only when the planned
-  value is unknown.
-- Security groups (and managed prefix lists) passed through module outputs are
-  resolved for load-balancer and database associations and ingress peers.
+- Database TLS enforcement is read from RDS and Aurora parameter groups
+  (rds.force_ssl, require_secure_transport), including groups created by
+  modules. When no custom value is set, RDS for PostgreSQL 15 and later is
+  treated as enforcing TLS and 14 and earlier as not; other engines are
+  reported only when the parameter is set. Used by a new rule on the Fray
+  service.
+- Security groups passed through module outputs are resolved for load balancer
+  and database exposure.
 
 ### Changed
-- Cloudflare R2 no longer reports `audit_logging: false`; the attribute is
-  omitted so FR-023 is unverified instead of open (Data Access Logs are not
-  representable in the Cloudflare v5 Terraform provider).
+- Cloudflare R2 audit logging is reported as unverified instead of open, since
+  R2 Data Access Logs are enabled in the dashboard and are not visible in
+  Terraform.
 
 ## [0.15.1] — 2026-10-12
 
