@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- Database TLS enforcement is derived from RDS/Aurora parameter groups
+  (`attributes.tls_enforced`).
+- Security groups (and managed prefix lists) passed through module outputs are
+  resolved for load-balancer and database associations and ingress peers.
+
+### Changed
+- Cloudflare R2 no longer reports `audit_logging: false`; the attribute is
+  omitted so FR-023 is unverified instead of open (Data Access Logs are not
+  representable in the Cloudflare v5 Terraform provider).
+
 ## [0.15.1] — 2026-10-12
 
 Upgrading may change results on existing repositories; see "Changed".
