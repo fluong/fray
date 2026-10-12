@@ -214,17 +214,11 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		}
 	}
 
-	// Mirror S3: emit attributes.audit_logging only when this root owns
-	// audit configuration (fray.yaml audit_config: owned_by_this_root).
-	// Covered → true; not covered → false; not owned → omit (unverified).
+	// Positive DATA_READ coverage always emits true. Ownership only decides
+	// missing evidence: owned_by_this_root → false; otherwise omit (unverified).
 	owned := cfg.AuditConfig == "owned_by_this_root"
-	var secretAudit, storageAudit *bool
-	if owned {
-		s := auditDataRead(audits, "secretmanager.googleapis.com")
-		secretAudit = &s
-		v := auditDataRead(audits, "storage.googleapis.com")
-		storageAudit = &v
-	}
+	secretAudit := auditLoggingPtr(auditDataRead(audits, "secretmanager.googleapis.com"), owned)
+	storageAudit := auditLoggingPtr(auditDataRead(audits, "storage.googleapis.com"), owned)
 
 	idx, err := indexConfig(plan)
 	if err != nil {
@@ -1324,6 +1318,21 @@ func auditDataRead(audits []planResource, service string) bool {
 		}
 	}
 	return false
+}
+
+// auditLoggingPtr returns attributes.audit_logging when it should be set.
+// covered (positive evidence in the plan) → true regardless of ownership.
+// Not covered + owned_by_this_root → false. Not covered + not owned → nil (omit).
+func auditLoggingPtr(covered, owned bool) *bool {
+	if covered {
+		t := true
+		return &t
+	}
+	if owned {
+		f := false
+		return &f
+	}
+	return nil
 }
 
 // r2PublicCause reports the enabled r2.dev or custom-domain resource for this
