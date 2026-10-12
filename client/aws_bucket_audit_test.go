@@ -211,7 +211,7 @@ func TestBucketAuditTable(t *testing.T) {
 }
 
 func TestBucketAuditOwnedGate(t *testing.T) {
-	plan := []byte(`{
+	trailPlan := []byte(`{
 	  "resource_changes": [
 	    {"address":"aws_s3_bucket.app","mode":"managed","type":"aws_s3_bucket","change":{"after":{"bucket":"app-data"}}},
 	    {"address":"aws_cloudtrail.main","mode":"managed","type":"aws_cloudtrail","change":{"after":{
@@ -223,30 +223,61 @@ func TestBucketAuditOwnedGate(t *testing.T) {
 	    {"address":"aws_cloudtrail.main","type":"aws_cloudtrail","name":"main","mode":"managed","expressions":{}}
 	  ]}}
 	}`)
-	t.Run("owned", func(t *testing.T) {
-		doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\naudit_config: owned_by_this_root\n"), "", Source{
-			Repo: "a/b", Commit: "x", Tool: "terraform", Fidelity: "plan",
-		}, t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		el := findKind(doc, "object_storage")
-		if el.Attributes["audit_logging"] != true {
-			t.Fatalf("owned: audit_logging=%#v", el.Attributes["audit_logging"])
-		}
-	})
-	t.Run("not owned", func(t *testing.T) {
-		doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "", Source{
-			Repo: "a/b", Commit: "x", Tool: "terraform", Fidelity: "plan",
-		}, t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		el := findKind(doc, "object_storage")
-		if _, ok := el.Attributes["audit_logging"]; ok {
-			t.Fatalf("not owned: audit_logging should be absent, got %#v", el.Attributes["audit_logging"])
-		}
-	})
+	loggingPlan := []byte(`{
+	  "resource_changes": [
+	    {"address":"aws_s3_bucket.app","mode":"managed","type":"aws_s3_bucket","change":{"after":{"bucket":"app-data"}}},
+	    {"address":"aws_s3_bucket_logging.app","mode":"managed","type":"aws_s3_bucket_logging","change":{"after":{"target_bucket":"logs"}}}
+	  ],
+	  "configuration": {"root_module":{"resources":[
+	    {"address":"aws_s3_bucket.app","type":"aws_s3_bucket","name":"app","mode":"managed","expressions":{"bucket":{"constant_value":"app-data"}}},
+	    {"address":"aws_s3_bucket_logging.app","type":"aws_s3_bucket_logging","name":"app","mode":"managed","expressions":{
+	      "bucket":{"references":["aws_s3_bucket.app.id","aws_s3_bucket.app"]}
+	    }}
+	  ]}}
+	}`)
+	barePlan := []byte(`{
+	  "resource_changes": [
+	    {"address":"aws_s3_bucket.app","mode":"managed","type":"aws_s3_bucket","change":{"after":{"bucket":"app-data"}}}
+	  ],
+	  "configuration": {"root_module":{"resources":[
+	    {"address":"aws_s3_bucket.app","type":"aws_s3_bucket","name":"app","mode":"managed","expressions":{"bucket":{"constant_value":"app-data"}}}
+	  ]}}
+	}`)
+	ownedCfg := []byte("schema_version: fray-config/v1\naudit_config: owned_by_this_root\n")
+	plainCfg := []byte("schema_version: fray-config/v1\n")
+	src := Source{Repo: "a/b", Commit: "x", Tool: "terraform", Fidelity: "plan"}
+
+	cases := []struct {
+		name string
+		plan []byte
+		cfg  []byte
+		want any // bool or nil (absent)
+	}{
+		{name: "trail covering bucket owned true", plan: trailPlan, cfg: ownedCfg, want: true},
+		{name: "trail covering bucket not owned true", plan: trailPlan, cfg: plainCfg, want: true},
+		{name: "logging present not owned true", plan: loggingPlan, cfg: plainCfg, want: true},
+		{name: "logging present owned true", plan: loggingPlan, cfg: ownedCfg, want: true},
+		{name: "no coverage owned false", plan: barePlan, cfg: ownedCfg, want: false},
+		{name: "no coverage not owned absent", plan: barePlan, cfg: plainCfg, want: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc, _, err := Parse(tc.plan, tc.cfg, "", src, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, ok := findKind(doc, "object_storage").Attributes["audit_logging"]
+			if tc.want == nil {
+				if ok {
+					t.Fatalf("audit_logging should be absent, got %#v", got)
+				}
+				return
+			}
+			if !ok || got != tc.want {
+				t.Fatalf("audit_logging=%#v (ok=%v) want %v", got, ok, tc.want)
+			}
+		})
+	}
 }
 
 func findKind(doc DFD, kind string) *Element {
