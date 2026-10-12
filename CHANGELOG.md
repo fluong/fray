@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.16.1] — 2026-10-12
 
 ### Fixed
 - PR comments and SARIF name the specific attribute for rules with any/all
