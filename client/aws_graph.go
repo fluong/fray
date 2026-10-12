@@ -668,12 +668,14 @@ func stringList(v any) []string {
 	return out
 }
 
-// publicListener picks transport and anonymity from this LB's listeners.
+// publicListener picks transport and edge authz_scope from this LB's listeners.
 // Caller already decided the LB is internet-exposed (attributes.public=true).
-func publicListener(lb planResource, resources []planResource, idx configIndex) (string, string, bool) {
-	transport := "unknown"
+// scope is "public" (anonymous forward/redirect), "authenticated" (Cognito/OIDC
+// default action), or "" when undeterminable.
+func publicListener(lb planResource, resources []planResource, idx configIndex) (addr, transport, scope string) {
+	transport = "unknown"
 	anonymous := false
-	addr := ""
+	authenticated := false
 	found := false
 	for _, ln := range listenersFor(lb, resources, idx) {
 		found = true
@@ -689,11 +691,33 @@ func publicListener(lb planResource, resources []planResource, idx configIndex) 
 		if listenerAnonymous(ln.values) {
 			anonymous = true
 		}
+		if listenerAuthenticated(ln.values) {
+			authenticated = true
+		}
 	}
 	if !found {
-		return "", "unknown", false
+		return "", "unknown", ""
 	}
-	return addr, transport, anonymous
+	if anonymous {
+		return addr, transport, "public"
+	}
+	if authenticated {
+		return addr, transport, "authenticated"
+	}
+	return addr, transport, ""
+}
+
+func listenerAuthenticated(values map[string]any) bool {
+	for _, action := range asList(values["default_action"]) {
+		m, ok := action.(map[string]any)
+		if !ok {
+			continue
+		}
+		if len(asList(m["authenticate_cognito"])) > 0 || len(asList(m["authenticate_oidc"])) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func listenersFor(lb planResource, resources []planResource, idx configIndex) []planResource {

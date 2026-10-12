@@ -282,14 +282,14 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 			}
 			extra = append(extra, public)
 		}
-		listener, transport, anonymous := publicListener(lb, resources, idx)
+		listener, transport, scope := publicListener(lb, resources, idx)
 		flow := &Flow{
 			From: public.canonicalKey(), To: lbEl.canonicalKey(),
 			DataClass: "unknown", Transport: transport,
 		}
-		if anonymous {
-			flow.AuthzScope = "public"
-			flow.AuthzGrants = normalizeAuthzGrants("public")
+		if scope != "" {
+			flow.AuthzScope = scope
+			flow.AuthzGrants = normalizeAuthzGrants(scope)
 			if listener != "" {
 				flow.Causes = map[string]string{"authz_scope": listener}
 			}
