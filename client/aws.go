@@ -186,9 +186,12 @@ func awsBucketElement(r planResource, resources []planResource, idx configIndex,
 	} else if reason := awsObjectLockAbsentReason(r, resources, idx); reason != "" {
 		causes["object_lock"] = reason
 	}
-	if auditOwned {
-		if audit, known := bucketAudit(r, resources, idx); known {
-			attrs["audit_logging"] = audit
+	// Positive logging/trail evidence always emits true. Ownership only
+	// decides missing evidence: owned → false; otherwise omit. WriteOnly /
+	// read-only-false selectors stay unknown (!known) and are always omitted.
+	if audit, known := bucketAudit(r, resources, idx); known {
+		if ptr := auditLoggingPtr(audit, auditOwned); ptr != nil {
+			attrs["audit_logging"] = *ptr
 		}
 	}
 	el := &Element{

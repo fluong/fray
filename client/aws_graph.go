@@ -284,16 +284,16 @@ func encrypted(values map[string]any) bool {
 	return false
 }
 
-// bucketAudit reports attributes.audit_logging for an S3 bucket when
-// audit_config is owned_by_this_root.
+// bucketAudit reports whether S3 object reads are audit-logged for bucket.
 //
-// Outcomes (known=false ⇒ omit the attribute → FR-023 unverified):
-//   - aws_s3_bucket_logging references this bucket → true
+// Outcomes (caller combines with owned_by_this_root):
+//   - aws_s3_bucket_logging references this bucket → true, known
 //   - aws_cloudtrail (enable_logging not false) selects this bucket for
-//     S3 object data events that include reads → true
-//   - Only WriteOnly / readOnly=false selectors cover the bucket → omit
-//     (reads may not be logged; do not emit true or false)
-//   - Owned root with no covering logging or trail → false
+//     S3 object data events that include reads → true, known
+//   - Only WriteOnly / readOnly=false selectors cover the bucket → known=false
+//     (reads may not be logged; omit regardless of ownership)
+//   - No covering logging or trail → false, known (caller emits false only
+//     when owned_by_this_root; otherwise omits → FR-023 unverified)
 func bucketAudit(bucket planResource, resources []planResource, idx configIndex) (audit bool, known bool) {
 	if bucketLogged(bucket, resources, idx) {
 		return true, true
