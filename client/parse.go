@@ -19,6 +19,8 @@ var ignoredTypes = map[string]bool{
 	"google_artifact_registry_repository":            true,
 	"google_artifact_registry_repository_iam_member": true,
 	"google_project_iam_audit_config":                true,
+	"google_folder_iam_audit_config":                 true,
+	"google_organization_iam_audit_config":           true,
 	"google_project_iam_member":                      true,
 	"google_secret_manager_secret_iam_member":        true,
 	"google_cloud_run_v2_service_iam_member":         true,
@@ -191,7 +193,9 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			secretIAM = append(secretIAM, r)
 		case "google_project_iam_member":
 			projectIAM = append(projectIAM, r)
-		case "google_project_iam_audit_config":
+		case "google_project_iam_audit_config",
+			"google_folder_iam_audit_config",
+			"google_organization_iam_audit_config":
 			audits = append(audits, r)
 		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_secretsmanager_secret":
 			// Mapped in buildAWS. Not warned as unknown.
@@ -1295,9 +1299,14 @@ func gcsRetentionLocked(v any) (locked, known bool) {
 	return false, false
 }
 
+// auditDataRead reports whether a GCP IAM audit config covers DATA_READ for
+// service. A config matches when its service equals the target or
+// "allServices". Project, folder, and organization audit configs are all
+// considered. exempted_members do not negate coverage.
 func auditDataRead(audits []planResource, service string) bool {
 	for _, a := range audits {
-		if a.values["service"] != service {
+		svc, _ := a.values["service"].(string)
+		if svc != service && svc != "allServices" {
 			continue
 		}
 		for _, c := range asList(a.values["audit_log_config"]) {
