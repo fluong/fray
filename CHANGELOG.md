@@ -13,8 +13,11 @@
   VPC_LINK backends are not modeled as DFD peers yet.
 
 ### Changed
-- ALB listeners with Cognito or OIDC default actions set edge
-  `authz_scope=authenticated` instead of omitting it.
+- ALB edge `authz_scope` aggregates the listener default action and
+  `aws_lb_listener_rule` resources: Cognito/OIDC on every app path is
+  `authenticated`; any forward without an authenticate step first is
+  `public`. Redirect and fixed-response alone do not make the entry
+  anonymous.
 
 ## [0.16.1] — 2026-10-12
 

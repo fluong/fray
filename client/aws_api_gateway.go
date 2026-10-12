@@ -417,10 +417,17 @@ func integrationBackendFlow(
 			From: apiEl.canonicalKey(), To: fnEl.canonicalKey(),
 			DataClass: "unknown", Transport: transport,
 		}, true
-	case "http", "vpc_link":
-		// HTTP URLs and VPC links are not modeled as DFD elements in this
-		// change — no peer → no backend flow (transport classification is
-		// covered by integrationTransport unit tests).
+	case "http":
+		// External HTTP/HTTP_PROXY URLs have no DFD peer element — no
+		// partial flow or element is emitted. Transport classification is
+		// covered by integrationTransport unit tests.
+		return nil, false
+	case "vpc_link":
+		// TODO: when a VPC_LINK resolves to exactly one load_balancer in the
+		// plan (aws_api_gateway_vpc_link.target_arns / aws_apigatewayv2_vpc_link
+		// + integration_uri listener ARN), emit API → LB with transport from
+		// the integration (https→tls, http→plaintext, else unknown). Until
+		// then, no peer → no backend flow.
 		return nil, false
 	default:
 		return nil, false
@@ -429,6 +436,8 @@ func integrationBackendFlow(
 
 // integrationTransport classifies an API Gateway integration.
 // kind is "lambda", "http", "vpc_link", or "".
+// Only "lambda" currently produces a backend flow (see integrationBackendFlow).
+// HTTP and VPC_LINK kinds are retained for unit tests and the VPC_LINK TODO.
 func integrationTransport(integ planResource) (transport, kind string) {
 	typ := strings.ToUpper(stringAttr(integ.values["integration_type"]))
 	if typ == "" {
