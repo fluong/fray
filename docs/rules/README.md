@@ -13,15 +13,15 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-001](FR-001.md) | Network entry is not anonymous | medium | Spoofing | AWS, Google Cloud |  |
 | [FR-010](FR-010.md) | Object storage is not public | high | Information disclosure | AWS, Google Cloud, Cloudflare |  |
 | [FR-025](FR-025.md) | Object storage blocks public access | high | Information disclosure | AWS, Google Cloud, Cloudflare |  |
-| [FR-029](FR-029.md) | Relational database is not directly reachable from the internet | high | Information disclosure | AWS | 2026-10-11 |
+| [FR-029](FR-029.md) | Relational database is not directly reachable from the internet | high | Information disclosure | AWS, Google Cloud | 2026-10-11 |
 
 ## Encryption
 
 | ID | Title | Severity | STRIDE | Platforms | Added |
 |---|---|---|---|---|---|
 | [FR-026](FR-026.md) | Traffic that crosses a trust boundary is encrypted | medium | Information disclosure | AWS, Google Cloud |  |
-| [FR-030](FR-030.md) | Relational database is encrypted at rest | high | Information disclosure | AWS | 2026-10-11 |
-| [FR-031](FR-031.md) | Database requires TLS for client connections | medium | Information disclosure | AWS | 2026-10-12 |
+| [FR-030](FR-030.md) | Relational database is encrypted at rest | high | Information disclosure | AWS, Google Cloud | 2026-10-11 |
+| [FR-031](FR-031.md) | Database requires TLS for client connections | medium | Information disclosure | AWS, Google Cloud | 2026-10-12 |
 
 ## Identity
 
@@ -50,7 +50,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-008](FR-008.md) | Secret store cannot be destroyed by the tool | low | Tampering, Denial of service | AWS, Google Cloud |  |
 | [FR-012](FR-012.md) | Object storage cannot be destroyed by the tool | medium | Tampering, Denial of service | AWS, Google Cloud, Cloudflare |  |
 | [FR-014](FR-014.md) | Object storage keeps prior versions | medium | Tampering, Denial of service | AWS, Google Cloud, Cloudflare |  |
-| [FR-033](FR-033.md) | Relational database cannot be destroyed by the tool | medium | Tampering, Denial of service | AWS | 2026-10-11 |
+| [FR-033](FR-033.md) | Relational database cannot be destroyed by the tool | medium | Tampering, Denial of service | AWS, Google Cloud | 2026-10-11 |
 
 ## Supply chain
 
