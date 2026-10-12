@@ -193,6 +193,158 @@ func TestDBTLSEnforced(t *testing.T) {
 			},
 			wantVal: true, wantKnown: true,
 		},
+		{
+			name: "rds-shaped try() create=true → resolved empty group pg16 true",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "module.db.module.db_instance.aws_db_instance.this[0]",
+					values:       map[string]any{"engine": "postgres", "engine_version": "16"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				pg := planResource{
+					typ: "aws_db_parameter_group", address: "module.db.module.db_parameter_group.aws_db_parameter_group.this[0]",
+					values: map[string]any{"family": "postgres16", "parameter": []any{}},
+				}
+				idx := configIndex{
+					resources: map[string]exprSet{
+						"module.db.module.db_instance.aws_db_instance.this": {refs: map[string][]string{
+							"parameter_group_name": {"var.parameter_group_name"},
+						}},
+					},
+					calls: map[string]exprSet{
+						"module.db": {constants: map[string]any{"create_db_parameter_group": true}},
+						"module.db.module.db_instance": {refs: map[string][]string{
+							// local = try(aws_db_parameter_group.this[0].name, var.parameter_group_name)
+							"parameter_group_name": {
+								"aws_db_parameter_group.this[0].name",
+								"aws_db_parameter_group.this[0]",
+								"var.parameter_group_name",
+							},
+						}},
+					},
+				}
+				return db, []planResource{db, pg}, idx
+			},
+			wantVal: true, wantKnown: true,
+		},
+		{
+			name: "rds-shaped try() create=false default.postgres16 → true",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "module.db.module.db_instance.aws_db_instance.this[0]",
+					values:       map[string]any{"engine": "postgres", "engine_version": "16"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				idx := configIndex{
+					resources: map[string]exprSet{
+						"module.db.module.db_instance.aws_db_instance.this": {refs: map[string][]string{
+							"parameter_group_name": {"var.parameter_group_name"},
+						}},
+					},
+					calls: map[string]exprSet{
+						"module.db": {
+							constants: map[string]any{
+								"create_db_parameter_group": false,
+								"parameter_group_name":      "default.postgres16",
+							},
+						},
+						"module.db.module.db_instance": {refs: map[string][]string{
+							"parameter_group_name": {
+								"aws_db_parameter_group.this[0].name",
+								"var.parameter_group_name",
+							},
+						}},
+					},
+				}
+				return db, []planResource{db}, idx
+			},
+			wantVal: true, wantKnown: true,
+		},
+		{
+			name: "ternary managed group + unknown external → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "module.db.aws_db_instance.this[0]",
+					values:       map[string]any{"engine": "postgres", "engine_version": "16"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				pg := planResource{
+					typ: "aws_db_parameter_group", address: "module.db.aws_db_parameter_group.app",
+					values: map[string]any{"parameter": []any{}},
+				}
+				idx := configIndex{
+					resources: map[string]exprSet{
+						"module.db.aws_db_instance.this": {refs: map[string][]string{
+							"parameter_group_name": {
+								"aws_db_parameter_group.app.name",
+								"var.external_name",
+							},
+						}},
+					},
+					calls: map[string]exprSet{
+						"module.db": {}, // create unknown; external var not wired
+					},
+				}
+				return db, []planResource{db, pg}, idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			name: "two managed groups as candidates → absent",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "aws_db_instance.db",
+					values:       map[string]any{"engine": "postgres", "engine_version": "16"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				pgA := planResource{
+					typ: "aws_db_parameter_group", address: "aws_db_parameter_group.a",
+					values: map[string]any{"parameter": []any{}},
+				}
+				pgB := planResource{
+					typ: "aws_db_parameter_group", address: "aws_db_parameter_group.b",
+					values: map[string]any{"parameter": []any{}},
+				}
+				idx := configIndex{resources: map[string]exprSet{
+					"aws_db_instance.db": {refs: map[string][]string{
+						"parameter_group_name": {
+							"aws_db_parameter_group.a.name",
+							"aws_db_parameter_group.b.name",
+						},
+					}},
+				}}
+				return db, []planResource{db, pgA, pgB}, idx
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
+			name: "demo-shaped local via var → empty group pg16 true",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "module.db.module.db_instance.aws_db_instance.this[0]",
+					values:       map[string]any{"engine": "postgres", "engine_version": "16"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				pg := planResource{
+					typ: "aws_db_parameter_group", address: "module.db.module.db_parameter_group.aws_db_parameter_group.this[0]",
+					values: map[string]any{"family": "postgres16", "parameter": []any{}},
+				}
+				idx := configIndex{
+					resources: map[string]exprSet{
+						"module.db.module.db_instance.aws_db_instance.this": {refs: map[string][]string{
+							"parameter_group_name": {"var.parameter_group_name"},
+						}},
+					},
+					calls: map[string]exprSet{
+						"module.db.module.db_instance": {refs: map[string][]string{
+							"parameter_group_name": {"local.parameter_group_name_id"},
+						}},
+					},
+				}
+				return db, []planResource{db, pg}, idx
+			},
+			wantVal: true, wantKnown: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
