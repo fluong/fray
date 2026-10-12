@@ -2,17 +2,22 @@
 
 ## [Unreleased]
 
-### Fixed
-- On Google Cloud, Secret Manager and Cloud Storage data-access audit coverage
-  now recognises `allServices` and folder/organisation IAM audit configs with
-  `DATA_READ`, not only a project config for the exact service.
-- Audit evidence present in the plan always counts: GCP Secret Manager / Cloud
-  Storage `DATA_READ` configs and S3 bucket logging or a covering CloudTrail
-  data-event selector set `audit_logging: true` even without
-  `audit_config: owned_by_this_root`. That setting only decides whether
-  *missing* evidence is reported as off (open) or left unset (unverified), so
-  FR-006 and FR-023 may move from open to unverified when no audit
-  configuration is in the plan and ownership is not declared.
+## [0.15.1] — 2026-10-12
+
+Upgrading may change results on existing repositories; see "Changed".
+
+### Changed
+- On Google Cloud, Data Access audit configurations are recognised for the
+  specific service, for allServices, and at folder and organization level when
+  present in the plan.
+- Audit configurations present in the plan always count. When none covers a
+  Secret Manager secret, Cloud Storage bucket or S3 bucket, the result is open
+  only if `audit_config: owned_by_this_root` is set; otherwise it is
+  unverified. On Google Cloud, FR-006 and FR-023 may move from open to
+  unverified.
+- S3 server access logging and CloudTrail data-event coverage present in the
+  plan now count even without `audit_config: owned_by_this_root`, so some
+  FR-023 findings may move from unverified to mitigated.
 
 ## [0.15.0] — 2026-10-12
 
