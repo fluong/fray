@@ -375,6 +375,9 @@ func TestR2ObjectLockTable(t *testing.T) {
 			if bucket.Attributes["encrypted_at_rest"] != true {
 				t.Fatalf("encrypted_at_rest=%#v want true", bucket.Attributes["encrypted_at_rest"])
 			}
+			if _, ok := bucket.Attributes["audit_logging"]; ok {
+				t.Fatalf("audit_logging=%#v want absent (FR-023 unverified)", bucket.Attributes["audit_logging"])
+			}
 			got, ok := bucket.Attributes["object_lock"]
 			switch want := tc.wantLock.(type) {
 			case nil:
