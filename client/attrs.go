@@ -30,6 +30,7 @@ var allowedAttributes = map[string]attrKind{
 	"versioning":             attrBool,
 	"object_lock":            attrBool,
 	"network_restricted":     attrBool,
+	"tls_enforced":           attrBool,
 	"max_instances":          attrInt,
 	"region":                 attrRegion,
 }

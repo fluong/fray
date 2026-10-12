@@ -316,6 +316,7 @@
         "attributes.versioning",
         "attributes.object_lock",
         "attributes.network_restricted",
+        "attributes.tls_enforced",
         "data_class",
         "transport",
         "authz_scope",

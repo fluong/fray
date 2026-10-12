@@ -611,6 +611,9 @@
         },
         "network_restricted": {
           "type": "boolean"
+        },
+        "tls_enforced": {
+          "type": "boolean"
         }
       }
     },
