@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- On Google Cloud, Secret Manager and GCS data-access audit coverage now
+  recognises `allServices` and folder/organisation IAM audit configs with
+  `DATA_READ`, not only a project config for the exact service.
+- On Google Cloud, `attributes.audit_logging` is emitted only when
+  `audit_config: owned_by_this_root` (same gate as S3). Without that setting,
+  FR-006 and FR-023 may move from open to unverified when no audit
+  configuration is in the plan.
+
 ## [0.15.0] — 2026-10-12
 
 Upgrading may change results on existing repositories; see "Changed".
