@@ -171,6 +171,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		secrets    []planResource
 		gcs        []planResource
 		r2         []planResource
+		cloudSQL   []planResource
 		invokers   []planResource
 		secretIAM  []planResource
 		projectIAM []planResource
@@ -179,7 +180,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 	seenUnknown := map[string]bool{}
 	for _, r := range resources {
 		switch r.typ {
-		case "google_cloud_run_v2_service":
+		case "google_cloud_run_v2_service", "google_cloud_run_service":
 			services = append(services, r)
 		case "google_secret_manager_secret":
 			secrets = append(secrets, r)
@@ -187,6 +188,8 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			gcs = append(gcs, r)
 		case "cloudflare_r2_bucket":
 			r2 = append(r2, r)
+		case "google_sql_database_instance":
+			cloudSQL = append(cloudSQL, r)
 		case "google_cloud_run_v2_service_iam_member":
 			invokers = append(invokers, r)
 		case "google_secret_manager_secret_iam_member":
@@ -246,6 +249,9 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 	for _, r := range r2 {
 		add(r2Element(r, resources, idx, lifecycle.protected(r.address)))
 	}
+	for _, r := range cloudSQL {
+		add(cloudSQLElement(r, lifecycle.protected(r.address)))
+	}
 
 	awsOwned := cfg.AuditConfig == "owned_by_this_root"
 	awsEls, awsFlows, awsBounds, awsWarns, err := buildAWS(plan, resources, moduleDir, lifecycle, awsOwned)
@@ -257,8 +263,29 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		add(el)
 	}
 
+	attachedSQL := map[string]*Element{}
+	attachedPostgres := map[string]*Element{}
+	for _, svc := range services {
+		inst := resolveExclusiveCloudSQL(svc, cloudSQL)
+		if inst == nil {
+			continue
+		}
+		el := findAddress(elements, inst.address)
+		if el == nil {
+			continue
+		}
+		attachedSQL[svc.address] = el
+		if cloudSQLIsPostgres(*inst) {
+			attachedPostgres[svc.address] = el
+		}
+	}
+
+	// When every DATABASE_URL service attaches to exactly one Postgres Cloud SQL
+	// instance, drop the inferred database — flows use the iac element instead.
 	db := databaseElement(secrets, services)
-	if db != nil {
+	if db != nil && suppressInferredDatabase(services, attachedPostgres) {
+		db = nil
+	} else if db != nil {
 		elements = append(elements, db)
 	}
 	llm := vertexElement(projectIAM, services)
@@ -298,7 +325,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		return DFD{}, warnings, err
 	}
 
-	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, resources, elements, &warnings)
+	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, resources, elements, attachedSQL, &warnings)
 	flows = append(flows, awsFlows...)
 	for _, f := range cfg.Flows {
 		flow, err := declaredFlow(f, elements)
@@ -401,6 +428,9 @@ func RedactionDisabled(config []byte) (bool, error) {
 }
 
 func cloudRunElement(r planResource, invokers []planResource, prevent bool) (*Element, []string) {
+	if r.typ == "google_cloud_run_service" {
+		return cloudRunV1Element(r, invokers, prevent)
+	}
 	var warnings []string
 	attrs := map[string]any{}
 	name, _ := r.values["name"].(string)
@@ -443,6 +473,42 @@ func cloudRunElement(r planResource, invokers []planResource, prevent bool) (*El
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
 	}, warnings
+}
+
+// cloudRunV1Element maps google_cloud_run_service. Attribute coverage is
+// thinner than v2; Cloud SQL attachment uses the revision annotation.
+func cloudRunV1Element(r planResource, invokers []planResource, prevent bool) (*Element, []string) {
+	attrs := map[string]any{}
+	name, _ := r.values["name"].(string)
+	if loc, ok := r.values["location"].(string); ok && regionPattern.MatchString(loc) {
+		attrs["region"] = loc
+	}
+	setDeletionProtection(attrs, r.values, prevent)
+	if publicInvoker(r, invokers) {
+		attrs["public"] = true
+	}
+	return &Element{
+		Name: DisplayName(r.address, name, "container_service"), Type: "process", Kind: "container_service", Provider: "gcp",
+		Provenance: "iac",
+		Evidence:   Evidence{Addresses: []string{r.address}},
+		Attributes: attrs,
+	}, nil
+}
+
+// suppressInferredDatabase is true when at least one service has DATABASE_URL
+// and every such service attaches to exactly one Postgres Cloud SQL instance.
+func suppressInferredDatabase(services []planResource, attachedPostgres map[string]*Element) bool {
+	any := false
+	for _, svc := range services {
+		if !hasEnv(svc, "DATABASE_URL") {
+			continue
+		}
+		any = true
+		if attachedPostgres[svc.address] == nil {
+			return false
+		}
+	}
+	return any
 }
 
 func secretElement(r planResource, audit *bool, prevent bool) *Element {
@@ -844,7 +910,7 @@ func secretRef(env map[string]any) string {
 	return ""
 }
 
-func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectIAM, allResources []planResource, elements []*Element, warnings *[]string) []*Flow {
+func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectIAM, allResources []planResource, elements []*Element, attachedSQL map[string]*Element, warnings *[]string) []*Flow {
 	var flows []*Flow
 	secretByID := map[string]*Element{}
 	for _, s := range secrets {
@@ -959,7 +1025,13 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 			}
 			flows = append(flows, flow)
 		}
-		if db != nil && hasEnv(svc, "DATABASE_URL") {
+		// Cloud SQL connector/proxy attachment wins over inferred DATABASE_URL.
+		if sqlEl := attachedSQL[svc.address]; sqlEl != nil {
+			flows = append(flows, &Flow{
+				From: secTemp(svcEl), To: secTemp(sqlEl),
+				DataClass: "unknown", Transport: "tls",
+			})
+		} else if db != nil && hasEnv(svc, "DATABASE_URL") {
 			flows = append(flows, &Flow{
 				From: secTemp(svcEl), To: secTemp(db),
 				DataClass: "unknown", Transport: "tls",
