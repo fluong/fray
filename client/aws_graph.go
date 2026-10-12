@@ -674,13 +674,17 @@ func stringList(v any) []string {
 //
 // scope is "public" when any default action or rule forwards to the app without
 // an authenticate-cognito/authenticate-oidc step first (causeAddr is that
-// listener or rule address); "authenticated" when every app path is gated
-// (default action and every forwarding rule); "" when a path is undeterminable
-// (unknown listener_arn attachment or dynamic/unknown actions).
+// listener or rule address); "authenticated" when every attributed app path is
+// gated; "" when a path is undeterminable (dynamic/unknown actions) or when
+// authenticated would apply but any plan-wide listener rule cannot be attributed
+// to a specific listener (we cannot rule out an unauthenticated rule here).
+// A visible anonymous path still yields public even if other rules are
+// unattributable.
 //
 // Redirect-only and fixed-response actions do not make the entry anonymous for
 // the app: they are ignored for authz_scope (neither public nor required to be
-// authenticated).
+// authenticated). Cross-module listener_arn via module outputs is resolved with
+// resolveModuleOutputResource.
 func publicListener(lb planResource, resources []planResource, idx configIndex) (causeAddr, transport, scope string) {
 	transport = "unknown"
 	listeners := listenersFor(lb, resources, idx)
@@ -711,12 +715,7 @@ func publicListener(lb planResource, resources []planResource, idx configIndex) 
 			hasUnknown = true
 		}
 
-		rules, rulesOK := listenerRulesFor(ln, resources, idx)
-		if !rulesOK {
-			hasUnknown = true
-			continue
-		}
-		for _, rule := range rules {
+		for _, rule := range listenerRulesFor(ln, resources, idx) {
 			switch classifyListenerActions(asList(rule.values["action"])) {
 			case pathPublic:
 				hasPublic = true
@@ -738,6 +737,9 @@ func publicListener(lb planResource, resources []planResource, idx configIndex) 
 		return "", transport, ""
 	}
 	if hasAuth {
+		if hasUnattributedListenerRule(resources, idx) {
+			return "", transport, ""
+		}
 		return "", transport, "authenticated"
 	}
 	return "", transport, ""
@@ -859,46 +861,97 @@ func listenersFor(lb planResource, resources []planResource, idx configIndex) []
 	return out
 }
 
-// listenerRulesFor returns aws_lb_listener_rule resources attached to ln.
-// ok is false when a same-module rule has a listener_arn that cannot be
-// resolved to any listener (attachment unknown → omit authz).
-func listenerRulesFor(ln planResource, resources []planResource, idx configIndex) (rules []planResource, ok bool) {
-	mod, _, lnName, lok := splitResourceAddress(ln.address)
-	if !lok {
-		return nil, false
-	}
-	ok = true
+// listenerRulesFor returns aws_lb_listener_rule resources whose listener_arn
+// resolves to ln (including via module outputs).
+func listenerRulesFor(ln planResource, resources []planResource, idx configIndex) []planResource {
+	var rules []planResource
 	for _, r := range resources {
 		if r.typ != "aws_lb_listener_rule" {
 			continue
 		}
-		rm, _, _, rok := splitResourceAddress(r.address)
-		refs := idx.attrRefs(r.address, "listener_arn")
-		if len(refs) == 0 {
-			if rok && rm == mod {
-				ok = false
-			}
-			continue
-		}
-		matched := false
-		matchedAnyListener := false
-		for _, ref := range refs {
-			if containsResource(ref, "aws_lb_listener", lnName) {
-				matched = true
-			}
-			if strings.Contains(ref, "aws_lb_listener.") {
-				matchedAnyListener = true
-			}
-		}
-		if matched {
+		target, ok := resolveListenerRuleTarget(r, resources, idx)
+		if ok && target.address == ln.address {
 			rules = append(rules, r)
-			continue
-		}
-		if rok && rm == mod && !matchedAnyListener {
-			ok = false
 		}
 	}
-	return rules, ok
+	return rules
+}
+
+// hasUnattributedListenerRule is true when any aws_lb_listener_rule in the plan
+// cannot be resolved to exactly one aws_lb_listener. Used to withhold
+// authenticated (not public) when an anonymous rule on this listener cannot be
+// ruled out.
+func hasUnattributedListenerRule(resources []planResource, idx configIndex) bool {
+	for _, r := range resources {
+		if r.typ != "aws_lb_listener_rule" {
+			continue
+		}
+		if _, ok := resolveListenerRuleTarget(r, resources, idx); !ok {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveListenerRuleTarget follows listener_arn references (direct resource or
+// module output) to exactly one aws_lb_listener in the plan.
+func resolveListenerRuleTarget(rule planResource, resources []planResource, idx configIndex) (planResource, bool) {
+	refs := idx.attrRefs(rule.address, "listener_arn")
+	ruleMod, _, _, _ := splitResourceAddress(rule.address)
+	var hits []planResource
+	seen := map[string]bool{}
+	meaningful := false
+	for _, ref := range refs {
+		if isBareModuleRef(ref) {
+			continue
+		}
+		meaningful = true
+		if isModuleOutputRef(ref) {
+			ln, ok := resolveModuleOutputResource(ref, "aws_lb_listener", idx, resources, 0)
+			if !ok {
+				return planResource{}, false
+			}
+			if !seen[ln.address] {
+				seen[ln.address] = true
+				hits = append(hits, ln)
+			}
+			continue
+		}
+		if strings.Contains(ref, "aws_lb_listener.") {
+			found := false
+			for _, r := range resources {
+				if r.typ != "aws_lb_listener" || !listenerRefPointsTo(ref, r, ruleMod) {
+					continue
+				}
+				found = true
+				if !seen[r.address] {
+					seen[r.address] = true
+					hits = append(hits, r)
+				}
+			}
+			if !found {
+				return planResource{}, false
+			}
+			continue
+		}
+		return planResource{}, false
+	}
+	if !meaningful || len(hits) != 1 {
+		return planResource{}, false
+	}
+	return hits[0], true
+}
+
+func listenerRefPointsTo(ref string, ln planResource, ruleMod string) bool {
+	_, _, name, ok := splitResourceAddress(ln.address)
+	if !ok || !containsResource(ref, "aws_lb_listener", name) {
+		return false
+	}
+	lnMod, _, _, _ := splitResourceAddress(ln.address)
+	if strings.HasPrefix(ref, "module.") {
+		return lnMod != "" && strings.HasPrefix(ref, lnMod+".")
+	}
+	return lnMod == ruleMod
 }
 
 func servicesFronted(lb planResource, resources []planResource, elements []*Element, idx configIndex, warnings *[]string) []*Element {

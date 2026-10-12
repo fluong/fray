@@ -179,6 +179,18 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 			entryKind: "load_balancer", authz: "", transport: "tls",
 			fr001: "unverified", fr026: "mitigated", golden: "alb-cognito-unknown-rule.dfd.json",
 		},
+		{
+			name: "alb_cognito_rule_via_module_output",
+			plan: albCognitoCrossModulePlan(t, true),
+			entryKind: "load_balancer", authz: "authenticated", transport: "tls",
+			fr001: "mitigated", fr026: "mitigated", golden: "alb-cognito-rule-via-module-output.dfd.json",
+		},
+		{
+			name: "alb_cognito_rule_unresolvable_arn",
+			plan: albCognitoCrossModulePlan(t, false),
+			entryKind: "load_balancer", authz: "", transport: "tls",
+			fr001: "unverified", fr026: "mitigated", golden: "alb-cognito-rule-unresolvable-arn.dfd.json",
+		},
 	}
 
 	dir := filepath.Join("testdata", "golden", "api-gateway")
@@ -595,6 +607,118 @@ func albCognitoPlan(t *testing.T, o albCognitoOpts) string {
 	return marshalPlan(t, resources, cfgResources)
 }
 
+// albCognitoCrossModulePlan: Cognito default on module.alb listener; rule lives in
+// module.rules. When resolvable, listener_arn is module.alb.listener_arn (module
+// output). When not, listener_arn is an unresolvable local expression.
+func albCognitoCrossModulePlan(t *testing.T, resolvable bool) string {
+	t.Helper()
+	resources := []map[string]any{
+		{
+			"address": "module.alb.aws_lb.app", "mode": "managed", "type": "aws_lb",
+			"name": "app", "change": map[string]any{"after": map[string]any{"name": "app", "internal": false}},
+		},
+		{
+			"address": "module.alb.aws_security_group.alb", "mode": "managed", "type": "aws_security_group",
+			"name": "alb", "change": map[string]any{"after": map[string]any{
+				"ingress": []any{map[string]any{
+					"from_port": float64(443), "to_port": float64(443), "protocol": "tcp",
+					"cidr_blocks": []any{"0.0.0.0/0"},
+				}},
+			}},
+		},
+		{
+			"address": "module.alb.aws_lb_listener.https", "mode": "managed", "type": "aws_lb_listener",
+			"name": "https", "change": map[string]any{"after": map[string]any{
+				"port": float64(443), "protocol": "HTTPS",
+				"default_action": []any{map[string]any{
+					"type": "authenticate-cognito",
+					"authenticate_cognito": []any{map[string]any{
+						"user_pool_arn": "arn:aws:cognito-idp:us-east-1:1:userpool/x",
+					}},
+				}},
+			}},
+		},
+		{
+			"address": "module.rules.aws_lb_listener_rule.app", "mode": "managed", "type": "aws_lb_listener_rule",
+			"name": "app", "change": map[string]any{"after": map[string]any{
+				"action": []any{
+					map[string]any{
+						"type": "authenticate-cognito", "order": float64(1),
+						"authenticate_cognito": []any{map[string]any{
+							"user_pool_arn": "arn:aws:cognito-idp:us-east-1:1:userpool/x",
+						}},
+					},
+					map[string]any{
+						"type": "forward", "order": float64(2),
+						"target_group_arn": "arn:aws:elasticloadbalancing:us-east-1:1:targetgroup/app/x",
+					},
+				},
+			}},
+		},
+	}
+	ruleListenerRefs := []any{"local.unknown_listener"}
+	if resolvable {
+		ruleListenerRefs = []any{"module.alb.listener_arn", "module.alb"}
+	}
+	doc := map[string]any{
+		"resource_changes": resources,
+		"configuration": map[string]any{
+			"root_module": map[string]any{
+				"module_calls": map[string]any{
+					"alb": map[string]any{
+						"expressions": map[string]any{},
+						"module": map[string]any{
+							"resources": []map[string]any{
+								{
+									"address": "aws_lb.app", "type": "aws_lb", "name": "app", "mode": "managed",
+									"expressions": map[string]any{
+										"security_groups": map[string]any{"references": []any{"aws_security_group.alb.id", "aws_security_group.alb"}},
+									},
+								},
+								{
+									"address": "aws_security_group.alb", "type": "aws_security_group", "name": "alb", "mode": "managed",
+									"expressions": map[string]any{},
+								},
+								{
+									"address": "aws_lb_listener.https", "type": "aws_lb_listener", "name": "https", "mode": "managed",
+									"expressions": map[string]any{
+										"load_balancer_arn": map[string]any{"references": []any{"aws_lb.app.arn", "aws_lb.app"}},
+									},
+								},
+							},
+							"outputs": map[string]any{
+								"listener_arn": map[string]any{
+									"expression": map[string]any{
+										"references": []any{"aws_lb_listener.https.arn", "aws_lb_listener.https"},
+									},
+								},
+							},
+						},
+					},
+					"rules": map[string]any{
+						"expressions": map[string]any{},
+						"module": map[string]any{
+							"resources": []map[string]any{
+								{
+									"address": "aws_lb_listener_rule.app", "type": "aws_lb_listener_rule", "name": "app", "mode": "managed",
+									"expressions": map[string]any{
+										"listener_arn": map[string]any{"references": ruleListenerRefs},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
 func marshalPlan(t *testing.T, resources, cfgResources []map[string]any) string {
 	t.Helper()
 	doc := map[string]any{
@@ -651,6 +775,8 @@ func TestAPIGatewayOutcomeTable(t *testing.T) {
 		{"alb_cognito_public_rule", "open", "mitigated"},
 		{"alb_cognito_all_rules_auth", "mitigated", "mitigated"},
 		{"alb_cognito_unknown_rule", "unverified", "mitigated"},
+		{"alb_cognito_rule_via_module_output", "mitigated", "mitigated"},
+		{"alb_cognito_rule_unresolvable_arn", "unverified", "mitigated"},
 	}
 	for _, r := range rows {
 		b.WriteString("| " + r.name + " | " + r.fr001 + " | " + r.fr026 + " |\n")
