@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.24.1] — 2026-10-13
+
 ### Fixed
 - IAM policy documents that Terraform resolves during planning (`data.aws_iam_policy_document`
   with only literal values) are now read. Previously the grant could be shown as unverified or
@@ -410,7 +412,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.24.1...HEAD
+[0.24.1]: https://github.com/fluong/fray/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/fluong/fray/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/fluong/fray/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/fluong/fray/compare/v0.22.0...v0.22.1
