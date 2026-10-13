@@ -168,6 +168,17 @@ func collectRefs(v any, out *[]string) {
 	}
 }
 
+// loadDataResources collects data sources from a terraform show -json plan.
+//
+// Plan JSON (format_version 1.x) stores data.* values in two places:
+//   - resource_changes with mode=data — reads that still run during apply, or
+//     whose results depend on unknown managed values
+//   - prior_state.values.root_module(.child_modules)* — data sources Terraform
+//     already resolved during planning (every argument known; common for
+//     aws_iam_policy_document with only literals)
+//
+// See https://developer.hashicorp.com/terraform/internals/json-format
+// (resource_changes, prior_state). resource_changes wins on address collision.
 func loadDataResources(plan []byte) ([]planResource, error) {
 	var root struct {
 		ResourceChanges []struct {
@@ -178,20 +189,71 @@ func loadDataResources(plan []byte) ([]planResource, error) {
 				After map[string]any `json:"after"`
 			} `json:"change"`
 		} `json:"resource_changes"`
+		PriorState *struct {
+			Values *struct {
+				RootModule *stateModule `json:"root_module"`
+			} `json:"values"`
+		} `json:"prior_state"`
 	}
 	dec := json.NewDecoder(bytes.NewReader(plan))
 	dec.UseNumber()
 	if err := dec.Decode(&root); err != nil {
 		return nil, err
 	}
-	var out []planResource
+	byAddr := map[string]planResource{}
+	var order []string
+	add := func(addr, typ string, values map[string]any) {
+		if addr == "" || typ == "" || values == nil {
+			return
+		}
+		if _, exists := byAddr[addr]; exists {
+			return
+		}
+		byAddr[addr] = planResource{address: addr, typ: typ, values: values}
+		order = append(order, addr)
+	}
 	for _, r := range root.ResourceChanges {
 		if r.Mode != "data" || r.Change.After == nil {
 			continue
 		}
-		out = append(out, planResource{address: r.Address, typ: r.Type, values: r.Change.After})
+		add(r.Address, r.Type, r.Change.After)
+	}
+	if root.PriorState != nil && root.PriorState.Values != nil && root.PriorState.Values.RootModule != nil {
+		collectPriorStateData(root.PriorState.Values.RootModule, add)
+	}
+	out := make([]planResource, 0, len(order))
+	for _, addr := range order {
+		out = append(out, byAddr[addr])
 	}
 	return out, nil
+}
+
+// stateModule is prior_state.values.root_module / child_modules shape.
+type stateModule struct {
+	Resources    []stateResource `json:"resources"`
+	ChildModules []stateModule   `json:"child_modules"`
+}
+
+type stateResource struct {
+	Address string         `json:"address"`
+	Mode    string         `json:"mode"`
+	Type    string         `json:"type"`
+	Values  map[string]any `json:"values"`
+}
+
+func collectPriorStateData(mod *stateModule, add func(addr, typ string, values map[string]any)) {
+	if mod == nil {
+		return
+	}
+	for _, r := range mod.Resources {
+		if r.Mode != "data" || r.Values == nil {
+			continue
+		}
+		add(r.Address, r.Type, r.Values)
+	}
+	for i := range mod.ChildModules {
+		collectPriorStateData(&mod.ChildModules[i], add)
+	}
 }
 
 func resourceKey(address string) (string, bool) {
