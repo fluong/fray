@@ -28,7 +28,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | ID | Title | Severity | STRIDE | Platforms | Added |
 |---|---|---|---|---|---|
 | [FR-003](FR-003.md) | Credentials are not injected through the environment | low | Information disclosure | AWS, Google Cloud |  |
-| [FR-004](FR-004.md) | Model invocation is scoped to one resource | low | Elevation of privilege | Google Cloud |  |
+| [FR-004](FR-004.md) | Model invocation is scoped to one resource | low | Elevation of privilege | Google Cloud, AWS |  |
 | [FR-007](FR-007.md) | Secret use is scoped to one resource | medium | Elevation of privilege | AWS, Google Cloud |  |
 | [FR-009](FR-009.md) | Secrets are rotated | low | Information disclosure | AWS, Google Cloud |  |
 | [FR-024](FR-024.md) | Object storage does not use ACLs | medium | Elevation of privilege | AWS, Google Cloud, Cloudflare |  |
@@ -62,5 +62,5 @@ A high-severity finding blocks a pull request only when it is new compared with 
 
 | ID | Title | Severity | STRIDE | Platforms | Added |
 |---|---|---|---|---|---|
-| [FR-017](FR-017.md) | LLM processing region is pinned | low | Information disclosure | Google Cloud |  |
+| [FR-017](FR-017.md) | LLM processing region is pinned | low | Information disclosure | Google Cloud, AWS |  |
 
