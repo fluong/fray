@@ -725,16 +725,29 @@ func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLo
 			if region, ok := client.ModuleInputRegion(locs, mod.Call, mod.Inputs); ok {
 				where = region.String()
 			}
-			return fmt.Sprintf("`%s` · %s · %s · %s · %s", mod.Call, formatInputs(mod.Inputs), where, sev, stride)
+			return joinMeta("`"+mod.Call+"`", formatInputs(mod.Inputs), where, sev, stride)
 		}
-		return fmt.Sprintf("`%s` · %s · %s · %s", mod.Call, where, sev, stride)
+		return joinMeta("`"+mod.Call+"`", where, sev, stride)
 	}
-	where := g.cause
+	// Second slot is file:line when known. Never fall back to repeating the
+	// cause address (that produced "`addr` · addr · high · …" with no config).
+	where := ""
 	field := primaryPassField(rule)
 	if loc, ok := client.LookupCauseLocation(locs, g.cause, field); ok {
 		where = loc.String()
 	}
-	return fmt.Sprintf("`%s` · %s · %s · %s", g.cause, where, sev, stride)
+	return joinMeta("`"+g.cause+"`", where, sev, stride)
+}
+
+// joinMeta joins non-empty meta-line parts with " · ".
+func joinMeta(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, " · ")
 }
 
 func formatInputs(inputs []string) string {
