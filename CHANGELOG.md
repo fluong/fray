@@ -2,10 +2,16 @@
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-10-13
+
 ### Added
 - Auto Scaling groups now appear in the diagram. FR-034 checks them using their launch
   template or launch configuration (public IP and security groups). When Fray can't tell
   which template version a group uses, the result is unverified.
+
+### Fixed
+- When Fray can't find where a finding comes from in your Terraform, the PR comment no
+  longer repeats the resource address in place of the file and line.
 
 ## [0.22.1] — 2026-10-13
 
@@ -390,7 +396,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.22.1...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/fluong/fray/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/fluong/fray/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/fluong/fray/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/fluong/fray/compare/v0.20.0...v0.21.0
