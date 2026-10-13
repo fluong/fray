@@ -359,7 +359,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []containerSpec, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
 	seen := map[string]bool{}
 	var flows []*Flow
-	docs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "execution_role_arn"), resources, data, idx)
+	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "execution_role_arn"), resources, data, idx)
 	for _, spec := range specs {
 		for _, ref := range spec.secrets {
 			hits, ambiguous := elementsFromRefs([]string{ref}, resources, elements, "aws_secretsmanager_secret")
@@ -377,11 +377,15 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []co
 				DataClass: "credentials", Transport: "local", SecretDelivery: "env",
 				Causes: map[string]string{"secret_delivery": svc.address},
 			}
-			if scope, grants, cause := awsSecretScope(sec, docs, idx.callRefs(module), resources, elements); scope != "" {
-				flow.AuthzScope = scope
-				flow.AuthzGrants = grants
-				if cause != "" {
-					flow.Causes["authz_scope"] = cause
+			// Unknown identity-policy source on the role → omit authz_scope even
+			// when other docs look narrow (an unread policy could grant *).
+			if !unknownDocs {
+				if scope, grants, cause := awsSecretScope(sec, docs, idx.callRefs(module), resources, elements); scope != "" {
+					flow.AuthzScope = scope
+					flow.AuthzGrants = grants
+					if cause != "" {
+						flow.Causes["authz_scope"] = cause
+					}
 				}
 			}
 			flows = append(flows, flow)
@@ -391,7 +395,7 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []co
 }
 
 func bucketFlows(svc planResource, svcEl *Element, module string, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
-	docs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "task_role_arn"), resources, data, idx)
+	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "task_role_arn"), resources, data, idx)
 	hits, grants, actions, cause, ambiguous, actionWarn := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
 	if ambiguous {
 		*warnings = append(*warnings, "ambiguous bucket for "+svc.address)
@@ -410,8 +414,15 @@ func bucketFlows(svc planResource, svcEl *Element, module string, resources, dat
 	flow := &Flow{
 		From: svcEl.canonicalKey(), To: hits[0].canonicalKey(),
 		DataClass: "unknown", Transport: "tls",
-		AuthzScope: scope, AuthzGrants: grants, AuthzActions: actions,
 	}
+	// Unknown identity-policy source: keep the flow when known docs grant the
+	// bucket, but omit authz_scope and authz_actions.
+	if unknownDocs {
+		return []*Flow{flow}
+	}
+	flow.AuthzScope = scope
+	flow.AuthzGrants = grants
+	flow.AuthzActions = actions
 	if cause != "" {
 		flow.Causes = map[string]string{"authz_scope": cause}
 	}

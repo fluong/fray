@@ -109,7 +109,7 @@ func bedrockConnections(
 }
 
 func bedrockGrantForRole(module string, roleRefs []string, resources, data []planResource, idx configIndex) (bedrockCallerGrant, bool) {
-	docs := roleDocuments(module, roleRefs, resources, data, idx)
+	docs, unknownDocs := roleDocuments(module, roleRefs, resources, data, idx)
 	managed, managedCause := roleAmazonBedrockFullAccess(module, roleRefs, resources, idx)
 
 	hasAllow := managed
@@ -128,6 +128,11 @@ func bedrockGrantForRole(module string, roleRefs []string, resources, data []pla
 	}
 
 	g := bedrockCallerGrant{}
+	// Unknown identity-policy source: known Allow still emits the flow, but
+	// scope and region are omitted (unread policy could broaden either).
+	if unknownDocs {
+		return g, true
+	}
 	// Deny of Bedrock invoke on any role doc → omit scope (still emit the flow).
 	for _, doc := range docs {
 		for _, st := range docDenyStatements(doc) {
@@ -206,7 +211,72 @@ func roleAmazonBedrockFullAccess(module string, roleRefs []string, resources []p
 			return true, att.address
 		}
 	}
+	// managed_policy_arns on the role (constant AmazonBedrockFullAccess only).
+	for _, role := range resources {
+		if role.typ != "aws_iam_role" || !sameModule(role.address, module) {
+			continue
+		}
+		if !overlaps([]string{localTypeName(role.address)}, roles) {
+			continue
+		}
+		if managedPolicyArnsContain(idx, role, amazonBedrockFullAccessARN) {
+			return true, role.address
+		}
+	}
 	return false, ""
+}
+
+func managedPolicyArnsContain(idx configIndex, role planResource, want string) bool {
+	if s, ok := idx.attrConstant(role.address, "managed_policy_arns").(string); ok && s == want {
+		return true
+	}
+	if list, ok := idx.attrConstant(role.address, "managed_policy_arns").([]any); ok {
+		for _, item := range list {
+			if s, ok := item.(string); ok && s == want {
+				return true
+			}
+		}
+	}
+	for _, item := range asList(role.values["managed_policy_arns"]) {
+		if s, ok := item.(string); ok && s == want {
+			return true
+		}
+	}
+	key, ok := resourceKey(role.address)
+	if !ok {
+		return false
+	}
+	return collectConstantStrings(idx.resources[key].raw["managed_policy_arns"], want)
+}
+
+func collectConstantStrings(v any, want string) bool {
+	switch t := v.(type) {
+	case map[string]any:
+		if cv, ok := t["constant_value"]; ok {
+			switch c := cv.(type) {
+			case string:
+				return c == want
+			case []any:
+				for _, item := range c {
+					if s, ok := item.(string); ok && s == want {
+						return true
+					}
+				}
+			}
+		}
+		for _, child := range t {
+			if collectConstantStrings(child, want) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range t {
+			if collectConstantStrings(child, want) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func bedrockInvokeAction(a string) bool {

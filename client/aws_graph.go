@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -1103,9 +1104,24 @@ type iamStatement struct {
 	doc          string
 }
 
-func roleDocuments(module string, roleRefs []string, resources, data []planResource, idx configIndex) []planResource {
+// roleDocuments returns identity-policy documents for the given roles and
+// whether any identity-policy source on those roles is unknown at plan time.
+//
+// Sources (union): aws_iam_role_policy_attachment → aws_iam_policy,
+// aws_iam_role_policy, aws_iam_role.inline_policy (only when config declares
+// blocks), and aws_iam_role.managed_policy_arns in-plan aws_iam_policy refs.
+// aws_iam_policy_attachment and *_exclusive resources are out of scope.
+//
+// For each source: data.aws_iam_policy_document refs win; else a known policy
+// JSON string is parsed into a synthetic doc; else the source is unknown.
+// Bare after_unknown.inline_policy / managed_policy_arns with no config entries
+// are ignored (provider-computed noise on empty roles).
+func roleDocuments(module string, roleRefs []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
 	roles := namedResources(roleRefs, "aws_iam_role")
-	var docs []planResource
+	if len(roles) == 0 {
+		return nil, false
+	}
+	var out []planResource
 	for _, att := range resources {
 		if att.typ != "aws_iam_role_policy_attachment" || !sameModule(att.address, module) {
 			continue
@@ -1113,28 +1129,356 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		if !overlaps(namedResources(idx.attrRefs(att.address, "role"), "aws_iam_role"), roles) {
 			continue
 		}
-		for _, polName := range namedResources(idx.attrRefs(att.address, "policy_arn"), "aws_iam_policy") {
-			for _, pol := range resources {
-				if pol.typ != "aws_iam_policy" || !sameModule(pol.address, module) {
-					continue
-				}
-				if localTypeName(pol.address) != polName {
-					continue
-				}
-				for _, docName := range namedResources(idx.attrRefs(pol.address, "policy"), "aws_iam_policy_document") {
-					for _, d := range data {
-						if d.typ != "aws_iam_policy_document" || !sameModule(d.address, module) {
-							continue
-						}
-						if dataName(d.address) == docName {
-							docs = append(docs, d)
-						}
-					}
-				}
+		polNames := namedResources(idx.attrRefs(att.address, "policy_arn"), "aws_iam_policy")
+		if len(polNames) == 0 {
+			// AWS-managed ARN constants are ignored here (Bedrock FullAccess is
+			// handled separately). An unknown policy_arn with no in-plan policy
+			// ref and no constant is an unknown identity-policy source.
+			if attrAfterUnknown(att, "policy_arn") && idx.attrConstant(att.address, "policy_arn") == nil {
+				unknown = true
+			}
+			continue
+		}
+		for _, polName := range polNames {
+			pol, ok := findModuleResource(resources, module, "aws_iam_policy", polName)
+			if !ok {
+				unknown = true
+				continue
+			}
+			got, unk := resolvePolicyContent(pol, "policy", module, data, idx)
+			out = append(out, got...)
+			if unk {
+				unknown = true
 			}
 		}
 	}
-	return uniqueResources(docs)
+	for _, rp := range resources {
+		if rp.typ != "aws_iam_role_policy" || !sameModule(rp.address, module) {
+			continue
+		}
+		if !overlaps(namedResources(idx.attrRefs(rp.address, "role"), "aws_iam_role"), roles) {
+			continue
+		}
+		got, unk := resolvePolicyContent(rp, "policy", module, data, idx)
+		out = append(out, got...)
+		if unk {
+			unknown = true
+		}
+	}
+	for _, role := range resources {
+		if role.typ != "aws_iam_role" || !sameModule(role.address, module) {
+			continue
+		}
+		if !overlaps([]string{localTypeName(role.address)}, roles) {
+			continue
+		}
+		got, unk := roleInlinePolicyDocs(role, module, data, idx)
+		out = append(out, got...)
+		if unk {
+			unknown = true
+		}
+		got, unk = roleManagedPolicyDocs(role, module, resources, data, idx)
+		out = append(out, got...)
+		if unk {
+			unknown = true
+		}
+	}
+	return uniqueResources(out), unknown
+}
+
+// resolvePolicyContent reads holder.policyAttr: data.aws_iam_policy_document
+// refs first, else a known JSON string, else unknown. Never reconstructs
+// statements from jsonencode configuration references alone.
+func resolvePolicyContent(holder planResource, policyAttr, module string, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+	docNames := namedResources(idx.attrRefs(holder.address, policyAttr), "aws_iam_policy_document")
+	if len(docNames) > 0 {
+		var found []planResource
+		for _, docName := range docNames {
+			for _, d := range data {
+				if d.typ != "aws_iam_policy_document" || !sameModule(d.address, module) {
+					continue
+				}
+				if dataName(d.address) == docName {
+					found = append(found, d)
+				}
+			}
+		}
+		if len(found) == 0 {
+			return nil, true
+		}
+		return found, false
+	}
+	if s, ok := holder.values[policyAttr].(string); ok && strings.TrimSpace(s) != "" {
+		syn, ok := syntheticDocFromPolicyJSON(holder.address, s)
+		if !ok {
+			return nil, true // malformed JSON
+		}
+		return []planResource{syn}, false
+	}
+	// Unknown at plan time (after_unknown, null, or jsonencode-with-refs only).
+	return nil, true
+}
+
+func roleInlinePolicyDocs(role planResource, module string, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+	if !hasConfigAttr(idx, role.address, "inline_policy") {
+		// Bare after_unknown.inline_policy with no config blocks: ignore.
+		return nil, false
+	}
+	// Data-doc refs anywhere under inline_policy expressions.
+	for _, docName := range namedResources(idx.attrRefs(role.address, "inline_policy"), "aws_iam_policy_document") {
+		matched := false
+		for _, d := range data {
+			if d.typ != "aws_iam_policy_document" || !sameModule(d.address, module) {
+				continue
+			}
+			if dataName(d.address) == docName {
+				docs = append(docs, d)
+				matched = true
+			}
+		}
+		if !matched {
+			unknown = true
+		}
+	}
+	vals := asList(role.values["inline_policy"])
+	if len(vals) == 0 {
+		// Config declares blocks but planned values are absent/unknown.
+		if len(docs) == 0 {
+			unknown = true
+		}
+		return docs, unknown
+	}
+	for i, raw := range vals {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			unknown = true
+			continue
+		}
+		s, _ := m["policy"].(string)
+		if strings.TrimSpace(s) == "" {
+			// Block present without a known policy string; data-doc path may
+			// already have covered it via attrRefs.
+			if len(namedResources(idx.attrRefs(role.address, "inline_policy"), "aws_iam_policy_document")) == 0 {
+				unknown = true
+			}
+			continue
+		}
+		cause := role.address
+		if name, _ := m["name"].(string); name != "" {
+			cause = role.address + "#inline_policy." + name
+		} else {
+			cause = role.address + "#inline_policy[" + strconv.Itoa(i) + "]"
+		}
+		syn, ok := syntheticDocFromPolicyJSON(cause, s)
+		if !ok {
+			unknown = true
+			continue
+		}
+		docs = append(docs, syn)
+	}
+	return docs, unknown
+}
+
+func roleManagedPolicyDocs(role planResource, module string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+	if !hasConfigAttr(idx, role.address, "managed_policy_arns") {
+		// Bare after_unknown.managed_policy_arns with no config: ignore.
+		return nil, false
+	}
+	polNames := namedResources(idx.attrRefs(role.address, "managed_policy_arns"), "aws_iam_policy")
+	for _, polName := range polNames {
+		pol, ok := findModuleResource(resources, module, "aws_iam_policy", polName)
+		if !ok {
+			unknown = true
+			continue
+		}
+		got, unk := resolvePolicyContent(pol, "policy", module, data, idx)
+		docs = append(docs, got...)
+		if unk {
+			unknown = true
+		}
+	}
+	// AWS-managed ARN constants are not read as documents (AmazonBedrockFullAccess
+	// is handled by roleAmazonBedrockFullAccess). If config has managed_policy_arns
+	// but nothing resolved to an in-plan policy or a readable document, and the
+	// attribute is after_unknown without only-constant AWS ARNs, mark unknown.
+	if len(polNames) == 0 && len(docs) == 0 && attrAfterUnknown(role, "managed_policy_arns") {
+		if !managedPolicyArnsOnlyConstants(idx, role.address) {
+			unknown = true
+		}
+	}
+	return docs, unknown
+}
+
+func hasConfigAttr(idx configIndex, address, attr string) bool {
+	key, ok := resourceKey(address)
+	if !ok {
+		return false
+	}
+	set := idx.resources[key]
+	if _, ok := set.raw[attr]; ok {
+		return true
+	}
+	if len(set.refs[attr]) > 0 {
+		return true
+	}
+	if _, ok := set.constants[attr]; ok {
+		return true
+	}
+	return false
+}
+
+func managedPolicyArnsOnlyConstants(idx configIndex, address string) bool {
+	key, ok := resourceKey(address)
+	if !ok {
+		return false
+	}
+	raw := idx.resources[key].raw["managed_policy_arns"]
+	if raw == nil {
+		return false
+	}
+	// True when every leaf is a constant_value string (no references).
+	return exprOnlyConstants(raw) && len(idx.resources[key].refs["managed_policy_arns"]) == 0
+}
+
+func exprOnlyConstants(v any) bool {
+	switch t := v.(type) {
+	case map[string]any:
+		if _, ok := t["constant_value"]; ok {
+			return true
+		}
+		if _, ok := t["references"]; ok {
+			return false
+		}
+		for _, child := range t {
+			if !exprOnlyConstants(child) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		if len(t) == 0 {
+			return false
+		}
+		for _, child := range t {
+			if !exprOnlyConstants(child) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func findModuleResource(resources []planResource, module, typ, name string) (planResource, bool) {
+	for _, r := range resources {
+		if r.typ != typ || !sameModule(r.address, module) {
+			continue
+		}
+		if localTypeName(r.address) == name {
+			return r, true
+		}
+	}
+	return planResource{}, false
+}
+
+func attrAfterUnknown(r planResource, attr string) bool {
+	if r.afterUnknown == nil {
+		return false
+	}
+	v, ok := r.afterUnknown[attr]
+	if !ok {
+		return false
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	default:
+		return t != nil
+	}
+}
+
+// syntheticDocFromPolicyJSON maps an IAM policy JSON string into the statement
+// shape docStatements / docDenyStatements already read from data sources.
+// Principal, Sid, and Version are ignored. Malformed JSON → ok=false.
+func syntheticDocFromPolicyJSON(cause, raw string) (planResource, bool) {
+	var top map[string]any
+	if err := json.Unmarshal([]byte(raw), &top); err != nil {
+		return planResource{}, false
+	}
+	var stmts []any
+	for _, item := range policyStatementList(top["Statement"]) {
+		st, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		stmts = append(stmts, normalizeIAMJSONStatement(st))
+	}
+	return planResource{
+		address: cause,
+		typ:     "aws_iam_policy_document",
+		values:  map[string]any{"statement": stmts},
+	}, true
+}
+
+func policyStatementList(v any) []any {
+	switch t := v.(type) {
+	case nil:
+		return nil
+	case []any:
+		return t
+	case map[string]any:
+		return []any{t}
+	default:
+		return nil
+	}
+}
+
+func normalizeIAMJSONStatement(st map[string]any) map[string]any {
+	norm := map[string]any{}
+	if v, ok := firstKey(st, "Effect", "effect"); ok {
+		norm["effect"] = v
+	}
+	if v, ok := firstKey(st, "Action", "action"); ok {
+		norm["actions"] = asStringListAny(v)
+	}
+	if v, ok := firstKey(st, "NotAction", "not_action", "NotActions", "not_actions"); ok {
+		norm["not_actions"] = asStringListAny(v)
+	}
+	if v, ok := firstKey(st, "Resource", "resource", "Resources", "resources"); ok {
+		norm["resources"] = asList(v)
+	}
+	if v, ok := firstKey(st, "NotResource", "not_resource", "NotResources", "not_resources"); ok {
+		norm["not_resources"] = asList(v)
+	}
+	if v, ok := firstKey(st, "Condition", "condition"); ok {
+		norm["condition"] = v
+	}
+	return norm
+}
+
+func firstKey(m map[string]any, keys ...string) (any, bool) {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+func asStringListAny(v any) []any {
+	switch t := v.(type) {
+	case string:
+		return []any{t}
+	case []any:
+		return t
+	default:
+		var out []any
+		for _, s := range stringList(v) {
+			out = append(out, s)
+		}
+		return out
+	}
 }
 
 func dataName(address string) string {
@@ -1236,21 +1580,38 @@ func grantsAction(st iamStatement, match func(string) bool) bool {
 }
 
 func secretAction(a string) bool {
-	return a == "*" || a == "secretsmanager:*" || a == "secretsmanager:GetSecretValue"
+	lower := strings.ToLower(strings.TrimSpace(a))
+	return lower == "*" || lower == "secretsmanager:*" || lower == "secretsmanager:getsecretvalue"
 }
 
 func s3Action(a string) bool {
-	return a == "*" || a == "s3:*" || strings.HasPrefix(a, "s3:")
+	lower := strings.ToLower(strings.TrimSpace(a))
+	return lower == "*" || lower == "s3:*" || strings.HasPrefix(lower, "s3:")
 }
 
 func wildcardResources(resources []any) bool {
 	for _, r := range resources {
 		s, ok := r.(string)
-		if ok && strings.Contains(s, "*") {
+		if ok && resourceARNHasWildcard(s) {
 			return true
 		}
 	}
 	return false
+}
+
+// resourceARNHasWildcard reports a wildcard in the ARN resource part (or a
+// bare "*" resource). Matching is the same for data-doc and JSON policies.
+func resourceARNHasWildcard(arn string) bool {
+	if arn == "*" {
+		return true
+	}
+	// arn:partition:service:region:account:resource…
+	parts := strings.SplitN(arn, ":", 6)
+	resource := arn
+	if len(parts) >= 6 {
+		resource = parts[5]
+	}
+	return strings.ContainsAny(resource, "*?")
 }
 
 func nullResources(resources []any) bool {
@@ -1265,14 +1626,24 @@ func nullResources(resources []any) bool {
 	return true
 }
 
+func resourcesFullyKnown(resources []any) bool {
+	if len(resources) == 0 {
+		return false
+	}
+	for _, r := range resources {
+		s, ok := r.(string)
+		if !ok || s == "" {
+			return false
+		}
+	}
+	return true
+}
+
 func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resources []planResource, elements []*Element) (scope string, grants []string, cause string) {
 	account := false
 	covers := false
 	accountCause, coverCause := "", ""
 	resolved, ambiguous := elementsFromRefs(callRefs, resources, elements, "aws_secretsmanager_secret")
-	if ambiguous {
-		return "", nil, ""
-	}
 	for _, doc := range docs {
 		for _, st := range docStatements(doc) {
 			if !grantsAction(st, secretAction) {
@@ -1284,8 +1655,23 @@ func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resour
 				continue
 			}
 			if nullResources(st.resources) {
-				for _, hit := range resolved {
-					if hit.canonicalKey() == sec.canonicalKey() {
+				// Null resources rely on module call refs; skip when ambiguous.
+				if !ambiguous {
+					for _, hit := range resolved {
+						if hit.canonicalKey() == sec.canonicalKey() {
+							covers = true
+							coverCause = st.doc
+						}
+					}
+				}
+				continue
+			}
+			// Known ARN strings: no wildcard → resource only when the ARN
+			// matches this secret; non-matching ARNs do not cover it.
+			if resourcesFullyKnown(st.resources) {
+				for _, raw := range st.resources {
+					arn, _ := raw.(string)
+					if secretARNMatches(sec, arn, resources) {
 						covers = true
 						coverCause = st.doc
 					}
@@ -1314,6 +1700,7 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 	account := false
 	covers := false
 	accountCause, coverCause := "", ""
+	matched := map[string]*Element{}
 	var actionSet []string
 	actionsUnknown := false
 	for _, doc := range docs {
@@ -1341,6 +1728,19 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 			if nullResources(st.resources) && len(resolved) > 0 {
 				covers = true
 				coverCause = st.doc
+				continue
+			}
+			// Known ARN strings: match concrete bucket ARNs; non-matching do
+			// not cover. Wildcard already handled above as account.
+			if resourcesFullyKnown(st.resources) {
+				for _, raw := range st.resources {
+					arn, _ := raw.(string)
+					if el := bucketByARN(arn, resources, elements); el != nil {
+						covers = true
+						coverCause = st.doc
+						matched[el.canonicalKey()] = el
+					}
+				}
 			}
 		}
 	}
@@ -1360,10 +1760,108 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 	if actionsUnknown {
 		actionSet = nil
 	}
+	if len(matched) == 1 && len(resolved) == 0 {
+		for _, el := range matched {
+			return []*Element{el}, grants, actionSet, cause, false, actionWarn
+		}
+	}
+	if len(matched) > 1 && len(resolved) == 0 {
+		return nil, grants, actionSet, cause, true, actionWarn
+	}
 	if len(resolved) != 1 {
 		return nil, grants, actionSet, cause, len(resolved) > 1, actionWarn
 	}
 	return resolved, grants, actionSet, cause, false, actionWarn
+}
+
+// secretARNMatches reports whether a known IAM Resource ARN grants the secret
+// element (by planned arn or by name embedded in a Secrets Manager ARN).
+func secretARNMatches(sec *Element, arn string, resources []planResource) bool {
+	if arn == "" || resourceARNHasWildcard(arn) {
+		return false
+	}
+	for _, r := range resources {
+		if r.typ != "aws_secretsmanager_secret" {
+			continue
+		}
+		if len(sec.Evidence.Addresses) != 1 || sec.Evidence.Addresses[0] != r.address {
+			continue
+		}
+		if a, ok := r.values["arn"].(string); ok && a != "" {
+			if a == arn || strings.HasPrefix(arn, a) {
+				return true
+			}
+		}
+		if name, ok := r.values["name"].(string); ok && name != "" {
+			if secretNameInARN(arn, name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func secretNameInARN(arn, name string) bool {
+	// arn:aws:secretsmanager:region:acct:secret:name or name-6Chars
+	const marker = ":secret:"
+	i := strings.Index(arn, marker)
+	if i < 0 {
+		return false
+	}
+	rest := arn[i+len(marker):]
+	if rest == name {
+		return true
+	}
+	return strings.HasPrefix(rest, name+"-")
+}
+
+func bucketByARN(arn string, resources []planResource, elements []*Element) *Element {
+	if arn == "" || resourceARNHasWildcard(arn) {
+		return nil
+	}
+	bucketName := s3BucketNameFromARN(arn)
+	if bucketName == "" {
+		return nil
+	}
+	for _, r := range resources {
+		if r.typ != "aws_s3_bucket" {
+			continue
+		}
+		if a, ok := r.values["arn"].(string); ok && a != "" {
+			if a == arn || strings.HasPrefix(arn, a) || s3BucketNameFromARN(a) == bucketName {
+				return elementForAddress(r.address, elements)
+			}
+		}
+		if b, ok := r.values["bucket"].(string); ok && b != "" && b == bucketName {
+			return elementForAddress(r.address, elements)
+		}
+		if id, ok := r.values["id"].(string); ok && id != "" && id == bucketName {
+			return elementForAddress(r.address, elements)
+		}
+	}
+	return nil
+}
+
+func s3BucketNameFromARN(arn string) string {
+	// arn:partition:s3:::bucket or arn:partition:s3:::bucket/key
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) < 6 || parts[2] != "s3" {
+		return ""
+	}
+	rest := parts[5]
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		rest = rest[:i]
+	}
+	return rest
+}
+
+func elementForAddress(addr string, elements []*Element) *Element {
+	for _, el := range elements {
+		if len(el.Evidence.Addresses) == 1 && el.Evidence.Addresses[0] == addr {
+			return el
+		}
+	}
+	return nil
 }
 
 // classifyS3WriteActions maps IAM actions to the closed authz_actions enum.
