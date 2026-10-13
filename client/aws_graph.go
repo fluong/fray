@@ -1592,26 +1592,11 @@ func s3Action(a string) bool {
 func wildcardResources(resources []any) bool {
 	for _, r := range resources {
 		s, ok := r.(string)
-		if ok && resourceARNHasWildcard(s) {
+		if ok && (s == "*" || strings.ContainsAny(s, "*?")) {
 			return true
 		}
 	}
 	return false
-}
-
-// resourceARNHasWildcard reports a wildcard in the ARN resource part (or a
-// bare "*" resource). Matching is the same for data-doc and JSON policies.
-func resourceARNHasWildcard(arn string) bool {
-	if arn == "*" {
-		return true
-	}
-	// arn:partition:service:region:account:resource…
-	parts := strings.SplitN(arn, ":", 6)
-	resource := arn
-	if len(parts) >= 6 {
-		resource = parts[5]
-	}
-	return strings.ContainsAny(resource, "*?")
 }
 
 func nullResources(resources []any) bool {
@@ -1649,11 +1634,6 @@ func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resour
 			if !grantsAction(st, secretAction) {
 				continue
 			}
-			if wildcardResources(st.resources) {
-				account = true
-				accountCause = st.doc
-				continue
-			}
 			if nullResources(st.resources) {
 				// Null resources rely on module call refs; skip when ambiguous.
 				if !ambiguous {
@@ -1666,12 +1646,16 @@ func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resour
 				}
 				continue
 			}
-			// Known ARN strings: no wildcard → resource only when the ARN
-			// matches this secret; non-matching ARNs do not cover it.
+			// Known ARN strings (including name-* suffix forms): classify each.
 			if resourcesFullyKnown(st.resources) {
 				for _, raw := range st.resources {
 					arn, _ := raw.(string)
-					if secretARNMatches(sec, arn, resources) {
+					acc, match := classifySecretARN(arn, sec, resources)
+					if acc {
+						account = true
+						accountCause = st.doc
+					}
+					if match {
 						covers = true
 						coverCause = st.doc
 					}
@@ -1720,22 +1704,23 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 			if !grantsAction(st, s3Action) {
 				continue
 			}
-			if wildcardResources(st.resources) {
-				account = true
-				accountCause = st.doc
-				continue
-			}
 			if nullResources(st.resources) && len(resolved) > 0 {
 				covers = true
 				coverCause = st.doc
 				continue
 			}
-			// Known ARN strings: match concrete bucket ARNs; non-matching do
-			// not cover. Wildcard already handled above as account.
+			// Known ARN strings: object-key wildcards stay resource-scoped to
+			// the bucket; wildcards in the bucket name are account-wide.
 			if resourcesFullyKnown(st.resources) {
 				for _, raw := range st.resources {
 					arn, _ := raw.(string)
-					if el := bucketByARN(arn, resources, elements); el != nil {
+					acc, el := classifyS3ARN(arn, resources, elements)
+					if acc {
+						account = true
+						accountCause = st.doc
+						continue
+					}
+					if el != nil {
 						covers = true
 						coverCause = st.doc
 						matched[el.canonicalKey()] = el
@@ -1774,12 +1759,153 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 	return resolved, grants, actionSet, cause, false, actionWarn
 }
 
-// secretARNMatches reports whether a known IAM Resource ARN grants the secret
-// element (by planned arn or by name embedded in a Secrets Manager ARN).
-func secretARNMatches(sec *Element, arn string, resources []planResource) bool {
-	if arn == "" || resourceARNHasWildcard(arn) {
+// classifySecretARN classifies a Secrets Manager Resource ARN.
+// Account: bare "*", wildcards in region/account, or wildcards before/inside
+// the secret name (secret:*, secret:prod/*, …).
+// Resource: exact ARN/name match, or suffix forms name-*, name-??????, name*
+// when <name> equals the target secret's name.
+func classifySecretARN(arn string, sec *Element, resources []planResource) (account, covers bool) {
+	if arn == "" {
+		return false, false
+	}
+	if arn == "*" {
+		return true, false
+	}
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) >= 6 && parts[2] == "secretsmanager" {
+		if strings.ContainsAny(parts[3], "*?") || strings.ContainsAny(parts[4], "*?") {
+			return true, false
+		}
+		rest := parts[5] // "secret:<name…>"
+		const prefix = "secret:"
+		if !strings.HasPrefix(rest, prefix) {
+			return strings.ContainsAny(arn, "*?"), false
+		}
+		namePat := rest[len(prefix):]
+		if secretNamePatternAccountWide(namePat) {
+			return true, false
+		}
+		target := secretTargetName(sec, resources)
+		if isSecretNameSuffixForm(namePat) {
+			if target != "" && secretNamePatternMatches(namePat, target) {
+				return false, true
+			}
+			// Exact planned ARN equality against values["arn"].
+			if !strings.ContainsAny(namePat, "*?") {
+				for _, r := range resources {
+					if r.typ != "aws_secretsmanager_secret" {
+						continue
+					}
+					if len(sec.Evidence.Addresses) != 1 || sec.Evidence.Addresses[0] != r.address {
+						continue
+					}
+					if a, ok := r.values["arn"].(string); ok && a != "" && (a == arn || strings.HasPrefix(arn, a) || strings.HasPrefix(a, arn)) {
+						return false, true
+					}
+				}
+			}
+			// Well-formed name/-* form for a different secret: no cover.
+			return false, false
+		}
+		if strings.ContainsAny(namePat, "*?") {
+			return true, false
+		}
+		return false, false
+	}
+	if strings.ContainsAny(arn, "*?") {
+		return true, false
+	}
+	return false, false
+}
+
+// secretNamePatternAccountWide reports wildcards before/inside the name
+// (secret:*, secret:prod/*, secret:*foo), as opposed to suffix forms like
+// <name>-* (where <name> may itself contain '/').
+func secretNamePatternAccountWide(pat string) bool {
+	if pat == "" || pat == "*" {
+		return true
+	}
+	if strings.HasPrefix(pat, "*") || strings.HasPrefix(pat, "?") {
+		return true
+	}
+	// Wildcard as its own path segment (prod/*, a/*/b), not a suffix on a name.
+	if strings.Contains(pat, "/*") || strings.Contains(pat, "/?") {
+		return true
+	}
+	return false
+}
+
+// isSecretNameSuffixForm reports exact names and trailing-wildcard forms
+// (<name>, <name>-*, <name>-??????, <name>*), not account-wide globs.
+func isSecretNameSuffixForm(pat string) bool {
+	if pat == "" || secretNamePatternAccountWide(pat) {
 		return false
 	}
+	i := strings.IndexAny(pat, "*?")
+	if i < 0 {
+		return true // exact name or name-AbCdEf
+	}
+	rest := pat[i:]
+	if onlyWildcards(rest) && (i > 0 && pat[i-1] == '-' || rest == "*") {
+		return true
+	}
+	return false
+}
+
+// secretNamePatternMatches reports forms that pin a concrete secret name:
+// <name>, <name>-<suffix>, <name>-*, <name>-??????, <name>*.
+func secretNamePatternMatches(pat, name string) bool {
+	if name == "" || pat == "" || strings.ContainsAny(name, "*?") {
+		return false
+	}
+	if pat == name {
+		return true
+	}
+	if !strings.HasPrefix(pat, name) {
+		return false
+	}
+	suffix := pat[len(name):]
+	switch {
+	case suffix == "*":
+		return true
+	case suffix == "-*":
+		return true
+	case strings.HasPrefix(suffix, "-") && onlyQuestionMarks(suffix[1:]):
+		return true
+	case strings.HasPrefix(suffix, "-") && onlyWildcards(suffix[1:]):
+		return true
+	case strings.HasPrefix(suffix, "-") && !strings.ContainsAny(suffix, "*?"):
+		return true // planned ARN form name-AbCdEf
+	default:
+		return false
+	}
+}
+
+func onlyQuestionMarks(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != '?' {
+			return false
+		}
+	}
+	return true
+}
+
+func onlyWildcards(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != '*' && s[i] != '?' {
+			return false
+		}
+	}
+	return true
+}
+
+func secretTargetName(sec *Element, resources []planResource) string {
 	for _, r := range resources {
 		if r.typ != "aws_secretsmanager_secret" {
 			continue
@@ -1787,39 +1913,49 @@ func secretARNMatches(sec *Element, arn string, resources []planResource) bool {
 		if len(sec.Evidence.Addresses) != 1 || sec.Evidence.Addresses[0] != r.address {
 			continue
 		}
-		if a, ok := r.values["arn"].(string); ok && a != "" {
-			if a == arn || strings.HasPrefix(arn, a) {
-				return true
-			}
-		}
 		if name, ok := r.values["name"].(string); ok && name != "" {
-			if secretNameInARN(arn, name) {
-				return true
-			}
+			return name
 		}
 	}
-	return false
+	return ""
 }
 
-func secretNameInARN(arn, name string) bool {
-	// arn:aws:secretsmanager:region:acct:secret:name or name-6Chars
-	const marker = ":secret:"
-	i := strings.Index(arn, marker)
-	if i < 0 {
-		return false
+// classifyS3ARN classifies an S3 Resource ARN.
+// Object-key wildcards (bucket/*, bucket/prefix*) → resource for that bucket.
+// Wildcards in the bucket name (arn:aws:s3:::*, app-*, */*) → account.
+func classifyS3ARN(arn string, resources []planResource, elements []*Element) (account bool, el *Element) {
+	if arn == "" {
+		return false, nil
 	}
-	rest := arn[i+len(marker):]
-	if rest == name {
-		return true
+	if arn == "*" {
+		return true, nil
 	}
-	return strings.HasPrefix(rest, name+"-")
+	bucket, _, ok := parseS3ARN(arn)
+	if !ok {
+		if strings.ContainsAny(arn, "*?") {
+			return true, nil
+		}
+		return false, nil
+	}
+	if strings.ContainsAny(bucket, "*?") {
+		return true, nil
+	}
+	return false, bucketByName(bucket, resources, elements)
 }
 
-func bucketByARN(arn string, resources []planResource, elements []*Element) *Element {
-	if arn == "" || resourceARNHasWildcard(arn) {
-		return nil
+func parseS3ARN(arn string) (bucket, key string, ok bool) {
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) < 6 || parts[2] != "s3" {
+		return "", "", false
 	}
-	bucketName := s3BucketNameFromARN(arn)
+	rest := parts[5]
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		return rest[:i], rest[i+1:], true
+	}
+	return rest, "", true
+}
+
+func bucketByName(bucketName string, resources []planResource, elements []*Element) *Element {
 	if bucketName == "" {
 		return nil
 	}
@@ -1828,7 +1964,8 @@ func bucketByARN(arn string, resources []planResource, elements []*Element) *Ele
 			continue
 		}
 		if a, ok := r.values["arn"].(string); ok && a != "" {
-			if a == arn || strings.HasPrefix(arn, a) || s3BucketNameFromARN(a) == bucketName {
+			b, _, ok := parseS3ARN(a)
+			if ok && b == bucketName {
 				return elementForAddress(r.address, elements)
 			}
 		}
@@ -1843,16 +1980,11 @@ func bucketByARN(arn string, resources []planResource, elements []*Element) *Ele
 }
 
 func s3BucketNameFromARN(arn string) string {
-	// arn:partition:s3:::bucket or arn:partition:s3:::bucket/key
-	parts := strings.SplitN(arn, ":", 6)
-	if len(parts) < 6 || parts[2] != "s3" {
+	b, _, ok := parseS3ARN(arn)
+	if !ok {
 		return ""
 	}
-	rest := parts[5]
-	if i := strings.IndexByte(rest, '/'); i >= 0 {
-		rest = rest[:i]
-	}
-	return rest
+	return b
 }
 
 func elementForAddress(addr string, elements []*Element) *Element {
