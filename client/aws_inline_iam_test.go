@@ -545,9 +545,9 @@ func TestKnownARNResourceClassification(t *testing.T) {
 			wantSec:   "account",
 		},
 		{
-			name:      "matching_bucket_arn_resource",
+			name:      "matching_bucket_object_wildcard_resource",
 			resources: []any{leakBucketARN + "/*"},
-			wantS3:    "account", // /* is wildcard in resource part
+			wantS3:    "resource",
 		},
 		{
 			name:      "matching_bucket_arn_exact",
@@ -605,6 +605,87 @@ func TestKnownARNResourceClassification(t *testing.T) {
 				}
 				if scope != tc.wantBed {
 					t.Fatalf("bedrock scope=%q want %q", scope, tc.wantBed)
+				}
+			}
+		})
+	}
+}
+
+func TestARNWildcardRefinement(t *testing.T) {
+	secRes := planResource{
+		address: "module.db.aws_secretsmanager_secret.db",
+		typ:     "aws_secretsmanager_secret",
+		values:  map[string]any{"name": "app/db", "arn": "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf"},
+	}
+	bucketRes := planResource{
+		address: "module.uploads.aws_s3_bucket.this",
+		typ:     "aws_s3_bucket",
+		values:  map[string]any{"bucket": "uploads-bucket", "arn": "arn:aws:s3:::uploads-bucket"},
+	}
+	secEl := &Element{
+		Evidence: Evidence{Addresses: []string{secRes.address}},
+		Name:     "db", Type: "datastore", Kind: "secret_store", Provider: "aws", Provenance: "iac",
+	}
+	bucketEl := &Element{
+		Evidence: Evidence{Addresses: []string{bucketRes.address}},
+		Name:     "uploads", Type: "datastore", Kind: "object_storage", Provider: "aws", Provenance: "iac",
+	}
+	resources := []planResource{secRes, bucketRes}
+	elements := []*Element{secEl, bucketEl}
+	callRefs := []string{secRes.address, bucketRes.address}
+
+	cases := []struct {
+		name    string
+		arn     string
+		wantSec string
+		wantS3  string
+	}{
+		// S3 object-key wildcards → resource
+		{name: "s3_bucket_slash_star", arn: "arn:aws:s3:::uploads-bucket/*", wantS3: "resource"},
+		{name: "s3_bucket_prefix_star", arn: "arn:aws:s3:::uploads-bucket/inbox*", wantS3: "resource"},
+		{name: "s3_exact_bucket", arn: "arn:aws:s3:::uploads-bucket", wantS3: "resource"},
+		{name: "s3_non_matching_bucket", arn: "arn:aws:s3:::other-bucket/*", wantS3: ""},
+		// S3 bucket-name wildcards → account
+		{name: "s3_star_bucket", arn: "arn:aws:s3:::*", wantS3: "account"},
+		{name: "s3_app_star_bucket", arn: "arn:aws:s3:::app-*", wantS3: "account"},
+		{name: "s3_star_slash_star", arn: "arn:aws:s3:::*/*", wantS3: "account"},
+		// Secrets suffix forms → resource when name matches
+		{name: "secret_name_dash_star", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-*", wantSec: "resource"},
+		{name: "secret_name_dash_qqqqqq", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-??????", wantSec: "resource"},
+		{name: "secret_name_star", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db*", wantSec: "resource"},
+		{name: "secret_exact_arn", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf", wantSec: "resource"},
+		{name: "secret_non_matching_name", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:other-*", wantSec: ""},
+		// Secrets account-wide wildcards
+		{name: "secret_star", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:*", wantSec: "account"},
+		{name: "secret_prod_slash_star", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/*", wantSec: "account"},
+		{name: "secret_region_star", arn: "arn:aws:secretsmanager:*:111122223333:secret:app/db", wantSec: "account"},
+		{name: "secret_account_star", arn: "arn:aws:secretsmanager:eu-west-1:*:secret:app/db", wantSec: "account"},
+		{name: "star_all", arn: "*", wantSec: "account", wantS3: "account"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := planResource{
+				address: "data.aws_iam_policy_document.x",
+				typ:     "aws_iam_policy_document",
+				values: map[string]any{"statement": []any{map[string]any{
+					"effect":    "Allow",
+					"actions":   []any{"secretsmanager:GetSecretValue", "s3:PutObject", "s3:DeleteObject"},
+					"resources": []any{tc.arn},
+				}}},
+			}
+			docs := []planResource{doc}
+			if tc.wantSec != "" || strings.HasPrefix(tc.name, "secret_") || tc.name == "star_all" {
+				scope, _, _ := awsSecretScope(secEl, docs, callRefs, resources, elements)
+				if scope != tc.wantSec {
+					t.Fatalf("secret scope=%q want %q", scope, tc.wantSec)
+				}
+			}
+			if tc.wantS3 != "" || strings.HasPrefix(tc.name, "s3_") || tc.name == "star_all" {
+				_, grants, _, _, _, _ := bucketsFromDocs(docs, callRefs, resources, elements)
+				got := effectiveAuthzScope(grants)
+				if got != tc.wantS3 {
+					t.Fatalf("s3 scope=%q want %q grants=%v", got, tc.wantS3, grants)
 				}
 			}
 		})
