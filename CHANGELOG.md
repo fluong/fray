@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- EC2 instances that get their public IP or security groups from a launch template are now
+  evaluated with those settings. Previously such an instance could be reported as having no
+  public IP, so FR-034 could miss SSH or RDP open to the internet. When Fray can't tell which
+  template version an instance uses, the result is unverified.
+
 ## [0.22.0] — 2026-10-13
 
 ### Added
