@@ -640,15 +640,19 @@ func findInstanceLaunchTemplate(inst planResource, resources []planResource, idx
 }
 
 // launchTemplateVersionUsable reports whether the template's planned values
-// are what this instance will launch with.
+// are what this instance (or ASG) will launch with.
 //
 //   - $Latest or a reference to latest_version → use
 //   - version omitted, $Default, or reference to default_version → use only if
 //     update_default_version is true OR the template is being created in this
 //     plan (actions == ["create"]); otherwise unknown
 //   - pinned number / anything else → unknown
-func launchTemplateVersionUsable(inst planResource, tmpl planResource, idx configIndex) bool {
-	ver, verRefs, omitted := instanceLaunchTemplateVersion(inst, idx)
+func launchTemplateVersionUsable(holder planResource, tmpl planResource, idx configIndex) bool {
+	ver, verRefs, omitted := instanceLaunchTemplateVersion(holder, idx)
+	return launchTemplateVersionDecision(ver, verRefs, omitted, tmpl)
+}
+
+func launchTemplateVersionDecision(ver string, verRefs []string, omitted bool, tmpl planResource) bool {
 	if refsPointAtVersionAttr(verRefs, "latest_version") || ver == "$Latest" {
 		return true
 	}
