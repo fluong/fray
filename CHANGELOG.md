@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- The Action reports its version to the Fray service, which skips rules that need a newer Action instead of reporting them as unverified. Skipped rules are listed in the PR comment.
+
 ## [0.18.0] — 2026-10-13
 
 ### Added
