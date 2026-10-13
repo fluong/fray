@@ -70,7 +70,10 @@ func TestRootModuleRoleDocuments(t *testing.T) {
 			},
 		},
 	}}
-	docs := roleDocuments("", []string{"aws_iam_role.task.arn", "aws_iam_role.task"}, resources, data, idx)
+	docs, unknown := roleDocuments("", []string{"aws_iam_role.task.arn", "aws_iam_role.task"}, resources, data, idx)
+	if unknown {
+		t.Fatal("roleDocuments unexpected unknown")
+	}
 	if len(docs) != 1 {
 		t.Fatalf("roleDocuments root docs=%d want 1 (sameModule must match root addresses)", len(docs))
 	}
@@ -119,7 +122,10 @@ func TestRoleDocumentsNestedModule(t *testing.T) {
 			},
 		},
 	}}
-	docs := roleDocuments(mod, []string{role + ".arn", role}, resources, data, idx)
+	docs, unknown := roleDocuments(mod, []string{role + ".arn", role}, resources, data, idx)
+	if unknown {
+		t.Fatal("roleDocuments unexpected unknown")
+	}
 	if len(docs) != 1 {
 		t.Fatalf("roleDocuments nested docs=%d want 1", len(docs))
 	}
