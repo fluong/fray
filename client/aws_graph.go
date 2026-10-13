@@ -1762,8 +1762,8 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 // classifySecretARN classifies a Secrets Manager Resource ARN.
 // Account: bare "*", wildcards in region/account, or wildcards before/inside
 // the secret name (secret:*, secret:prod/*, …).
-// Resource: exact ARN/name match, or suffix forms name-*, name-??????, name*
-// when <name> equals the target secret's name.
+// Resource: exact ARN/name match, or suffix forms name-*, name-??????
+// when <name> equals the target secret's name. Bare name* (no hyphen) omits.
 func classifySecretARN(arn string, sec *Element, resources []planResource) (account, covers bool) {
 	if arn == "" {
 		return false, false
@@ -1786,6 +1786,10 @@ func classifySecretARN(arn string, sec *Element, resources []planResource) (acco
 			return true, false
 		}
 		target := secretTargetName(sec, resources)
+		if isSecretNameBarePrefixStar(namePat) {
+			// secret:<name>* with no hyphen — prefix could match other secrets.
+			return false, false
+		}
 		if isSecretNameSuffixForm(namePat) {
 			if target != "" && secretNamePatternMatches(namePat, target) {
 				return false, true
@@ -1835,10 +1839,20 @@ func secretNamePatternAccountWide(pat string) bool {
 	return false
 }
 
-// isSecretNameSuffixForm reports exact names and trailing-wildcard forms
-// (<name>, <name>-*, <name>-??????, <name>*), not account-wide globs.
+// isSecretNameBarePrefixStar reports secret:<name>* with no hyphen before the
+// wildcard (prefix could match other secrets, including ones outside the plan).
+func isSecretNameBarePrefixStar(pat string) bool {
+	if !strings.HasSuffix(pat, "*") || strings.HasSuffix(pat, "-*") {
+		return false
+	}
+	base := pat[:len(pat)-1]
+	return base != "" && !strings.ContainsAny(base, "*?")
+}
+
+// isSecretNameSuffixForm reports exact names and hyphenated trailing-wildcard
+// forms (<name>, <name>-*, <name>-??????), not account-wide globs or bare name*.
 func isSecretNameSuffixForm(pat string) bool {
-	if pat == "" || secretNamePatternAccountWide(pat) {
+	if pat == "" || secretNamePatternAccountWide(pat) || isSecretNameBarePrefixStar(pat) {
 		return false
 	}
 	i := strings.IndexAny(pat, "*?")
@@ -1846,14 +1860,11 @@ func isSecretNameSuffixForm(pat string) bool {
 		return true // exact name or name-AbCdEf
 	}
 	rest := pat[i:]
-	if onlyWildcards(rest) && (i > 0 && pat[i-1] == '-' || rest == "*") {
-		return true
-	}
-	return false
+	return i > 0 && pat[i-1] == '-' && onlyWildcards(rest)
 }
 
 // secretNamePatternMatches reports forms that pin a concrete secret name:
-// <name>, <name>-<suffix>, <name>-*, <name>-??????, <name>*.
+// <name>, <name>-<suffix>, <name>-*, <name>-??????.
 func secretNamePatternMatches(pat, name string) bool {
 	if name == "" || pat == "" || strings.ContainsAny(name, "*?") {
 		return false
@@ -1866,8 +1877,6 @@ func secretNamePatternMatches(pat, name string) bool {
 	}
 	suffix := pat[len(name):]
 	switch {
-	case suffix == "*":
-		return true
 	case suffix == "-*":
 		return true
 	case strings.HasPrefix(suffix, "-") && onlyQuestionMarks(suffix[1:]):
