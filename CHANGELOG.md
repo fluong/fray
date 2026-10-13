@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- IAM permissions in inline role policies (`aws_iam_role_policy`, `inline_policy`) and in
+  policies written as JSON (`jsonencode`) are now read for Secrets Manager, S3 and Bedrock.
+
+### Fixed
+- When an attached `aws_iam_policy` is unknown at plan time (and not backed by a readable
+  `data.aws_iam_policy_document`), Fray no longer reports authz scope from other role
+  policies alone — an unread policy could grant `*`. Demo plans that use data documents
+  are unchanged.
+
 ## [0.21.0] — 2026-10-13
 
 ### Added
