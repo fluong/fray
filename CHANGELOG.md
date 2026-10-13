@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- EKS managed node groups now appear in the diagram. FR-034 flags node groups with a
+  public IP whose SSH/RDP is open to the internet — including remote access configured
+  without source security groups, where AWS opens the port to 0.0.0.0/0.
+
 ## [0.23.0] — 2026-10-13
 
 ### Added
