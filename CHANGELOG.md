@@ -3,8 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
-- Scans of Terraform that grants Bedrock access were rejected by the hosted service
-  (invalid diagram). Fixed on the service side; no upgrade needed for v0.20.0 and later.
+- IAM policy documents that Terraform resolves during planning (`data.aws_iam_policy_document`
+  with only literal values) are now read. Previously the grant could be shown as unverified or
+  the finding left out (FR-004, FR-007, FR-032).
+- Scans of Terraform that grants Bedrock access were rejected by the hosted service between
+  v0.20.0 and v0.24.0; fixed on the service side, no upgrade required.
 
 ## [0.24.0] — 2026-10-13
 
