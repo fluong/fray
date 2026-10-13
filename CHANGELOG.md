@@ -5,6 +5,9 @@
 ### Added
 - AWS Bedrock model access (from IAM grants on ECS task roles and Lambda roles) is modelled as an LLM API, so FR-004 and FR-017 apply on AWS. Inline IAM role policies and managed policies other than AmazonBedrockFullAccess are not read; EC2 is not covered.
 
+### Fixed
+- IAM policies attached in the root Terraform module are now read for ECS task and execution roles. Secrets Manager and S3 findings can change on plans that keep IAM in the root module.
+
 ## [0.19.0] — 2026-10-13
 
 ### Added

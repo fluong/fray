@@ -309,11 +309,25 @@ func parseBedrockARN(arn string) (region, resType, resID string, ok bool) {
 }
 
 func callerRegionFromAllows(allows []iamStatement, managed bool) string {
+	// AmazonBedrockFullAccess is account-wide; never pin a region from narrower docs.
 	if managed {
 		return ""
 	}
 	if len(allows) == 0 {
 		return ""
+	}
+	// Order-independent: any global.* inference profile wins over geographic profiles.
+	for _, st := range allows {
+		for _, raw := range st.resources {
+			s, ok := raw.(string)
+			if !ok {
+				continue
+			}
+			_, resType, resID, parsed := parseBedrockARN(s)
+			if parsed && resType == "inference-profile" && strings.HasPrefix(resID, "global.") {
+				return "global"
+			}
+		}
 	}
 	var concrete string
 	sawConcrete := false
@@ -326,16 +340,13 @@ func callerRegionFromAllows(allows []iamStatement, managed bool) string {
 			if s == "*" {
 				return ""
 			}
-			region, resType, resID, ok := parseBedrockARN(s)
+			region, resType, _, ok := parseBedrockARN(s)
 			if !ok {
 				return ""
 			}
 			switch resType {
 			case "inference-profile":
-				if strings.HasPrefix(resID, "global.") {
-					return "global"
-				}
-				// Geographic (eu./us./apac.) and other profiles → unknown region.
+				// Geographic (eu./us./apac.) and other non-global profiles → unknown region.
 				return ""
 			case "application-inference-profile":
 				return ""
