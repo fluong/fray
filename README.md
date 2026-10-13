@@ -79,7 +79,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@8789214955780d991e4110533c3683211cd6d391 # v0.19.0
+      - uses: fluong/fray@efc28d883666a4de7be02749dd66685006f9c506 # v0.20.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra   # Terraform root; omit if plans live at repo root
@@ -234,7 +234,7 @@ jobs:
       # Use the commit SHA of the release tag
       # (git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{});
       # tags are immutable but SHAs are what Actions guarantees.
-      - uses: fluong/fray@8789214955780d991e4110533c3683211cd6d391 # v0.19.0
+      - uses: fluong/fray@efc28d883666a4de7be02749dd66685006f9c506 # v0.20.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra
@@ -362,7 +362,7 @@ jobs:
         with:
           name: fray-plan
           path: infra
-      - uses: fluong/fray@8789214955780d991e4110533c3683211cd6d391 # v0.19.0
+      - uses: fluong/fray@efc28d883666a4de7be02749dd66685006f9c506 # v0.20.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra
