@@ -367,6 +367,109 @@ func TestInstanceAdminPortsOpenTable(t *testing.T) {
 	}
 }
 
+func TestInstanceHasNoFlows(t *testing.T) {
+	// Public ALB + ECS + RDS from the demo fixture, plus a reachable instance.
+	plan, err := os.ReadFile("testdata/aws-plan.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan = injectBastionInstance(t, plan)
+	doc, warnings, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "", Source{
+		Repo:     "example/aws-web-app",
+		Commit:   "4530a865f29ba14931379f361b177a992edeab51",
+		Tool:     "terraform",
+		Fidelity: "plan",
+	}, filepath.Join("..", "testdata", "aws-web-app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "aws_instance") {
+			t.Fatalf("unexpected warning about instance: %s", w)
+		}
+	}
+	inst := findKind(doc, "virtual_machine")
+	if inst == nil {
+		t.Fatal("missing virtual_machine element")
+	}
+	if inst.Attributes["public_ip"] != true || inst.Attributes["admin_ports_open"] != true {
+		t.Fatalf("bastion attrs=%#v want public_ip=true admin_ports_open=true", inst.Attributes)
+	}
+	// Existing graph still has ALB / ECS / RDS.
+	if findKind(doc, "load_balancer") == nil || findKind(doc, "container_service") == nil || findKind(doc, "relational_db") == nil {
+		t.Fatal("demo elements missing after inject")
+	}
+	for _, f := range doc.Flows {
+		if f.From == inst.ID || f.To == inst.ID {
+			t.Fatalf("flow involves instance: from=%s to=%s", f.From, f.To)
+		}
+	}
+	instKey := inst.canonicalKey()
+	for _, b := range doc.TrustBoundaries {
+		for _, id := range append(append([]string{}, b.Inside...), b.Outside...) {
+			if id == inst.ID || id == instKey {
+				t.Fatalf("boundary %s involves instance: inside=%v outside=%v", b.Kind, b.Inside, b.Outside)
+			}
+		}
+	}
+}
+
+func injectBastionInstance(t *testing.T, plan []byte) []byte {
+	t.Helper()
+	var root map[string]any
+	if err := json.Unmarshal(plan, &root); err != nil {
+		t.Fatal(err)
+	}
+	changes, _ := root["resource_changes"].([]any)
+	changes = append(changes,
+		map[string]any{
+			"address": "aws_instance.bastion", "mode": "managed", "type": "aws_instance",
+			"change": map[string]any{"after": map[string]any{
+				"associate_public_ip_address": true,
+				"ipv6_address_count":          float64(0),
+			}},
+		},
+		map[string]any{
+			"address": "aws_security_group.bastion", "mode": "managed", "type": "aws_security_group",
+			"change": map[string]any{"after": map[string]any{
+				"ingress": []any{map[string]any{
+					"from_port": float64(22), "to_port": float64(22), "protocol": "tcp",
+					"cidr_blocks": []any{"0.0.0.0/0"}, "ipv6_cidr_blocks": []any{},
+					"prefix_list_ids": []any{}, "security_groups": []any{}, "self": false,
+				}},
+			}},
+		},
+	)
+	root["resource_changes"] = changes
+
+	cfg, _ := root["configuration"].(map[string]any)
+	rm, _ := cfg["root_module"].(map[string]any)
+	resources, _ := rm["resources"].([]any)
+	resources = append(resources,
+		map[string]any{
+			"address": "aws_instance.bastion", "type": "aws_instance", "name": "bastion", "mode": "managed",
+			"expressions": map[string]any{
+				"vpc_security_group_ids": map[string]any{
+					"references": []any{"aws_security_group.bastion.id", "aws_security_group.bastion"},
+				},
+			},
+		},
+		map[string]any{
+			"address": "aws_security_group.bastion", "type": "aws_security_group", "name": "bastion", "mode": "managed",
+			"expressions": map[string]any{},
+		},
+	)
+	rm["resources"] = resources
+	cfg["root_module"] = rm
+	root["configuration"] = cfg
+
+	out, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func TestInstanceFR034ShapedDFD(t *testing.T) {
 	cases := []struct {
 		name         string
