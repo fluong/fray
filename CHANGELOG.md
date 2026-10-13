@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- Auto Scaling groups now appear in the diagram. FR-034 checks them using their launch
+  template or launch configuration (public IP and security groups). When Fray can't tell
+  which template version a group uses, the result is unverified.
+
 ## [0.22.1] — 2026-10-13
 
 ### Fixed
