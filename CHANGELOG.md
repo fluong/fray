@@ -7,10 +7,12 @@
   policies written as JSON (`jsonencode`) are now read for Secrets Manager, S3 and Bedrock.
 
 ### Fixed
-- When an attached `aws_iam_policy` is unknown at plan time (and not backed by a readable
-  `data.aws_iam_policy_document`), Fray no longer reports authz scope from other role
-  policies alone — an unread policy could grant `*`. Demo plans that use data documents
-  are unchanged.
+- When an attached IAM policy can't be read from the plan, Fray no longer reports the role's
+  access as narrower than it may be — the scope is shown as unverified.
+- Secrets Manager and S3 grants that name a concrete secret or bucket with a trailing
+  wildcard (`secret:name-*`, `arn:aws:s3:::bucket/*`) are now treated as resource-scoped,
+  not account-wide. Exact ARNs that match a secret or bucket in the plan are also reported
+  as resource-scoped (they were previously left without a scope).
 
 ## [0.21.0] — 2026-10-13
 
