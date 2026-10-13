@@ -652,7 +652,7 @@ func TestARNWildcardRefinement(t *testing.T) {
 		// Secrets suffix forms → resource when name matches
 		{name: "secret_name_dash_star", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-*", wantSec: "resource"},
 		{name: "secret_name_dash_qqqqqq", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-??????", wantSec: "resource"},
-		{name: "secret_name_star", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db*", wantSec: "resource"},
+		{name: "secret_name_star_omit", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db*", wantSec: ""},
 		{name: "secret_exact_arn", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf", wantSec: "resource"},
 		{name: "secret_non_matching_name", arn: "arn:aws:secretsmanager:eu-west-1:111122223333:secret:other-*", wantSec: ""},
 		// Secrets account-wide wildcards
