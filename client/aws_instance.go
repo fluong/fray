@@ -1,6 +1,9 @@
 package client
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // awsInstanceElement maps a managed aws_instance to a virtual_machine process.
 // No flows are created to or from the instance in this version.
@@ -53,6 +56,10 @@ func instancePublicIP(inst planResource, resources []planResource, idx configInd
 }
 
 // instancePublicIPv4 is the auto-assign / subnet path only (EIP checked separately).
+// When the instance declares a launch_template, template network_interfaces
+// associate_public_ip_address is consulted before the subnet path. If the
+// template is declared but not usable, the result is omitted — never false via
+// subnet alone when the template could override it.
 func instancePublicIPv4(inst planResource, resources []planResource, idx configIndex) (public bool, known bool) {
 	if conflict, ok := instanceNICPublicIPConflict(inst, resources, idx); ok && conflict {
 		return false, false
@@ -63,8 +70,26 @@ func instancePublicIPv4(inst planResource, resources []planResource, idx configI
 	if inst.attrAfterUnknown("associate_public_ip_address") {
 		return false, false
 	}
-	// Unset: inherit from subnet when the managed subnet is in the plan.
+
+	lt := resolveInstanceLaunchTemplate(inst, resources, idx)
+	if lt.declared && !lt.usable {
+		return false, false
+	}
+	if lt.usable {
+		if conflict, checked := launchTemplateNICPublicIPConflict(lt.tmpl); checked && conflict {
+			return false, false
+		}
+		if v, ok := launchTemplateAssociatePublicIP(lt.tmpl); ok {
+			return v, true
+		}
+	}
+
+	// Unset on instance (and template NI): inherit from subnet — instance
+	// subnet_id first, else template network_interfaces subnet_id.
 	subnet, ok := resolveInstanceSubnet(inst, resources, idx)
+	if !ok && lt.usable {
+		subnet, ok = resolveLaunchTemplateSubnet(lt.tmpl, resources, idx)
+	}
 	if !ok {
 		return false, false
 	}
@@ -134,7 +159,12 @@ func instanceHasIPv6(inst planResource, resources []planResource, idx configInde
 	if addrs := stringList(inst.values["ipv6_address_list"]); len(addrs) > 0 {
 		return true, true
 	}
+
+	lt := resolveInstanceLaunchTemplate(inst, resources, idx)
 	subnet, ok := resolveInstanceSubnet(inst, resources, idx)
+	if !ok && lt.usable {
+		subnet, ok = resolveLaunchTemplateSubnet(lt.tmpl, resources, idx)
+	}
 	if ok {
 		if v, ok := subnet.values["assign_ipv6_address_on_creation"].(bool); ok && v {
 			return true, true
@@ -143,11 +173,21 @@ func instanceHasIPv6(inst planResource, resources []planResource, idx configInde
 			return false, false
 		}
 	}
-	// No positive IPv6 signal and count is 0 or unset → treat as no IPv6 when
-	// ipv4 path already proved absence; count unset with no subnet signal is "no".
+
+	// Instance set count==0 → definitive absence (instance wins over template).
 	if n, ok := number(inst.values["ipv6_address_count"]); ok && n == 0 {
 		return false, true
 	}
+
+	// Instance unset: template may supply ipv6_address_count / NI ipv6 settings.
+	if lt.declared && !lt.usable {
+		return false, false
+	}
+	if lt.usable {
+		return launchTemplateHasIPv6(lt.tmpl)
+	}
+
+	// No positive IPv6 signal and count is unset → treat as no IPv6.
 	if _, hasCount := inst.values["ipv6_address_count"]; !hasCount {
 		return false, true
 	}
@@ -424,7 +464,43 @@ func instanceSecurityGroupRefs(inst planResource, resources []planResource, idx 
 		refs = append(refs, idx.attrRefs(r.address, "security_groups")...)
 		refs = append(refs, idx.attrRefs(r.address, "vpc_security_group_ids")...)
 	}
-	return uniqueStrings(filterLikelySGRefs(refs))
+	filtered := uniqueStrings(filterLikelySGRefs(refs))
+	if instanceSetsSecurityGroups(inst, resources, idx) {
+		return filtered
+	}
+
+	lt := resolveInstanceLaunchTemplate(inst, resources, idx)
+	if lt.declared && !lt.usable {
+		return nil
+	}
+	if lt.usable {
+		return launchTemplateSecurityGroupRefs(lt.tmpl, idx)
+	}
+	return filtered
+}
+
+func instanceSetsSecurityGroups(inst planResource, resources []planResource, idx configIndex) bool {
+	if hasConfigAttr(idx, inst.address, "vpc_security_group_ids") {
+		return true
+	}
+	if hasConfigAttr(idx, inst.address, "security_groups") {
+		return true
+	}
+	if len(filterLikelySGRefs(idx.attrRefs(inst.address, "network_interface"))) > 0 {
+		return true
+	}
+	for _, r := range resources {
+		if r.typ != "aws_network_interface" {
+			continue
+		}
+		if !networkInterfaceBelongsTo(r, inst, idx) {
+			continue
+		}
+		if hasConfigAttr(idx, r.address, "security_groups") || hasConfigAttr(idx, r.address, "vpc_security_group_ids") {
+			return true
+		}
+	}
+	return false
 }
 
 func filterLikelySGRefs(refs []string) []string {
@@ -487,4 +563,304 @@ func adminProtocolCounts(protocol string) bool {
 	default:
 		return false
 	}
+}
+
+// launchTemplateRef holds a resolved in-plan aws_launch_template when the
+// instance's launch_template block points at one whose planned values are
+// safe to use for this plan (version rule).
+type launchTemplateRef struct {
+	tmpl     planResource
+	declared bool // instance has a launch_template block
+	usable   bool // planned values apply to what this instance will launch
+}
+
+func resolveInstanceLaunchTemplate(inst planResource, resources []planResource, idx configIndex) launchTemplateRef {
+	if !instanceDeclaresLaunchTemplate(inst, idx) {
+		return launchTemplateRef{}
+	}
+	out := launchTemplateRef{declared: true}
+	tmpl, ok := findInstanceLaunchTemplate(inst, resources, idx)
+	if !ok {
+		return out
+	}
+	out.tmpl = tmpl
+	if !launchTemplateVersionUsable(inst, tmpl, idx) {
+		return out
+	}
+	out.usable = true
+	return out
+}
+
+func instanceDeclaresLaunchTemplate(inst planResource, idx configIndex) bool {
+	if hasConfigAttr(idx, inst.address, "launch_template") {
+		return true
+	}
+	return len(asList(inst.values["launch_template"])) > 0
+}
+
+func findInstanceLaunchTemplate(inst planResource, resources []planResource, idx configIndex) (planResource, bool) {
+	refs := idx.attrRefs(inst.address, "launch_template")
+	var hit planResource
+	found := false
+	for _, ref := range refs {
+		if isVarRef(ref) || isBareModuleRef(ref) {
+			continue
+		}
+		if strings.Contains(ref, "data.aws_launch_template") {
+			return planResource{}, false
+		}
+		if isModuleOutputRef(ref) {
+			lt, ok := resolveModuleOutputResource(ref, "aws_launch_template", idx, resources, 0)
+			if !ok {
+				return planResource{}, false
+			}
+			if found && hit.address != lt.address {
+				return planResource{}, false
+			}
+			hit, found = lt, true
+			continue
+		}
+		name := resourceNameFromRef(ref, "aws_launch_template")
+		if name == "" {
+			continue
+		}
+		lt, ok := findManagedResource(resources, "aws_launch_template", name, ref)
+		if !ok {
+			return planResource{}, false
+		}
+		if found && hit.address != lt.address {
+			return planResource{}, false
+		}
+		hit, found = lt, true
+	}
+	if !found {
+		return planResource{}, false
+	}
+	return hit, true
+}
+
+// launchTemplateVersionUsable reports whether the template's planned values
+// are what this instance will launch with.
+//
+//   - $Latest or a reference to latest_version → use
+//   - version omitted, $Default, or reference to default_version → use only if
+//     update_default_version is true OR the template is being created in this
+//     plan (actions == ["create"]); otherwise unknown
+//   - pinned number / anything else → unknown
+func launchTemplateVersionUsable(inst planResource, tmpl planResource, idx configIndex) bool {
+	ver, verRefs, omitted := instanceLaunchTemplateVersion(inst, idx)
+	if refsPointAtVersionAttr(verRefs, "latest_version") || ver == "$Latest" {
+		return true
+	}
+	if refsPointAtVersionAttr(verRefs, "default_version") || ver == "$Default" || omitted || ver == "" {
+		if v, ok := asBoolish(tmpl.values["update_default_version"]); ok && v {
+			return true
+		}
+		if len(tmpl.actions) == 1 && tmpl.actions[0] == "create" {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func refsPointAtVersionAttr(refs []string, attr string) bool {
+	suffix := "." + attr
+	for _, ref := range refs {
+		if strings.HasSuffix(ref, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// instanceLaunchTemplateVersion reads the instance launch_template version
+// expression (config first, then planned values). omitted is true when the
+// version argument is absent.
+func instanceLaunchTemplateVersion(inst planResource, idx configIndex) (ver string, verRefs []string, omitted bool) {
+	key, ok := resourceKey(inst.address)
+	if ok {
+		if blocks := asList(idx.resources[key].raw["launch_template"]); len(blocks) > 0 {
+			block, _ := blocks[0].(map[string]any)
+			if block != nil {
+				vexpr, has := block["version"]
+				if !has {
+					return "", nil, true
+				}
+				if m, ok := vexpr.(map[string]any); ok {
+					if cv, ok := m["constant_value"]; ok {
+						ver = fmt.Sprint(cv)
+					}
+					collectRefs(vexpr, &verRefs)
+				}
+				return ver, verRefs, false
+			}
+		}
+	}
+	for _, raw := range asList(inst.values["launch_template"]) {
+		m, _ := raw.(map[string]any)
+		if m == nil {
+			continue
+		}
+		v, has := m["version"]
+		if !has || v == nil {
+			return "", nil, true
+		}
+		switch t := v.(type) {
+		case string:
+			return t, nil, false
+		default:
+			return fmt.Sprint(t), nil, false
+		}
+	}
+	return "", nil, true
+}
+
+func launchTemplateNICPublicIPConflict(tmpl planResource) (conflict, checked bool) {
+	var seenTrue, seenFalse bool
+	for _, ni := range asList(tmpl.values["network_interfaces"]) {
+		m, ok := ni.(map[string]any)
+		if !ok {
+			continue
+		}
+		v, ok := asBoolish(m["associate_public_ip_address"])
+		if !ok {
+			continue
+		}
+		checked = true
+		if v {
+			seenTrue = true
+		} else {
+			seenFalse = true
+		}
+	}
+	return seenTrue && seenFalse, checked
+}
+
+func launchTemplateAssociatePublicIP(tmpl planResource) (public bool, ok bool) {
+	var seen *bool
+	for _, ni := range asList(tmpl.values["network_interfaces"]) {
+		m, isMap := ni.(map[string]any)
+		if !isMap {
+			continue
+		}
+		v, has := asBoolish(m["associate_public_ip_address"])
+		if !has {
+			continue
+		}
+		if seen == nil {
+			b := v
+			seen = &b
+			continue
+		}
+		if *seen != v {
+			return false, false
+		}
+	}
+	if seen == nil {
+		return false, false
+	}
+	return *seen, true
+}
+
+func launchTemplateHasIPv6(tmpl planResource) (has bool, known bool) {
+	if n, ok := number(tmpl.values["ipv6_address_count"]); ok {
+		if n > 0 {
+			return true, true
+		}
+	} else if tmpl.attrAfterUnknown("ipv6_address_count") {
+		return false, false
+	}
+	for _, ni := range asList(tmpl.values["network_interfaces"]) {
+		m, ok := ni.(map[string]any)
+		if !ok {
+			continue
+		}
+		if n, ok := number(m["ipv6_address_count"]); ok && n > 0 {
+			return true, true
+		}
+		if addrs := stringList(m["ipv6_addresses"]); len(addrs) > 0 {
+			return true, true
+		}
+	}
+	if n, ok := number(tmpl.values["ipv6_address_count"]); ok && n == 0 {
+		return false, true
+	}
+	return false, true
+}
+
+func launchTemplateSecurityGroupRefs(tmpl planResource, idx configIndex) []string {
+	vpc := filterLikelySGRefs(idx.attrRefs(tmpl.address, "vpc_security_group_ids"))
+	if len(vpc) > 0 || hasConfigAttr(idx, tmpl.address, "vpc_security_group_ids") {
+		return uniqueStrings(vpc)
+	}
+	return uniqueStrings(filterLikelySGRefs(idx.attrRefs(tmpl.address, "network_interfaces")))
+}
+
+func resolveLaunchTemplateSubnet(tmpl planResource, resources []planResource, idx configIndex) (planResource, bool) {
+	var refs []string
+	for _, ref := range idx.attrRefs(tmpl.address, "network_interfaces") {
+		if strings.Contains(ref, "aws_subnet") {
+			refs = append(refs, ref)
+		}
+	}
+	if len(refs) == 0 {
+		return planResource{}, false
+	}
+	var hit planResource
+	found := false
+	for _, ref := range refs {
+		if isVarRef(ref) {
+			continue
+		}
+		if strings.Contains(ref, "data.aws_subnet") || strings.Contains(ref, ".data.aws_subnet.") {
+			return planResource{}, false
+		}
+		if isModuleOutputRef(ref) {
+			sn, ok := resolveModuleOutputResource(ref, "aws_subnet", idx, resources, 0)
+			if !ok {
+				return planResource{}, false
+			}
+			if found && hit.address != sn.address {
+				return planResource{}, false
+			}
+			hit, found = sn, true
+			continue
+		}
+		if isBareModuleRef(ref) {
+			continue
+		}
+		name := resourceNameFromRef(ref, "aws_subnet")
+		if name == "" {
+			return planResource{}, false
+		}
+		sn, ok := findManagedResource(resources, "aws_subnet", name, ref)
+		if !ok {
+			return planResource{}, false
+		}
+		if found && hit.address != sn.address {
+			return planResource{}, false
+		}
+		hit, found = sn, true
+	}
+	if !found {
+		return planResource{}, false
+	}
+	return hit, true
+}
+
+// asBoolish coerces Terraform bool or AWS-provider string bools ("true"/"false").
+func asBoolish(v any) (bool, bool) {
+	switch t := v.(type) {
+	case bool:
+		return t, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(t)) {
+		case "true", "1":
+			return true, true
+		case "false", "0":
+			return false, true
+		}
+	}
+	return false, false
 }
