@@ -1,9 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.18.0] — 2026-10-13
 
 ### Added
-- Google Cloud SQL instances are modelled as relational databases, so FR-029 (internet exposure), FR-030 (encryption at rest), FR-031 (TLS) and FR-033 (destroy protection) apply on Google Cloud. Fray does not assume a default ssl_mode; FR-033 counts the Terraform deletion_protection argument, settings.deletion_protection_enabled or lifecycle.prevent_destroy.
+- Google Cloud SQL instances are modelled as relational databases, so FR-029 (internet exposure), FR-030 (encryption at rest), FR-031 (TLS) and FR-033 (destroy protection) apply on Google Cloud. A public IP with no authorized networks counts as restricted (only the Cloud SQL connectors, which require IAM, can connect). Fray does not assume a default ssl_mode. FR-033 counts the Terraform deletion_protection argument, settings.deletion_protection_enabled or lifecycle.prevent_destroy.
+- Cloud Run services attached to a Cloud SQL instance (cloud_sql_instance volume or the cloudsql-instances annotation) are connected to it over TLS.
 
 ## [0.17.0] — 2026-10-13
 
