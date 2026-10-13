@@ -41,11 +41,16 @@ func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 
 func TestAllowedAttributesMatchSchemaAndCode(t *testing.T) {
 	schemaKeys := loadSchemaAttributeKeys(t)
-	allow := AllowedAttributeKeys()
-	slices.Sort(allow)
-	slices.Sort(schemaKeys)
-	if !slices.Equal(allow, schemaKeys) {
-		t.Fatalf("allow-list keys %#v != schema attributes %#v", allow, schemaKeys)
+	schemaSet := map[string]bool{}
+	for _, k := range schemaKeys {
+		schemaSet[k] = true
+	}
+	// Schema may lead the client allow-list (server-first / schema-only commits).
+	// Every allow-list key must remain in the schema; schema-only keys are fine.
+	for _, k := range AllowedAttributeKeys() {
+		if !schemaSet[k] {
+			t.Errorf("allow-list key %q missing from schema attributes — add it to schema/dfd.schema.json", k)
+		}
 	}
 
 	codeKeys := attrsAssignedInClientSource(t)

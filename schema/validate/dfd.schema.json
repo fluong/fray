@@ -574,8 +574,16 @@
         "public": {
           "type": "boolean"
         },
+        "public_ip": {
+          "type": "boolean",
+          "description": "true = the instance has a public IPv4 address (auto-assigned or Elastic IP). false = no public IPv4 and no IPv6 address. Absent = unknown — including instances with IPv6 addresses, whose inbound reachability depends on routing Fray does not read."
+        },
         "acls_disabled": {
           "type": "boolean"
+        },
+        "admin_ports_open": {
+          "type": "boolean",
+          "description": "true = an attached security group allows TCP 22 or 3389 (or all traffic) from the internet. false = all attached security groups were read and none do. Absent = unknown."
         },
         "public_access_blocked": {
           "type": "boolean"
@@ -760,6 +768,7 @@
         "container_service",
         "load_balancer",
         "serverless_function",
+        "virtual_machine",
         "message_queue",
         "nosql_db",
         "cache",
