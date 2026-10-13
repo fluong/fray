@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- AWS Bedrock model access (from IAM grants on ECS task roles and Lambda roles) is modelled as an LLM API, so FR-004 and FR-017 apply on AWS. Inline IAM role policies and managed policies other than AmazonBedrockFullAccess are not read; EC2 is not covered.
+
 ## [0.19.0] — 2026-10-13
 
 ### Added
