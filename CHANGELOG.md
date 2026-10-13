@@ -2,11 +2,16 @@
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-10-13
+
 ### Added
-- Standalone EC2 instances (`aws_instance`) now appear in the diagram as
-  virtual machines. FR-034 flags SSH or RDP open to the internet on instances
-  with a public IP. Limits: launch templates and Auto Scaling groups, route
-  tables, and network ACLs are not read.
+- Standalone EC2 instances (`aws_instance`) now appear in the diagram.
+- FR-034 flags instances that have a public IP and a security group allowing SSH (22)
+  or RDP (3389) from the internet. If Fray can't tell whether the instance has a
+  public IP or what its security groups allow, the result is unverified.
+- Limits: launch templates, Auto Scaling groups, route tables and network ACLs are not
+  read yet.
+- FR-034 needs this version or later; older versions list it as not evaluated.
 
 ## [0.20.0] — 2026-10-13
 
@@ -358,6 +363,7 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/fluong/fray/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/fluong/fray/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/fluong/fray/compare/v0.18.0...v0.19.0
