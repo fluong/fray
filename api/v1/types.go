@@ -107,6 +107,15 @@ type ScanRequest struct {
 	Commit              string          `json:"commit"`
 	IsDefaultBranch     bool            `json:"is_default_branch"`
 	BaseCommit          string          `json:"base_commit,omitempty"`
+	// ClientVersion is the Action/CLI SemVer (no leading "v"). Older servers ignore it.
+	ClientVersion string `json:"client_version,omitempty"`
+}
+
+// RuleSkipped is a catalog rule the server did not evaluate because this
+// Action is older than the rule's min_action.
+type RuleSkipped struct {
+	RuleID    string `json:"rule_id"`
+	MinAction string `json:"min_action"`
 }
 
 // FindingEnrichment is optional AI prose under one rule finding.
@@ -163,6 +172,8 @@ type ScanResponse struct {
 	// Waivers is omitted by older servers; clients treat a missing object as
 	// "server did not report waiver outcomes".
 	Waivers *Waivers `json:"waivers,omitempty"`
+	// RulesSkipped is omitted when empty or by older servers.
+	RulesSkipped []RuleSkipped `json:"rules_skipped,omitempty"`
 }
 
 // MarshalFindings encodes findings as indented JSON with a trailing newline.
