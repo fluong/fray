@@ -536,62 +536,7 @@ func asgLaunchSecurityGroupRefs(src asgLaunchSource, idx configIndex) ([]string,
 }
 
 func resolveASGSubnets(asg planResource, resources []planResource, idx configIndex) (subnets []planResource, allResolved, ok bool) {
-	refs := idx.attrRefs(asg.address, "vpc_zone_identifier")
-	if len(refs) == 0 {
-		return nil, false, false
-	}
-	seen := map[string]bool{}
-	allResolved = true
-	foundAny := false
-	for _, ref := range refs {
-		if isVarRef(ref) {
-			allResolved = false
-			continue
-		}
-		if isBareModuleRef(ref) {
-			continue
-		}
-		if strings.Contains(ref, "data.aws_subnet") || strings.Contains(ref, ".data.aws_subnet.") {
-			allResolved = false
-			ok = true // declared path exists
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			sn, resolved := resolveModuleOutputResource(ref, "aws_subnet", idx, resources, 0)
-			if !resolved {
-				allResolved = false
-				ok = true
-				continue
-			}
-			if seen[sn.address] {
-				continue
-			}
-			seen[sn.address] = true
-			subnets = append(subnets, sn)
-			foundAny = true
-			continue
-		}
-		name := resourceNameFromRef(ref, "aws_subnet")
-		if name == "" {
-			continue
-		}
-		sn, resolved := findManagedResource(resources, "aws_subnet", name, ref)
-		if !resolved {
-			allResolved = false
-			ok = true
-			continue
-		}
-		if seen[sn.address] {
-			continue
-		}
-		seen[sn.address] = true
-		subnets = append(subnets, sn)
-		foundAny = true
-	}
-	if !foundAny && !ok {
-		return nil, false, false
-	}
-	return subnets, allResolved && foundAny, true
+	return resolveNamedSubnets(asg, "vpc_zone_identifier", resources, idx)
 }
 
 func stringSlicesEqual(a, b []string) bool {

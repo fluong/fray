@@ -52,9 +52,10 @@ func kindNoun(kind string) string {
 	case "serverless_function":
 		return "function"
 	case "virtual_machine":
-		// Standalone aws_instance only. Auto Scaling groups share Kind
-		// virtual_machine for FR-034 but must use ASGDisplayName so comments
-		// never say "instance".
+		// Standalone aws_instance only. Auto Scaling groups and EKS node
+		// groups share Kind virtual_machine for FR-034 but must use
+		// ASGDisplayName / EKSNodeGroupDisplayName so comments never say
+		// "instance".
 		return "instance"
 	default:
 		return ""
@@ -77,4 +78,22 @@ func ASGDisplayName(address, resourceName string) string {
 		return "Auto Scaling group"
 	}
 	return base + " Auto Scaling group"
+}
+
+// EKSNodeGroupDisplayName is the comment/SARIF-facing name for an
+// aws_eks_node_group. Always ends with "EKS node group" so display never
+// falls through to kindNoun("virtual_machine") → "instance".
+func EKSNodeGroupDisplayName(address, resourceName string) string {
+	base := ""
+	if mod := rootModuleName(address); mod != "" {
+		base = mod
+	} else if resourceName != "" {
+		base = resourceName
+	} else if address != "" {
+		base = address
+	}
+	if base == "" {
+		return "EKS node group"
+	}
+	return base + " EKS node group"
 }
