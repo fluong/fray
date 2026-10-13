@@ -204,6 +204,54 @@ func TestEKSNodeGroupPublicIPAndAdmin(t *testing.T) {
 			wantPublic: true, wantPublicOK: true,
 			wantAdmin: true, wantAdminOK: true,
 		},
+		// Launch template without security groups: EKS attaches the cluster SG → (d).
+		{
+			name: "LT without SGs + no cluster rules → (d) false",
+			build: func() (planResource, []planResource, configIndex) {
+				return ngLTFixture(t, ngLTOpts{
+					version:             "$Latest",
+					tmplAssociatePublic: boolPtr(false),
+					subnetPublic:        []bool{false},
+					tmplActions:         []string{"no-op"},
+					tmplNoSGs:           true,
+					withCluster:         true,
+				})
+			},
+			wantPublic: false, wantPublicOK: true,
+			wantAdmin: false, wantAdminOK: true,
+		},
+		{
+			name: "LT without SGs + world-22 on cluster SG → (d) true",
+			build: func() (planResource, []planResource, configIndex) {
+				return ngLTFixture(t, ngLTOpts{
+					version:             "$Latest",
+					tmplAssociatePublic: boolPtr(true),
+					subnetPublic:        []bool{false},
+					tmplActions:         []string{"no-op"},
+					tmplNoSGs:           true,
+					withCluster:         true,
+					clusterWorldSSH:     true,
+				})
+			},
+			wantPublic: true, wantPublicOK: true,
+			wantAdmin: true, wantAdminOK: true,
+		},
+		{
+			name: "LT without SGs + unknown cluster rule → (d) omit",
+			build: func() (planResource, []planResource, configIndex) {
+				return ngLTFixture(t, ngLTOpts{
+					version:             "$Latest",
+					tmplAssociatePublic: boolPtr(false),
+					subnetPublic:        []bool{false},
+					tmplActions:         []string{"no-op"},
+					tmplNoSGs:           true,
+					withCluster:         true,
+					clusterRuleUnknown:  true,
+				})
+			},
+			wantPublic: false, wantPublicOK: true,
+			wantAdmin: false, wantAdminOK: false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -410,8 +458,11 @@ type ngLTOpts struct {
 	tmplAssociatePublic *bool
 	subnetPublic        []bool
 	tmplWorldSSH        bool
+	tmplNoSGs           bool // no vpc_security_group_ids / NI security_groups → cluster SG (d)
 	tmplActions         []string
 	withCluster         bool
+	clusterWorldSSH     bool
+	clusterRuleUnknown  bool
 }
 
 func ngLTFixture(t *testing.T, o ngLTOpts) (planResource, []planResource, configIndex) {
@@ -442,20 +493,6 @@ func ngLTFixture(t *testing.T, o ngLTOpts) (planResource, []planResource, config
 		subnetRefs = append(subnetRefs, addr+".id", addr)
 		idx.resources[addr] = exprSet{}
 	}
-
-	cidr := "10.0.0.0/8"
-	if o.tmplWorldSSH {
-		cidr = "0.0.0.0/0"
-	}
-	sg := planResource{
-		typ: "aws_security_group", address: "aws_security_group.ng_ssh",
-		values: map[string]any{"ingress": []any{map[string]any{
-			"from_port": float64(22), "to_port": float64(22), "protocol": "tcp",
-			"cidr_blocks": []any{cidr},
-		}}},
-	}
-	resources = append(resources, sg)
-	idx.resources[sg.address] = exprSet{}
 
 	nis := []any{}
 	if o.tmplAssociatePublic != nil {
@@ -490,18 +527,45 @@ func ngLTFixture(t *testing.T, o ngLTOpts) (planResource, []planResource, config
 			"cluster_name":    map[string]any{"references": []any{"aws_eks_cluster.this.name", "aws_eks_cluster.this"}},
 		},
 	}
-	idx.resources[tmpl.address] = exprSet{
-		refs: map[string][]string{
-			"network_interfaces": {"aws_security_group.ng_ssh.id", "aws_security_group.ng_ssh"},
-		},
-		raw: map[string]any{
-			"network_interfaces": []any{map[string]any{
-				"security_groups": map[string]any{
-					"references": []any{"aws_security_group.ng_ssh.id", "aws_security_group.ng_ssh"},
-				},
-			}},
-		},
+
+	if o.tmplNoSGs {
+		// NI may set associate_public_ip_address only — no security group attrs.
+		niRaw := map[string]any{}
+		if o.tmplAssociatePublic != nil {
+			niRaw["associate_public_ip_address"] = map[string]any{"constant_value": *o.tmplAssociatePublic}
+		}
+		idx.resources[tmpl.address] = exprSet{
+			refs: map[string][]string{},
+			raw:  map[string]any{"network_interfaces": []any{niRaw}},
+		}
+	} else {
+		cidr := "10.0.0.0/8"
+		if o.tmplWorldSSH {
+			cidr = "0.0.0.0/0"
+		}
+		sg := planResource{
+			typ: "aws_security_group", address: "aws_security_group.ng_ssh",
+			values: map[string]any{"ingress": []any{map[string]any{
+				"from_port": float64(22), "to_port": float64(22), "protocol": "tcp",
+				"cidr_blocks": []any{cidr},
+			}}},
+		}
+		resources = append(resources, sg)
+		idx.resources[sg.address] = exprSet{}
+		idx.resources[tmpl.address] = exprSet{
+			refs: map[string][]string{
+				"network_interfaces": {"aws_security_group.ng_ssh.id", "aws_security_group.ng_ssh"},
+			},
+			raw: map[string]any{
+				"network_interfaces": []any{map[string]any{
+					"security_groups": map[string]any{
+						"references": []any{"aws_security_group.ng_ssh.id", "aws_security_group.ng_ssh"},
+					},
+				}},
+			},
+		}
 	}
+
 	if o.withCluster {
 		cluster := planResource{
 			typ: "aws_eks_cluster", address: "aws_eks_cluster.this",
@@ -514,6 +578,39 @@ func ngLTFixture(t *testing.T, o ngLTOpts) (planResource, []planResource, config
 		}
 		resources = append(resources, cluster)
 		idx.resources[cluster.address] = exprSet{}
+
+		if o.clusterWorldSSH || o.clusterRuleUnknown {
+			ruleVals := map[string]any{
+				"type":      "ingress",
+				"from_port": float64(22),
+				"to_port":   float64(22),
+				"protocol":  "tcp",
+			}
+			rule := planResource{
+				typ: "aws_security_group_rule", address: "aws_security_group_rule.cluster_ssh",
+				values: ruleVals,
+			}
+			if o.clusterRuleUnknown {
+				rule.afterUnknown = map[string]any{"cidr_blocks": true}
+			} else {
+				rule.values["cidr_blocks"] = []any{"0.0.0.0/0"}
+			}
+			resources = append(resources, rule)
+			idx.resources[rule.address] = exprSet{
+				refs: map[string][]string{
+					"security_group_id": {
+						"aws_eks_cluster.this.vpc_config[0].cluster_security_group_id",
+						"aws_eks_cluster.this",
+					},
+				},
+				raw: map[string]any{
+					"security_group_id": map[string]any{"references": []any{
+						"aws_eks_cluster.this.vpc_config[0].cluster_security_group_id",
+						"aws_eks_cluster.this",
+					}},
+				},
+			}
+		}
 	}
 	return ng, resources, idx
 }
