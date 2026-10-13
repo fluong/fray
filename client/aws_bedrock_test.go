@@ -107,6 +107,17 @@ func TestBedrockIAMMapping(t *testing.T) {
 			wantFlows:  1,
 		},
 		{
+			name: "managed_plus_narrow_foundation_model",
+			plan: bedrockLambdaPlan(t, bedrockIAMOpts{
+				managedFullAccess: true,
+				resources:         []string{"arn:aws:bedrock:eu-west-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"},
+			}),
+			wantScope:  "account",
+			wantRegion: "",
+			wantCaller: "aws_lambda_function.fn",
+			wantFlows:  1,
+		},
+		{
 			name:      "execution_role_not_task_role",
 			plan:      bedrockECSPlan(t, bedrockIAMOpts{resources: []string{"*"}, onTaskRole: false, onExecRole: true}),
 			wantFlows: 0,
@@ -509,25 +520,29 @@ func appendBedrockIAM(resources, cfg []map[string]any, roleName string, o bedroc
 }
 
 func appendBedrockIAMNamed(resources, cfg []map[string]any, roleName, suffix string, o bedrockIAMOpts) ([]map[string]any, []map[string]any) {
-	att := "aws_iam_role_policy_attachment.bedrock_" + suffix
 	if o.managedFullAccess {
+		att := "aws_iam_role_policy_attachment.bedrock_managed_" + suffix
 		resources = append(resources, map[string]any{
 			"address": att, "mode": "managed", "type": "aws_iam_role_policy_attachment",
-			"name": "bedrock_" + suffix,
+			"name": "bedrock_managed_" + suffix,
 			"change": map[string]any{"after": map[string]any{
 				"policy_arn": "arn:aws:iam::aws:policy/AmazonBedrockFullAccess",
 			}},
 		})
 		cfg = append(cfg, map[string]any{
-			"address": att, "type": "aws_iam_role_policy_attachment", "name": "bedrock_" + suffix,
+			"address": att, "type": "aws_iam_role_policy_attachment", "name": "bedrock_managed_" + suffix,
 			"expressions": map[string]any{
 				"role":       map[string]any{"references": []any{"aws_iam_role." + roleName + ".name", "aws_iam_role." + roleName}},
 				"policy_arn": map[string]any{"constant_value": "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"},
 			},
 		})
-		return resources, cfg
+		custom := len(o.resources) > 0 || o.condition || o.notAction || o.denyBedrock || o.computedResources
+		if !custom {
+			return resources, cfg
+		}
 	}
 
+	att := "aws_iam_role_policy_attachment.bedrock_" + suffix
 	pol := "aws_iam_policy.bedrock_" + suffix
 	doc := "data.aws_iam_policy_document.bedrock_" + suffix
 	resources = append(resources,
@@ -645,6 +660,33 @@ func bedrockFlowFrom(doc DFD, callerAddr string) *Flow {
 		}
 	}
 	return nil
+}
+
+func TestCallerRegionFromAllowsOrderIndependent(t *testing.T) {
+	eu := "arn:aws:bedrock:us-east-1:123456789012:inference-profile/eu.anthropic.claude-sonnet-4"
+	global := "arn:aws:bedrock:us-east-1:123456789012:inference-profile/global.anthropic.claude-sonnet-4"
+	cases := []struct {
+		name string
+		res  []string
+		want string
+	}{
+		{"eu_then_global", []string{eu, global}, "global"},
+		{"global_then_eu", []string{global, eu}, "global"},
+		{"star_then_global", []string{"*", global}, "global"},
+		{"global_then_star", []string{global, "*"}, "global"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := make([]any, len(tc.res))
+			for i, r := range tc.res {
+				res[i] = r
+			}
+			got := callerRegionFromAllows([]iamStatement{{resources: res}}, false)
+			if got != tc.want {
+				t.Fatalf("region=%q want %q", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestBedrockInvokeActionMatcher(t *testing.T) {

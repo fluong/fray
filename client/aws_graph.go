@@ -38,15 +38,19 @@ func (idx configIndex) attrConstant(address, attr string) any {
 	return idx.resources[key].constants[attr]
 }
 
-// sameModule reports whether address lives in module ("" = root).
+// sameModule reports whether address lives in module.
+// Root (module == "") matches only root-module addresses. Named modules use
+// prefix match so nested addresses under module.x.module.y.… are included,
+// matching the pre-Bedrock HasPrefix(addr, module+".") semantics after
+// data-source normalisation (module.x.data.T.n → module.x.T.n).
 func sameModule(address, module string) bool {
 	normalized := strings.ReplaceAll(address, ".data.", ".")
 	normalized = strings.TrimPrefix(normalized, "data.")
-	m, _, _, ok := splitResourceAddress(normalized)
-	if !ok {
-		return false
+	if module == "" {
+		m, _, _, ok := splitResourceAddress(normalized)
+		return ok && m == ""
 	}
-	return m == module
+	return strings.HasPrefix(normalized, module+".")
 }
 
 func (idx configIndex) callRefs(moduleAddr string) []string {
