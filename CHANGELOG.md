@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- Standalone EC2 instances (`aws_instance`) now appear in the diagram as
+  virtual machines. FR-034 flags SSH or RDP open to the internet on instances
+  with a public IP. Limits: launch templates and Auto Scaling groups, route
+  tables, and network ACLs are not read.
+
 ## [0.20.0] — 2026-10-13
 
 ### Added
