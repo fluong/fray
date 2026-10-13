@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.22.1] — 2026-10-13
+
 ### Fixed
 - EC2 instances that get their public IP or security groups from a launch template are now
   evaluated with those settings. Previously such an instance could be reported as having no
@@ -383,7 +385,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.22.1...HEAD
+[0.22.1]: https://github.com/fluong/fray/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/fluong/fray/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/fluong/fray/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/fluong/fray/compare/v0.19.0...v0.20.0
