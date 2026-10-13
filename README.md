@@ -88,6 +88,8 @@ jobs:
 
 See [GitHub Action](#github-action) for every input.
 
+Fray currently supports one Fray job per repository; if your repo holds several Terraform stacks, point the job at one of them.
+
 ### When a repo is not enrolled
 
 If the App install does not cover the repository (inactive install, repo not
