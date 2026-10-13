@@ -37,3 +37,19 @@ func TestASGDisplayName(t *testing.T) {
 		}
 	}
 }
+
+func TestEKSNodeGroupDisplayName(t *testing.T) {
+	cases := []struct {
+		addr, resource, want string
+	}{
+		{"aws_eks_node_group.workers", "workers", "workers EKS node group"},
+		{"module.eks_managed_node_group.aws_eks_node_group.this[0]", "this", "eks_managed_node_group EKS node group"},
+		{"module.workers.aws_eks_node_group.app", "app", "workers EKS node group"},
+		{"", "", "EKS node group"},
+	}
+	for _, tc := range cases {
+		if got := EKSNodeGroupDisplayName(tc.addr, tc.resource); got != tc.want {
+			t.Errorf("EKSNodeGroupDisplayName(%q,%q)=%q want %q", tc.addr, tc.resource, got, tc.want)
+		}
+	}
+}
