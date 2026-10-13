@@ -1227,9 +1227,9 @@ func boundaryEnds(from, to *Element, warnings *[]string) (string, *Element, *Ele
 	}
 	if from.Provider != "" && to.Provider != "" && from.Provider != to.Provider {
 		switch {
-		case isProcessKind(from.Kind):
+		case from.Kind == "container_service":
 			return "provider", from, to, true
-		case isProcessKind(to.Kind):
+		case to.Kind == "container_service":
 			return "provider", to, from, true
 		default:
 			*warnings = append(*warnings, "ambiguous provider-boundary side between "+from.Name+" and "+to.Name)
@@ -1238,15 +1238,11 @@ func boundaryEnds(from, to *Element, warnings *[]string) (string, *Element, *Ele
 	return "", nil, nil, false
 }
 
-func isProcessKind(kind string) bool {
-	return kind == "container_service" || kind == "virtual_machine"
-}
-
 func processExternal(a, b *Element) (*Element, *Element, bool) {
-	if isProcessKind(a.Kind) && b.Type == "external_entity" {
+	if a.Kind == "container_service" && b.Type == "external_entity" {
 		return a, b, true
 	}
-	if isProcessKind(b.Kind) && a.Type == "external_entity" {
+	if b.Kind == "container_service" && a.Type == "external_entity" {
 		return b, a, true
 	}
 	return nil, nil, false
