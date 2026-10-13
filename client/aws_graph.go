@@ -30,6 +30,25 @@ func (idx configIndex) attrRefs(address, attr string) []string {
 	return idx.resources[key].refs[attr]
 }
 
+func (idx configIndex) attrConstant(address, attr string) any {
+	key, ok := resourceKey(address)
+	if !ok {
+		return nil
+	}
+	return idx.resources[key].constants[attr]
+}
+
+// sameModule reports whether address lives in module ("" = root).
+func sameModule(address, module string) bool {
+	normalized := strings.ReplaceAll(address, ".data.", ".")
+	normalized = strings.TrimPrefix(normalized, "data.")
+	m, _, _, ok := splitResourceAddress(normalized)
+	if !ok {
+		return false
+	}
+	return m == module
+}
+
 func (idx configIndex) callRefs(moduleAddr string) []string {
 	set := idx.calls[moduleAddr]
 	var out []string
@@ -1071,19 +1090,20 @@ func taskAddress(resources []planResource, module string) string {
 }
 
 type iamStatement struct {
-	actions    []string
-	notActions []string
-	resources  []any
-	allow      bool
-	condition  bool
-	doc        string
+	actions      []string
+	notActions   []string
+	resources    []any
+	notResources []any
+	allow        bool
+	condition    bool
+	doc          string
 }
 
 func roleDocuments(module string, roleRefs []string, resources, data []planResource, idx configIndex) []planResource {
 	roles := namedResources(roleRefs, "aws_iam_role")
 	var docs []planResource
 	for _, att := range resources {
-		if att.typ != "aws_iam_role_policy_attachment" || !strings.HasPrefix(att.address, module+".") {
+		if att.typ != "aws_iam_role_policy_attachment" || !sameModule(att.address, module) {
 			continue
 		}
 		if !overlaps(namedResources(idx.attrRefs(att.address, "role"), "aws_iam_role"), roles) {
@@ -1091,7 +1111,7 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		}
 		for _, polName := range namedResources(idx.attrRefs(att.address, "policy_arn"), "aws_iam_policy") {
 			for _, pol := range resources {
-				if pol.typ != "aws_iam_policy" || !strings.HasPrefix(pol.address, module+".") {
+				if pol.typ != "aws_iam_policy" || !sameModule(pol.address, module) {
 					continue
 				}
 				if localTypeName(pol.address) != polName {
@@ -1099,7 +1119,7 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 				}
 				for _, docName := range namedResources(idx.attrRefs(pol.address, "policy"), "aws_iam_policy_document") {
 					for _, d := range data {
-						if d.typ != "aws_iam_policy_document" || !strings.HasPrefix(d.address, module+".") {
+						if d.typ != "aws_iam_policy_document" || !sameModule(d.address, module) {
 							continue
 						}
 						if dataName(d.address) == docName {
@@ -1154,12 +1174,38 @@ func docStatements(doc planResource) []iamStatement {
 			continue
 		}
 		out = append(out, iamStatement{
-			actions:    stringList(m["actions"]),
-			notActions: stringList(m["not_actions"]),
-			resources:  asList(m["resources"]),
-			allow:      true,
-			condition:  conditionPresent(m["condition"]),
-			doc:        doc.address,
+			actions:      stringList(m["actions"]),
+			notActions:   stringList(m["not_actions"]),
+			resources:    asList(m["resources"]),
+			notResources: asList(m["not_resources"]),
+			allow:        true,
+			condition:    conditionPresent(m["condition"]),
+			doc:          doc.address,
+		})
+	}
+	return out
+}
+
+// docDenyStatements returns Deny statements (Effect=Deny) from a policy document.
+func docDenyStatements(doc planResource) []iamStatement {
+	var out []iamStatement
+	for _, raw := range asList(doc.values["statement"]) {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		effect, _ := m["effect"].(string)
+		if !strings.EqualFold(effect, "Deny") {
+			continue
+		}
+		out = append(out, iamStatement{
+			actions:      stringList(m["actions"]),
+			notActions:   stringList(m["not_actions"]),
+			resources:    asList(m["resources"]),
+			notResources: asList(m["not_resources"]),
+			allow:        false,
+			condition:    conditionPresent(m["condition"]),
+			doc:          doc.address,
 		})
 	}
 	return out
