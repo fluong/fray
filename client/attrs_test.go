@@ -42,7 +42,7 @@ func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 func TestAllowedAttributesMatchSchemaAndCode(t *testing.T) {
 	// Attributes accepted by the server before the client emits them (server-first).
 	// Remove from this list in the client change that adds them to the allow-list.
-	pendingSchemaOnly := []string{"public_ip", "admin_ports_open"}
+	pendingSchemaOnly := []string{}
 
 	schemaKeys := loadSchemaAttributeKeys(t)
 	allow := AllowedAttributeKeys()

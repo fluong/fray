@@ -4,7 +4,7 @@ package client
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
 func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle preventIndex, auditOwned bool) ([]*Element, []*Flow, []*Boundary, []string, error) {
-	var lbs, services, dbs, buckets, secrets, restAPIs, httpAPIs, fnURLs, lambdas []planResource
+	var lbs, services, dbs, buckets, secrets, restAPIs, httpAPIs, fnURLs, lambdas, instances []planResource
 	for _, r := range resources {
 		switch r.typ {
 		case "aws_lb":
@@ -25,9 +25,11 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			fnURLs = append(fnURLs, r)
 		case "aws_lambda_function":
 			lambdas = append(lambdas, r)
+		case "aws_instance":
+			instances = append(instances, r)
 		}
 	}
-	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas) == 0 {
+	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas)+len(instances) == 0 {
 		return nil, nil, nil, nil, nil
 	}
 	idx, err := indexConfig(plan)
@@ -67,6 +69,9 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	}
 	for _, r := range services {
 		add(awsServiceElement(r, resources, idx, containers, &warnings))
+	}
+	for _, r := range instances {
+		add(awsInstanceElement(r, resources, idx))
 	}
 	for _, r := range restAPIs {
 		if restAPIInternetEntry(r, resources, idx) {

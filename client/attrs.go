@@ -31,6 +31,8 @@ var allowedAttributes = map[string]attrKind{
 	"object_lock":            attrBool,
 	"network_restricted":     attrBool,
 	"tls_enforced":           attrBool,
+	"public_ip":              attrBool,
+	"admin_ports_open":       attrBool,
 	"max_instances":          attrInt,
 	"region":                 attrRegion,
 }

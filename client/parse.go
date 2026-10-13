@@ -43,6 +43,8 @@ var ignoredTypes = map[string]bool{
 	"aws_ecs_cluster_capacity_providers":                 true,
 	"aws_ecs_task_definition":                            true,
 	"aws_eip":                                            true,
+	"aws_eip_association":                                true,
+	"aws_network_interface":                              true,
 	"aws_iam_policy":                                     true,
 	"aws_iam_policy_document":                            true,
 	"aws_iam_role":                                       true,
@@ -201,7 +203,8 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			"google_organization_iam_audit_config":
 			audits = append(audits, r)
 		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_secretsmanager_secret",
-			"aws_api_gateway_rest_api", "aws_apigatewayv2_api", "aws_lambda_function", "aws_lambda_function_url":
+			"aws_api_gateway_rest_api", "aws_apigatewayv2_api", "aws_lambda_function", "aws_lambda_function_url",
+			"aws_instance":
 			// Mapped in buildAWS. Not warned as unknown.
 		case "cloudflare_r2_managed_domain", "cloudflare_r2_custom_domain":
 			// Read later to decide whether a bucket is public. Not an element.
@@ -1224,9 +1227,9 @@ func boundaryEnds(from, to *Element, warnings *[]string) (string, *Element, *Ele
 	}
 	if from.Provider != "" && to.Provider != "" && from.Provider != to.Provider {
 		switch {
-		case from.Kind == "container_service":
+		case isProcessKind(from.Kind):
 			return "provider", from, to, true
-		case to.Kind == "container_service":
+		case isProcessKind(to.Kind):
 			return "provider", to, from, true
 		default:
 			*warnings = append(*warnings, "ambiguous provider-boundary side between "+from.Name+" and "+to.Name)
@@ -1235,11 +1238,15 @@ func boundaryEnds(from, to *Element, warnings *[]string) (string, *Element, *Ele
 	return "", nil, nil, false
 }
 
+func isProcessKind(kind string) bool {
+	return kind == "container_service" || kind == "virtual_machine"
+}
+
 func processExternal(a, b *Element) (*Element, *Element, bool) {
-	if a.Kind == "container_service" && b.Type == "external_entity" {
+	if isProcessKind(a.Kind) && b.Type == "external_entity" {
 		return a, b, true
 	}
-	if b.Kind == "container_service" && a.Type == "external_entity" {
+	if isProcessKind(b.Kind) && a.Type == "external_entity" {
 		return b, a, true
 	}
 	return nil, nil, false
