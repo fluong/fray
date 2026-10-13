@@ -40,17 +40,23 @@ func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 }
 
 func TestAllowedAttributesMatchSchemaAndCode(t *testing.T) {
+	// Attributes accepted by the server before the client emits them (server-first).
+	// Remove from this list in the client change that adds them to the allow-list.
+	pendingSchemaOnly := []string{"public_ip", "admin_ports_open"}
+
 	schemaKeys := loadSchemaAttributeKeys(t)
-	schemaSet := map[string]bool{}
-	for _, k := range schemaKeys {
-		schemaSet[k] = true
+	allow := AllowedAttributeKeys()
+	slices.Sort(schemaKeys)
+	slices.Sort(allow)
+	slices.Sort(pendingSchemaOnly)
+
+	schemaMinusAllow := setDiff(schemaKeys, allow)
+	allowMinusSchema := setDiff(allow, schemaKeys)
+	if !slices.Equal(schemaMinusAllow, pendingSchemaOnly) {
+		t.Fatalf("schema − allow-list = %#v want %#v", schemaMinusAllow, pendingSchemaOnly)
 	}
-	// Schema may lead the client allow-list (server-first / schema-only commits).
-	// Every allow-list key must remain in the schema; schema-only keys are fine.
-	for _, k := range AllowedAttributeKeys() {
-		if !schemaSet[k] {
-			t.Errorf("allow-list key %q missing from schema attributes — add it to schema/dfd.schema.json", k)
-		}
+	if len(allowMinusSchema) > 0 {
+		t.Fatalf("allow-list − schema = %#v want empty", allowMinusSchema)
 	}
 
 	codeKeys := attrsAssignedInClientSource(t)
@@ -59,6 +65,20 @@ func TestAllowedAttributesMatchSchemaAndCode(t *testing.T) {
 			t.Errorf("attrs[%q] assigned in client source but missing from allowedAttributes — add it to the allow-list (and schema)", k)
 		}
 	}
+}
+
+func setDiff(a, b []string) []string {
+	inB := map[string]bool{}
+	for _, k := range b {
+		inB[k] = true
+	}
+	var out []string
+	for _, k := range a {
+		if !inB[k] {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 func loadSchemaAttributeKeys(t *testing.T) []string {
