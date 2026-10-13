@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fluong/fray/usermsg"
+	"github.com/fluong/fray/version"
 )
 
 const (
@@ -41,6 +42,7 @@ func defaultReadinessGET(baseURL, token string) (status int, header http.Header,
 		return 0, nil, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("User-Agent", "fray-action/"+version.Version)
 	client := &http.Client{Timeout: readinessTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
