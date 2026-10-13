@@ -11,6 +11,8 @@ func TestDisplayName(t *testing.T) {
 		{"module.db_password.aws_secretsmanager_secret.this[0]", "db", "secret_store", "db_password secret"},
 		{"aws_s3_bucket.archive", "archive", "object_storage", "archive"},
 		{"google_cloud_run_v2_service.fray", "fray-api", "container_service", "fray-api"},
+		{"module.bastion.aws_instance.this[0]", "bastion", "virtual_machine", "bastion instance"},
+		{"aws_instance.web", "web", "virtual_machine", "web"},
 		{"", "", "object_storage", ""},
 	}
 	for _, tc := range cases {

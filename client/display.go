@@ -51,6 +51,8 @@ func kindNoun(kind string) string {
 		return "API"
 	case "serverless_function":
 		return "function"
+	case "virtual_machine":
+		return "instance"
 	default:
 		return ""
 	}

@@ -980,17 +980,21 @@ func groupReplacements(g causeGroup, byID map[string]client.Element, flows map[s
 		element = firstName(namesOf(els, func(el client.Element) bool { return el.Kind == "object_storage" })...)
 	}
 	if element == "" {
-		element = firstName(namesOf(els, func(el client.Element) bool { return el.Kind == "container_service" })...)
+		element = firstName(namesOf(els, func(el client.Element) bool {
+			return el.Kind == "container_service" || el.Kind == "virtual_machine"
+		})...)
 	}
 	repl := map[string]string{
 		"{element}": element,
-		"{process}": firstName(namesOf(els, func(el client.Element) bool { return el.Kind == "container_service" })...),
-		"{secret}":  firstName(namesOf(els, func(el client.Element) bool { return el.Kind == "secret_store" })...),
-		"{bucket}":  firstName(namesOf(els, func(el client.Element) bool { return el.Kind == "object_storage" })...),
-		"{cause}":   g.cause,
-		"{count}":   strconv.Itoa(len(g.items)),
-		"{label}":   labelOf(element),
-		"{scope}":   scopeTerm(providerKey(resourceType(g.cause))),
+		"{process}": firstName(namesOf(els, func(el client.Element) bool {
+			return el.Kind == "container_service" || el.Kind == "virtual_machine"
+		})...),
+		"{secret}": firstName(namesOf(els, func(el client.Element) bool { return el.Kind == "secret_store" })...),
+		"{bucket}": firstName(namesOf(els, func(el client.Element) bool { return el.Kind == "object_storage" })...),
+		"{cause}":  g.cause,
+		"{count}":  strconv.Itoa(len(g.items)),
+		"{label}":  labelOf(element),
+		"{scope}":  scopeTerm(providerKey(resourceType(g.cause))),
 	}
 	return repl
 }
