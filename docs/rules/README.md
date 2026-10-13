@@ -14,6 +14,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-010](FR-010.md) | Object storage is not public | high | Information disclosure | AWS, Google Cloud, Cloudflare |  |
 | [FR-025](FR-025.md) | Object storage blocks public access | high | Information disclosure | AWS, Google Cloud, Cloudflare |  |
 | [FR-029](FR-029.md) | Relational database is not directly reachable from the internet | high | Information disclosure | AWS, Google Cloud | 2026-10-11 |
+| [FR-034](FR-034.md) | Admin ports are not open to the internet | high | Elevation of privilege | AWS | 2026-10-13 |
 
 ## Encryption
 
