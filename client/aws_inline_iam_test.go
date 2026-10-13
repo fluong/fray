@@ -692,6 +692,186 @@ func TestARNWildcardRefinement(t *testing.T) {
 	}
 }
 
+// TestFlatCoverageS3TaskRoleResourceScope mirrors fray-demo-coverage infra:
+// one root task def, task_role with literal Put/Delete on bucket/* plus a
+// data.aws_iam_policy_document in resource_changes (plan-unknown object ARN).
+// Proves authz_scope=resource without running terraform locally.
+func TestFlatCoverageS3TaskRoleResourceScope(t *testing.T) {
+	plan := flatCoverageS3Plan(t, true)
+	doc, _, err := Parse([]byte(plan), []byte("schema_version: fray-config/v1\n"), "fray.yaml",
+		Source{Repo: "t/coverage-s3", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s3 *Flow
+	for i := range doc.Flows {
+		f := &doc.Flows[i]
+		for _, el := range doc.Elements {
+			if el.ID == f.To && el.Kind == "object_storage" {
+				s3 = f
+				break
+			}
+		}
+		if s3 != nil {
+			break
+		}
+	}
+	if s3 == nil {
+		t.Fatal("expected container → object_storage flow")
+	}
+	if s3.AuthzScope != "resource" {
+		t.Fatalf("authz_scope=%q want resource (grants=%v)", s3.AuthzScope, s3.AuthzGrants)
+	}
+	wantActions := []string{"DeleteObject", "PutObject"}
+	if strings.Join(s3.AuthzActions, ",") != strings.Join(wantActions, ",") {
+		t.Fatalf("authz_actions=%v want %v", s3.AuthzActions, wantActions)
+	}
+}
+
+// TestFlatCoverageS3DataDocPriorStateOnly: plan-time data.aws_iam_policy_document
+// values live in prior_state when every argument is known at plan (no
+// resource_changes entry). loadDataResources must read them so authz_scope is set.
+func TestFlatCoverageS3DataDocPriorStateOnly(t *testing.T) {
+	plan := flatCoverageS3Plan(t, false)
+	doc, _, err := Parse([]byte(plan), []byte("schema_version: fray-config/v1\n"), "fray.yaml",
+		Source{Repo: "t/coverage-s3", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s3 *Flow
+	for i := range doc.Flows {
+		f := &doc.Flows[i]
+		for _, el := range doc.Elements {
+			if el.ID == f.To && el.Kind == "object_storage" {
+				s3 = f
+				break
+			}
+		}
+		if s3 != nil {
+			break
+		}
+	}
+	if s3 == nil {
+		t.Fatal("expected container → object_storage flow")
+	}
+	if s3.AuthzScope != "resource" {
+		t.Fatalf("authz_scope=%q want resource when data-doc is only in prior_state", s3.AuthzScope)
+	}
+}
+
+func flatCoverageS3Plan(t *testing.T, dataInResourceChanges bool) string {
+	t.Helper()
+	bucket := "fray-coverage-uploads-fake"
+	literal := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::` + bucket + `/*"]}]}`
+	resources := []map[string]any{
+		{
+			"address": "aws_ecs_service.app", "mode": "managed", "type": "aws_ecs_service", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app"}},
+		},
+		{
+			"address": "aws_ecs_task_definition.app", "mode": "managed", "type": "aws_ecs_task_definition", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{
+				"family":                "app",
+				"container_definitions": `[{"name":"app","image":"public.ecr.aws/docker/library/nginx:1.27","essential":true}]`,
+			}, "after_unknown": map[string]any{"task_role_arn": true, "execution_role_arn": true}},
+		},
+		{
+			"address": "aws_iam_role.ecs_exec", "mode": "managed", "type": "aws_iam_role", "name": "ecs_exec",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "ecs-exec"}},
+		},
+		{
+			"address": "aws_iam_role.ecs_task", "mode": "managed", "type": "aws_iam_role", "name": "ecs_task",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "ecs-task"},
+				"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true}},
+		},
+		{
+			"address": "aws_iam_role_policy.known", "mode": "managed", "type": "aws_iam_role_policy", "name": "known",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "known-literal-arns", "policy": literal}},
+		},
+		{
+			"address": "aws_iam_role_policy.datadoc", "mode": "managed", "type": "aws_iam_role_policy", "name": "datadoc",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "datadoc-from-data"},
+				"after_unknown": map[string]any{"policy": true}},
+		},
+		{
+			"address": "aws_s3_bucket.uploads", "mode": "managed", "type": "aws_s3_bucket", "name": "uploads",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"bucket": bucket}},
+		},
+	}
+	if dataInResourceChanges {
+		resources = append(resources, map[string]any{
+			"address": "data.aws_iam_policy_document.datadoc", "mode": "data", "type": "aws_iam_policy_document", "name": "datadoc",
+			"change": map[string]any{"actions": []any{"read"}, "after": map[string]any{
+				"statement": []any{map[string]any{
+					"sid": "S3Write", "effect": "Allow",
+					"actions":   []any{"s3:PutObject", "s3:DeleteObject"},
+					"resources": []any{nil},
+				}},
+			}, "after_unknown": map[string]any{"json": true, "statement": []any{map[string]any{"resources": []any{true}}}}},
+		})
+	}
+	cfg := []map[string]any{
+		{
+			"address": "aws_ecs_service.app", "mode": "managed", "type": "aws_ecs_service", "name": "app",
+			"expressions": map[string]any{
+				"task_definition": map[string]any{"references": []any{"aws_ecs_task_definition.app.arn", "aws_ecs_task_definition.app"}},
+			},
+		},
+		{
+			"address": "aws_ecs_task_definition.app", "mode": "managed", "type": "aws_ecs_task_definition", "name": "app",
+			"expressions": map[string]any{
+				"execution_role_arn": map[string]any{"references": []any{"aws_iam_role.ecs_exec.arn", "aws_iam_role.ecs_exec"}},
+				"task_role_arn":      map[string]any{"references": []any{"aws_iam_role.ecs_task.arn", "aws_iam_role.ecs_task"}},
+			},
+		},
+		{"address": "aws_iam_role.ecs_exec", "mode": "managed", "type": "aws_iam_role", "name": "ecs_exec", "expressions": map[string]any{}},
+		{"address": "aws_iam_role.ecs_task", "mode": "managed", "type": "aws_iam_role", "name": "ecs_task", "expressions": map[string]any{}},
+		{
+			"address": "aws_iam_role_policy.known", "mode": "managed", "type": "aws_iam_role_policy", "name": "known",
+			"expressions": map[string]any{
+				"role":   map[string]any{"references": []any{"aws_iam_role.ecs_task.id", "aws_iam_role.ecs_task"}},
+				"policy": map[string]any{"constant_value": literal},
+			},
+		},
+		{
+			"address": "aws_iam_role_policy.datadoc", "mode": "managed", "type": "aws_iam_role_policy", "name": "datadoc",
+			"expressions": map[string]any{
+				"role":   map[string]any{"references": []any{"aws_iam_role.ecs_task.id", "aws_iam_role.ecs_task"}},
+				"policy": map[string]any{"references": []any{"data.aws_iam_policy_document.datadoc.json", "data.aws_iam_policy_document.datadoc"}},
+			},
+		},
+		{"address": "aws_s3_bucket.uploads", "mode": "managed", "type": "aws_s3_bucket", "name": "uploads", "expressions": map[string]any{}},
+		{
+			"address": "data.aws_iam_policy_document.datadoc", "mode": "data", "type": "aws_iam_policy_document", "name": "datadoc",
+			"expressions": map[string]any{},
+		},
+	}
+	priorData := []map[string]any{
+		{
+			"address": "data.aws_iam_policy_document.datadoc", "mode": "data", "type": "aws_iam_policy_document", "name": "datadoc",
+			"values": map[string]any{
+				"statement": []any{map[string]any{
+					"sid": "S3Write", "effect": "Allow",
+					"actions":   []any{"s3:PutObject", "s3:DeleteObject"},
+					"resources": []any{"arn:aws:s3:::" + bucket + "/*"},
+				}},
+			},
+		},
+	}
+	plan := map[string]any{
+		"format_version":   "1.2",
+		"resource_changes": resources,
+		"configuration":    map[string]any{"root_module": map[string]any{"resources": cfg}},
+		"planned_values":   map[string]any{"root_module": map[string]any{"resources": []any{}}},
+		"prior_state":      map[string]any{"values": map[string]any{"root_module": map[string]any{"resources": priorData}}},
+	}
+	b, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestMixedCaseSecretAndS3Actions(t *testing.T) {
 	if !secretAction("SecretsManager:GetSecretValue") {
 		t.Fatal("secretAction should be case-insensitive")
