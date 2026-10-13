@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- Scans of Terraform that grants Bedrock access were rejected by the hosted service
+  (invalid diagram). Fixed on the service side; no upgrade needed for v0.20.0 and later.
+
 ## [0.24.0] — 2026-10-13
 
 ### Added

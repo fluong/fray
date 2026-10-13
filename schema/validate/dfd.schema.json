@@ -532,12 +532,14 @@
       ],
       "properties": {
         "type": {
+          "description": "Evidence that identifies the element. secret_name: secret id; env_var: environment variable name; iam_role: IAM role or predefined role id; iam_member: IAM principal (e.g. allUsers); network_ingress: CIDR or ingress source; iam_service: cloud service principal grant (e.g. Bedrock invoke).",
           "enum": [
             "secret_name",
             "env_var",
             "iam_role",
             "iam_member",
-            "network_ingress"
+            "network_ingress",
+            "iam_service"
           ]
         },
         "name": {
@@ -554,12 +556,14 @@
       ],
       "properties": {
         "type": {
+          "description": "Evidence that identifies the element. secret_name: secret id; env_var: environment variable name; iam_role: IAM role or predefined role id; iam_member: IAM principal (e.g. allUsers); network_ingress: CIDR or ingress source; iam_service: cloud service principal grant (e.g. Bedrock invoke).",
           "enum": [
             "secret_name",
             "env_var",
             "iam_role",
             "iam_member",
-            "network_ingress"
+            "network_ingress",
+            "iam_service"
           ]
         },
         "name": {
