@@ -21,3 +21,19 @@ func TestDisplayName(t *testing.T) {
 		}
 	}
 }
+
+func TestASGDisplayName(t *testing.T) {
+	cases := []struct {
+		addr, resource, want string
+	}{
+		{"aws_autoscaling_group.web", "web", "web Auto Scaling group"},
+		{"module.asg.aws_autoscaling_group.this[0]", "this", "asg Auto Scaling group"},
+		{"module.workers.aws_autoscaling_group.app", "app", "workers Auto Scaling group"},
+		{"", "", "Auto Scaling group"},
+	}
+	for _, tc := range cases {
+		if got := ASGDisplayName(tc.addr, tc.resource); got != tc.want {
+			t.Errorf("ASGDisplayName(%q,%q)=%q want %q", tc.addr, tc.resource, got, tc.want)
+		}
+	}
+}

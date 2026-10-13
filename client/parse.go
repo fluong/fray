@@ -51,6 +51,7 @@ var ignoredTypes = map[string]bool{
 	"aws_iam_role_policy":                                true,
 	"aws_iam_role_policy_attachment":                     true,
 	"aws_internet_gateway":                               true,
+	"aws_launch_configuration":                           true,
 	"aws_launch_template":                                true,
 	"aws_lb_listener":                                    true,
 	"aws_lb_target_group":                                true,
