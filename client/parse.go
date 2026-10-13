@@ -51,6 +51,7 @@ var ignoredTypes = map[string]bool{
 	"aws_iam_role_policy":                                true,
 	"aws_iam_role_policy_attachment":                     true,
 	"aws_internet_gateway":                               true,
+	"aws_launch_template":                                true,
 	"aws_lb_listener":                                    true,
 	"aws_lb_target_group":                                true,
 	"aws_nat_gateway":                                    true,
@@ -83,6 +84,7 @@ type planResource struct {
 	typ          string
 	values       map[string]any
 	afterUnknown map[string]any // change.after_unknown; attribute → true when unknown after apply
+	actions      []string       // change.actions; e.g. ["create"], ["update"], ["no-op"]
 }
 
 type frayConfig struct {
@@ -376,6 +378,7 @@ func loadResources(plan []byte) ([]planResource, error) {
 			Mode    string `json:"mode"`
 			Type    string `json:"type"`
 			Change  struct {
+				Actions      []string       `json:"actions"`
 				After        map[string]any `json:"after"`
 				AfterUnknown map[string]any `json:"after_unknown"`
 			} `json:"change"`
@@ -399,6 +402,7 @@ func loadResources(plan []byte) ([]planResource, error) {
 			typ:          r.Type,
 			values:       r.Change.After,
 			afterUnknown: r.Change.AfterUnknown,
+			actions:      r.Change.Actions,
 		})
 	}
 	return out, nil
