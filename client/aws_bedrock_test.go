@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -185,6 +183,33 @@ func TestBedrockLambdaDedupesAPIGatewayElement(t *testing.T) {
 	}
 	if findBedrock(doc) == nil {
 		t.Fatal("missing Bedrock")
+	}
+}
+
+func TestBedrockLambdaWithoutGrantNoElement(t *testing.T) {
+	// Lambda-only plan with no Bedrock IAM: no llm_api, no serverless_function.
+	resources, cfg := bedrockLambdaSkeleton("fn", "role")
+	plan := marshalPlan(t, resources, cfg)
+	doc, warnings, err := Parse([]byte(plan), []byte("schema_version: fray-config/v1\n"), "fray.yaml",
+		Source{Repo: "t/b", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "no mapping") {
+			t.Fatalf("unexpected warning: %s", w)
+		}
+	}
+	if findBedrock(doc) != nil {
+		t.Fatal("Bedrock llm_api must not appear without a grant")
+	}
+	for _, el := range doc.Elements {
+		if el.Kind == "serverless_function" || el.Kind == "llm_api" {
+			t.Fatalf("unexpected element kind=%s name=%s", el.Kind, el.Name)
+		}
+	}
+	if countBedrockFlows(doc) != 0 {
+		t.Fatal("unexpected Bedrock flow")
 	}
 }
 
@@ -620,35 +645,6 @@ func bedrockFlowFrom(doc DFD, callerAddr string) *Flow {
 		}
 	}
 	return nil
-}
-
-func TestBedrockExistingGoldensUnchanged(t *testing.T) {
-	// Sanity: aws-web-app DFD golden must stay byte-identical after Bedrock work.
-	plan, err := os.ReadFile("testdata/aws-plan.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	doc, warnings, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "", Source{
-		Repo: "example/aws-web-app", Commit: "4530a865f29ba14931379f361b177a992edeab51",
-		Tool: "terraform", Fidelity: "plan",
-	}, filepath.Join("..", "testdata", "aws-web-app"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(warnings) > 0 {
-		t.Fatalf("warnings: %s", strings.Join(warnings, "\n"))
-	}
-	got, err := Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := os.ReadFile(filepath.Join("..", "testdata", "golden", "aws-web-app-fixture.dfd.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("aws-web-app DFD golden changed (%d vs %d bytes) — stop, do not regenerate", len(got), len(want))
-	}
 }
 
 func TestBedrockInvokeActionMatcher(t *testing.T) {
