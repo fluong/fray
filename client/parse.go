@@ -44,6 +44,7 @@ var ignoredTypes = map[string]bool{
 	"aws_ecs_task_definition":                            true,
 	"aws_eip":                                            true,
 	"aws_eip_association":                                true,
+	"aws_eks_cluster":                                    true,
 	"aws_network_interface":                              true,
 	"aws_iam_policy":                                     true,
 	"aws_iam_policy_document":                            true,
@@ -208,7 +209,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			audits = append(audits, r)
 		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_secretsmanager_secret",
 			"aws_api_gateway_rest_api", "aws_apigatewayv2_api", "aws_lambda_function", "aws_lambda_function_url",
-			"aws_instance":
+			"aws_instance", "aws_autoscaling_group", "aws_eks_node_group":
 			// Mapped in buildAWS. Not warned as unknown.
 		case "cloudflare_r2_managed_domain", "cloudflare_r2_custom_domain":
 			// Read later to decide whether a bucket is public. Not an element.
