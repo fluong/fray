@@ -15,7 +15,7 @@ import (
 // NoBaselineNote is the PR-comment line when there is no stored baseline yet.
 const NoBaselineNote = usermsg.NoBaselineNote
 
-func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string, advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichment, waivers *apiv1.Waivers, waiversReported bool) string {
+func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[string]apiv1.RuleText, locs map[string]client.SourceLocation, changedInputs map[string][]string, baselineNote string, advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichment, waivers *apiv1.Waivers, waiversReported bool, skipped []apiv1.RuleSkipped) string {
 	byID := indexElements(doc)
 	flows := indexFlows(doc)
 	base := map[findingKey]apiv1.Finding{}
@@ -48,8 +48,13 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		}
 	}
 	waiverSection := WaiversSummary(waivers, waiversReported)
+	skippedSection := RulesSkippedSummary(skipped)
 	if len(opened) == 0 && len(resolved) == 0 && baselineNote == "" && advisoryEmpty(advisory) && waiverSection == "" {
-		return noChangeSummary(current.Findings)
+		out := noChangeSummary(current.Findings)
+		if skippedSection != "" {
+			return out + "\n" + skippedSection
+		}
+		return out
 	}
 	groups := issueGroups(opened, texts, byID, flows)
 	sortGroups(groups)
@@ -67,6 +72,10 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 		if section := renderAdvisory(advisory, enrichments, opened, texts, byID, flows); section != "" {
 			b.WriteByte('\n')
 			b.WriteString(section)
+		}
+		if skippedSection != "" {
+			b.WriteByte('\n')
+			b.WriteString(skippedSection)
 		}
 		return b.String()
 	}
@@ -90,6 +99,10 @@ func PRComment(doc client.DFD, current, baseline apiv1.Findings, texts map[strin
 	if section := renderAdvisory(advisory, enrichments, opened, texts, byID, flows); section != "" {
 		b.WriteByte('\n')
 		b.WriteString(section)
+	}
+	if skippedSection != "" {
+		b.WriteByte('\n')
+		b.WriteString(skippedSection)
 	}
 	return b.String()
 }
@@ -127,6 +140,25 @@ func noChangeSummary(findings []apiv1.Finding) string {
 		parts = append(parts, fmt.Sprintf("%d waived", waived))
 	}
 	return strings.Join(parts, " · ") + "\n"
+}
+
+// RulesSkippedSummary lists catalog rules the server skipped because this Action
+// is older than their min_action. Empty or nil → "" (older servers omit the field).
+func RulesSkippedSummary(skipped []apiv1.RuleSkipped) string {
+	if len(skipped) == 0 {
+		return ""
+	}
+	parts := make([]string, len(skipped))
+	for i, s := range skipped {
+		parts[i] = fmt.Sprintf("%s (needs %s)", ruleDocMarkdown(s.RuleID), s.MinAction)
+	}
+	n := len(skipped)
+	noun, verb := "rule", "it requires"
+	if n != 1 {
+		noun, verb = "rules", "they require"
+	}
+	return fmt.Sprintf("%d %s not evaluated because this Fray Action is older than %s: %s. Upgrade for full results.\n",
+		n, noun, verb, strings.Join(parts, ", "))
 }
 
 // WaiversSummary formats server waiver outcomes for the PR comment and job summary.

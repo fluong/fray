@@ -17,6 +17,7 @@ import (
 	"github.com/fluong/fray/client"
 	"github.com/fluong/fray/render"
 	"github.com/fluong/fray/usermsg"
+	"github.com/fluong/fray/version"
 )
 
 // errEnrollmentRejected is returned when fail-on-unenrolled is true and the
@@ -144,6 +145,7 @@ func runRemote(opt options) (bool, error) {
 		Commit:              opt.Commit,
 		IsDefaultBranch:     isDefault,
 		BaseCommit:          opt.BaseCommit,
+		ClientVersion:       version.Version,
 	})
 	if err != nil {
 		return false, err
@@ -193,6 +195,7 @@ func runRemote(opt options) (bool, error) {
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+token)
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", "fray-action/"+version.Version)
 
 	clientHTTP := &http.Client{Timeout: 60 * time.Second}
 	httpResp, err := clientHTTP.Do(httpReq)
@@ -302,6 +305,7 @@ func runRemote(opt options) (bool, error) {
 	}
 
 	reportWaivers(resp.Waivers, waiversReported)
+	reportRulesSkipped(resp.RulesSkipped)
 
 	// Always write a PR comment on a successful scan. With no baseline findings,
 	// render absolute-mode open findings and explain that comparison starts later.
@@ -315,7 +319,7 @@ func runRemote(opt options) (bool, error) {
 			baselineNote = render.NoBaselineNote
 		}
 	}
-	comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, baselineNote, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported)
+	comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, baselineNote, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported, resp.RulesSkipped)
 	if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 		return false, err
 	}
@@ -334,6 +338,22 @@ func waiverErrorMessage(body []byte) string {
 
 func reportWaivers(w *apiv1.Waivers, reported bool) {
 	text := render.WaiversSummary(w, reported)
+	if text == "" {
+		return
+	}
+	fmt.Fprint(os.Stderr, text)
+	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return
+		}
+		_, _ = f.WriteString(text)
+		_ = f.Close()
+	}
+}
+
+func reportRulesSkipped(skipped []apiv1.RuleSkipped) {
+	text := render.RulesSkippedSummary(skipped)
 	if text == "" {
 		return
 	}
