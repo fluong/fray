@@ -2,11 +2,16 @@
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-10-13
+
 ### Added
-- AWS Bedrock model access (from IAM grants on ECS task roles and Lambda roles) is modelled as an LLM API, so FR-004 and FR-017 apply on AWS. Inline IAM role policies and managed policies other than AmazonBedrockFullAccess are not read; EC2 is not covered.
+- AWS Bedrock: IAM grants that let an ECS task role or Lambda role invoke Bedrock models are shown as a model API in the diagram. FR-004 (model access scope) and FR-017 (processing region) now apply on AWS.
+- The region is read from the model ARNs in the grant. A `global.` inference profile is reported as not pinned. When the region can't be determined, FR-017 is unverified.
+- Limits: inline role policies, managed policies other than AmazonBedrockFullAccess, and EC2 instance roles are not read yet.
+- FR-017 on AWS needs the current Fray service (already live).
 
 ### Fixed
-- IAM policies attached in the root Terraform module are now read for ECS task and execution roles. Secrets Manager and S3 findings can change on plans that keep IAM in the root module.
+- IAM policies attached in the root Terraform module are now read. Secrets Manager and S3 findings can change on plans that keep IAM in the root module.
 
 ## [0.19.0] — 2026-10-13
 
@@ -346,3 +351,7 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.edge.r2.bucket.…`) → `resource`; account keys
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
+
+[Unreleased]: https://github.com/fluong/fray/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/fluong/fray/compare/v0.19.0...v0.20.0
+[0.19.0]: https://github.com/fluong/fray/compare/v0.18.0...v0.19.0
