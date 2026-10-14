@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fray:findings-file:v1",
+  "title": "Fray local findings.json",
+  "description": "Local out/findings.json only — not the scan wire contract. Same as finding/v1 (schema/finding.schema.json) plus an optional addresses array of Terraform addresses from the plaintext DFD. Never sent to the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "findings"],
+  "properties": {
+    "schema_version": { "const": "finding/v1" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "target", "status", "severity", "stride"],
+      "properties": {
+        "rule_id": { "type": "string", "pattern": "^FR-([0-9]{3}|[A-Z][A-Z0-9]{1,9}-[0-9]{4})$" },
+        "target": { "type": "string", "pattern": "^[ef][0-9a-f]{16}$" },
+        "status": { "enum": ["open", "mitigated", "unverified", "waived", "accepted"] },
+        "severity": { "enum": ["low", "medium", "high"] },
+        "stride": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "spoofing",
+              "tampering",
+              "repudiation",
+              "information_disclosure",
+              "denial_of_service",
+              "elevation_of_privilege"
+            ]
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "description": "Optional rule-specific facts (absolute ids / closed action names only).",
+          "items": { "type": "string", "minLength": 1, "maxLength": 400 }
+        },
+        "new_rule": {
+          "type": "boolean",
+          "description": "True when the baseline never evaluated this rule. Omitted by older servers."
+        },
+        "addresses": {
+          "type": "array",
+          "description": "Local only: Terraform addresses from the plaintext DFD for this target.",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
