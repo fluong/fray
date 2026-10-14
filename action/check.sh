@@ -34,6 +34,9 @@ args=(
   -remote "$FRAY_API_URL"
   -oidc-token "$FRAY_OIDC_TOKEN"
 )
+if [[ -n "${FRAY_STACK:-}" ]]; then
+  args+=(-stack "$FRAY_STACK")
+fi
 if is_true "${FRAY_SHOW_PAYLOAD:-false}"; then
   args+=(-show-payload)
 fi

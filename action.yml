@@ -90,6 +90,14 @@ inputs:
       terraform in this job (default).
     required: false
     default: ""
+  stack:
+    description: >
+      Optional Terraform stack label (^[a-z0-9][a-z0-9-]{0,31}$). Empty (default)
+      keeps today's single-stack behaviour. A named stack gets its own PR comment,
+      baseline, SARIF category (fray/<stack>), and artifact names. Not a path —
+      use working-directory for the Terraform root and waivers-file per stack.
+    required: false
+    default: ""
 
 outputs:
   has-sarif:
@@ -118,6 +126,36 @@ runs:
           fi
         fi
         echo "is_fork=${is_fork}" >> "$GITHUB_OUTPUT"
+
+    - name: Resolve Fray stack
+      id: stack
+      shell: bash
+      env:
+        FRAY_STACK_INPUT: ${{ inputs.stack }}
+      run: |
+        set -euo pipefail
+        stack="${FRAY_STACK_INPUT:-}"
+        if [[ -n "$stack" ]]; then
+          if [[ ! "$stack" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]; then
+            echo "::error::Invalid stack \"${stack}\": must be empty or match ^[a-z0-9][a-z0-9-]{0,31}$ (lowercase letter or digit, then up to 31 lowercase letters, digits, or hyphens). A stack name is a short label, not a path — use working-directory for the Terraform root."
+            exit 2
+          fi
+          {
+            echo "stack=${stack}"
+            echo "out_dir=fray-out-${stack}"
+            echo "artifact_name=fray-payload-${stack}"
+            echo "sarif_category=fray/${stack}"
+            echo "comment_marker=<!-- fray:${stack} -->"
+          } >> "$GITHUB_OUTPUT"
+        else
+          {
+            echo "stack="
+            echo "out_dir=fray-out"
+            echo "artifact_name=fray-payload"
+            echo "sarif_category=fray"
+            echo "comment_marker=<!-- fray -->"
+          } >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Skip Fray on fork PR (no OIDC)
       if: steps.fork.outputs.is_fork == 'true' && inputs.mode != 'check'
@@ -210,7 +248,8 @@ runs:
         FRAY_WORKDIR: ${{ inputs.working-directory }}
         FRAY_CONFIG: ${{ inputs.config }}
         FRAY_WAIVERS_FILE: ${{ inputs.waivers-file }}
-        FRAY_OUT: ${{ runner.temp }}/fray-out
+        FRAY_OUT: ${{ runner.temp }}/${{ steps.stack.outputs.out_dir }}
+        FRAY_STACK: ${{ steps.stack.outputs.stack }}
         FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
         FRAY_SHOW_PAYLOAD: ${{ inputs.show-payload }}
         FRAY_FAIL_ON_UNENROLLED: ${{ inputs.fail-on-unenrolled }}
@@ -230,7 +269,8 @@ runs:
         FRAY_WORKDIR: ${{ inputs.working-directory }}
         FRAY_CONFIG: ${{ inputs.config }}
         FRAY_WAIVERS_FILE: ${{ inputs.waivers-file }}
-        FRAY_OUT: ${{ runner.temp }}/fray-out
+        FRAY_OUT: ${{ runner.temp }}/${{ steps.stack.outputs.out_dir }}
+        FRAY_STACK: ${{ steps.stack.outputs.stack }}
         FRAY_REDACTION_KEY: ${{ inputs.redaction-key }}
         FRAY_PLAN_FILE: ${{ inputs.plan-file }}
         FRAY_SHOW_PAYLOAD: ${{ inputs.show-payload }}
@@ -245,8 +285,8 @@ runs:
         steps.scan.outputs.has_payload == 'true'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: fray-payload
-        path: ${{ runner.temp }}/fray-out/payload.json
+        name: ${{ steps.stack.outputs.artifact_name }}
+        path: ${{ runner.temp }}/${{ steps.stack.outputs.out_dir }}/payload.json
         if-no-files-found: warn
 
     - name: Update PR comment
@@ -258,18 +298,23 @@ runs:
         steps.scan.outputs.has_comment == 'true'
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
       env:
-        FRAY_COMMENT_PATH: ${{ runner.temp }}/fray-out/pr-comment.md
+        FRAY_COMMENT_PATH: ${{ runner.temp }}/${{ steps.stack.outputs.out_dir }}/pr-comment.md
+        FRAY_COMMENT_MARKER: ${{ steps.stack.outputs.comment_marker }}
       with:
         script: |
           const fs = require('fs');
-          const marker = '<!-- fray -->';
+          const marker = process.env.FRAY_COMMENT_MARKER;
           const body = marker + '\n' + fs.readFileSync(process.env.FRAY_COMMENT_PATH, 'utf8');
           const { owner, repo } = context.repo;
           const issue_number = context.issue.number;
           const { data: comments } = await github.rest.issues.listComments({
             owner, repo, issue_number, per_page: 100,
           });
-          const existing = comments.find(c => c.body && c.body.includes(marker));
+          // Exact match only: named stacks must never edit the default comment
+          // (or each other). includes(marker) is intentionally not used.
+          const existing = comments.find(c =>
+            c.body && (c.body === marker || c.body.startsWith(marker + '\n'))
+          );
           if (existing) {
             await github.rest.issues.updateComment({
               owner, repo, comment_id: existing.id, body,
@@ -291,8 +336,8 @@ runs:
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
       with:
-        sarif_file: ${{ runner.temp }}/fray-out/findings.sarif
-        category: fray
+        sarif_file: ${{ runner.temp }}/${{ steps.stack.outputs.out_dir }}/findings.sarif
+        category: ${{ steps.stack.outputs.sarif_category }}
 
     - name: Warn on SARIF upload failure
       if: steps.upload-sarif.outcome == 'failure'

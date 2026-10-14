@@ -317,6 +317,9 @@ if [[ -n "$base_commit" ]]; then
   git -C "$root" archive "$base_commit" "$FRAY_WORKDIR" | tar -x -C "$base_src"
   args+=(-base-source "${base_src}/${FRAY_WORKDIR}")
 fi
+if [[ -n "${FRAY_STACK:-}" ]]; then
+  args+=(-stack "$FRAY_STACK")
+fi
 
 # Drop a leftover marker from a previous attempt in the same FRAY_OUT.
 rm -f "${FRAY_OUT}/enrollment.json"
