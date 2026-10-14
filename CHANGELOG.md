@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- Optional `stack` Action input / `-stack` CLI flag / `FRAY_STACK` for several
+  Terraform roots in one repository. Each named stack gets its own PR comment,
+  merge baseline, SARIF category (`fray/<stack>`), and artifact names. Empty
+  `stack` keeps today’s behaviour.
+
 ### Changed
 - `rule.schema.json`: `introduced` is a date (YYYY-MM-DD), matching the published rule catalog.
 
