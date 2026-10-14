@@ -372,9 +372,10 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module, taskAddr string, 
 	seen := map[string]bool{}
 	var flows []*Flow
 	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddr, "execution_role_arn"), resources, data, idx)
+	taskMod, _, _, _ := splitResourceAddress(taskAddr)
 	for _, spec := range specs {
 		for _, ref := range spec.secrets {
-			hits, ambiguous := elementsFromRefs([]string{ref}, resources, elements, "aws_secretsmanager_secret")
+			hits, ambiguous := secretElementsFromValueFrom(ref, taskMod, resources, elements)
 			if ambiguous || len(hits) != 1 {
 				*warnings = append(*warnings, "ambiguous secret for "+ref+" on "+svc.address)
 				continue

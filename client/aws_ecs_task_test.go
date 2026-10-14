@@ -453,3 +453,454 @@ func ecsMultiTaskPlanServiceBUnresolvable(t *testing.T) string {
 	return string(out)
 }
 
+func rootModuleSecretPlan(t *testing.T, containerDefs string, unknown bool) string {
+	t.Helper()
+	secretARN := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf"
+	after := map[string]any{"family": "app"}
+	afterUnknown := map[string]any{"task_role_arn": true, "execution_role_arn": true}
+	if unknown {
+		afterUnknown["container_definitions"] = true
+	} else {
+		after["container_definitions"] = containerDefs
+	}
+	execPol := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["secretsmanager:GetSecretValue"],"Resource":["` + secretARN + `"]}]}`
+	resources := []map[string]any{
+		{
+			"address": "aws_ecs_service.app", "mode": "managed", "type": "aws_ecs_service", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app"}},
+		},
+		{
+			"address": "aws_ecs_task_definition.app", "mode": "managed", "type": "aws_ecs_task_definition", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": after, "after_unknown": afterUnknown},
+		},
+		{
+			"address": "aws_iam_role.exec", "mode": "managed", "type": "aws_iam_role", "name": "exec",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "exec"}},
+		},
+		{
+			"address": "aws_iam_role_policy.exec_secrets", "mode": "managed", "type": "aws_iam_role_policy", "name": "exec_secrets",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "exec-secrets", "policy": execPol}},
+		},
+		{
+			"address": "module.db.aws_secretsmanager_secret.db", "mode": "managed", "type": "aws_secretsmanager_secret", "name": "db",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app/db", "arn": secretARN}},
+		},
+	}
+	cfg := []map[string]any{
+		{
+			"address": "aws_ecs_service.app", "type": "aws_ecs_service", "name": "app",
+			"expressions": map[string]any{
+				"task_definition": map[string]any{"references": []any{"aws_ecs_task_definition.app.arn", "aws_ecs_task_definition.app"}},
+			},
+		},
+		{
+			"address": "aws_ecs_task_definition.app", "type": "aws_ecs_task_definition", "name": "app",
+			"expressions": map[string]any{
+				"execution_role_arn": map[string]any{"references": []any{"aws_iam_role.exec.arn", "aws_iam_role.exec"}},
+			},
+		},
+		{"address": "aws_iam_role.exec", "type": "aws_iam_role", "name": "exec", "expressions": map[string]any{}},
+		{
+			"address": "aws_iam_role_policy.exec_secrets", "type": "aws_iam_role_policy", "name": "exec_secrets",
+			"expressions": map[string]any{
+				"role":   map[string]any{"references": []any{"aws_iam_role.exec.name", "aws_iam_role.exec"}},
+				"policy": map[string]any{"constant_value": execPol},
+			},
+		},
+		{"address": "module.db.aws_secretsmanager_secret.db", "type": "aws_secretsmanager_secret", "name": "db", "expressions": map[string]any{}},
+	}
+	root := map[string]any{
+		"format_version":   "1.2",
+		"resource_changes": resources,
+		"configuration":    map[string]any{"root_module": map[string]any{"resources": cfg}},
+	}
+	raw, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func secretDeliveryFlows(doc DFD) []Flow {
+	var out []Flow
+	for _, f := range doc.Flows {
+		if f.SecretDelivery == "env" && f.DataClass == "credentials" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func TestB43RootModuleContainerDefinitionsJSON(t *testing.T) {
+	// Whitespace / key-order tolerant jsonencode string on a root-module task def.
+	defs := "[\n  { \"image\" : \"app:1\" , \"name\" : \"app\" , \"secrets\" : [ { \"valueFrom\" : \"module.db.aws_secretsmanager_secret.db.arn\" , \"name\" : \"DB\" } ] }\n]"
+	rootDoc := parseECSPlan(t, rootModuleSecretPlan(t, defs, false))
+	rootFlows := secretDeliveryFlows(rootDoc)
+	if len(rootFlows) != 1 {
+		t.Fatalf("root secret flows=%d want 1", len(rootFlows))
+	}
+
+	modDoc := parseECSPlan(t, moduleSecretPlan(t, defs))
+	modFlows := secretDeliveryFlows(modDoc)
+	if len(modFlows) != 1 {
+		t.Fatalf("module secret flows=%d want 1", len(modFlows))
+	}
+	if rootFlows[0].SecretDelivery != modFlows[0].SecretDelivery ||
+		rootFlows[0].DataClass != modFlows[0].DataClass ||
+		rootFlows[0].AuthzScope != modFlows[0].AuthzScope {
+		t.Fatalf("root fragment delivery=%q class=%q scope=%q; module delivery=%q class=%q scope=%q",
+			rootFlows[0].SecretDelivery, rootFlows[0].DataClass, rootFlows[0].AuthzScope,
+			modFlows[0].SecretDelivery, modFlows[0].DataClass, modFlows[0].AuthzScope)
+	}
+}
+
+func moduleSecretPlan(t *testing.T, containerDefs string) string {
+	t.Helper()
+	secretARN := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf"
+	execPol := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["secretsmanager:GetSecretValue"],"Resource":["` + secretARN + `"]}]}`
+	resources := []map[string]any{
+		{
+			"address": "module.ecs.aws_ecs_service.app", "mode": "managed", "type": "aws_ecs_service", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app"}},
+		},
+		{
+			"address": "module.ecs.aws_ecs_task_definition.app", "mode": "managed", "type": "aws_ecs_task_definition", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{
+				"family": "app", "container_definitions": containerDefs,
+			}, "after_unknown": map[string]any{"task_role_arn": true, "execution_role_arn": true}},
+		},
+		{
+			"address": "module.ecs.aws_iam_role.exec", "mode": "managed", "type": "aws_iam_role", "name": "exec",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "exec"}},
+		},
+		{
+			"address": "module.ecs.aws_iam_role_policy.exec_secrets", "mode": "managed", "type": "aws_iam_role_policy", "name": "exec_secrets",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "exec-secrets", "policy": execPol}},
+		},
+		{
+			"address": "module.db.aws_secretsmanager_secret.db", "mode": "managed", "type": "aws_secretsmanager_secret", "name": "db",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app/db", "arn": secretARN}},
+		},
+	}
+	cfg := map[string]any{
+		"module_calls": map[string]any{
+			"ecs": map[string]any{
+				"module": map[string]any{
+					"resources": []any{
+						map[string]any{
+							"address": "aws_ecs_service.app", "type": "aws_ecs_service", "name": "app", "mode": "managed",
+							"expressions": map[string]any{
+								"task_definition": map[string]any{"references": []any{"aws_ecs_task_definition.app.arn", "aws_ecs_task_definition.app"}},
+							},
+						},
+						map[string]any{
+							"address": "aws_ecs_task_definition.app", "type": "aws_ecs_task_definition", "name": "app", "mode": "managed",
+							"expressions": map[string]any{
+								"execution_role_arn": map[string]any{"references": []any{"aws_iam_role.exec.arn", "aws_iam_role.exec"}},
+							},
+						},
+						map[string]any{"address": "aws_iam_role.exec", "type": "aws_iam_role", "name": "exec", "mode": "managed", "expressions": map[string]any{}},
+						map[string]any{
+							"address": "aws_iam_role_policy.exec_secrets", "type": "aws_iam_role_policy", "name": "exec_secrets", "mode": "managed",
+							"expressions": map[string]any{
+								"role":   map[string]any{"references": []any{"aws_iam_role.exec.name", "aws_iam_role.exec"}},
+								"policy": map[string]any{"constant_value": execPol},
+							},
+						},
+					},
+				},
+			},
+			"db": map[string]any{
+				"module": map[string]any{
+					"resources": []any{
+						map[string]any{"address": "aws_secretsmanager_secret.db", "type": "aws_secretsmanager_secret", "name": "db", "mode": "managed", "expressions": map[string]any{}},
+					},
+				},
+			},
+		},
+	}
+	root := map[string]any{
+		"format_version":   "1.2",
+		"resource_changes": resources,
+		"configuration":    map[string]any{"root_module": cfg},
+	}
+	raw, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func TestB43RootModuleContainerDefinitionsUnknownOmits(t *testing.T) {
+	doc := parseECSPlan(t, rootModuleSecretPlan(t, "", true))
+	if flows := secretDeliveryFlows(doc); len(flows) != 0 {
+		t.Fatalf("unknown container_definitions: secret flows=%d want 0", len(flows))
+	}
+}
+
+func TestB43RootModuleARNValueFrom(t *testing.T) {
+	secretARN := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf"
+	defs := `[{"name":"app","image":"app:1","secrets":[{"name":"DB","valueFrom":"` + secretARN + `"}]}]`
+	doc := parseECSPlan(t, rootModuleSecretPlan(t, defs, false))
+	flows := secretDeliveryFlows(doc)
+	if len(flows) != 1 {
+		t.Fatalf("ARN valueFrom secret flows=%d want 1", len(flows))
+	}
+	if flows[0].SecretDelivery != "env" || flows[0].AuthzScope != "resource" {
+		t.Fatalf("delivery=%q scope=%q", flows[0].SecretDelivery, flows[0].AuthzScope)
+	}
+}
+
+// TestB43ARNValueFromMatchesPlannedSecret: literal ARN of a secret in the plan
+// matches that existing secret_store element (never creates one).
+func TestB43ARNValueFromMatchesPlannedSecret(t *testing.T) {
+	secretARN := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf"
+	defs := `[{"name":"app","image":"app:1","secrets":[{"name":"DB","valueFrom":"` + secretARN + `"}]}]`
+	doc := parseECSPlan(t, rootModuleSecretPlan(t, defs, false))
+	flows := secretDeliveryFlows(doc)
+	if len(flows) != 1 {
+		t.Fatalf("flows=%d want 1", len(flows))
+	}
+	var fromAddr string
+	for _, el := range doc.Elements {
+		if el.ID == flows[0].From && len(el.Evidence.Addresses) == 1 {
+			fromAddr = el.Evidence.Addresses[0]
+		}
+	}
+	if fromAddr != "module.db.aws_secretsmanager_secret.db" {
+		t.Fatalf("matched %q want module.db.aws_secretsmanager_secret.db", fromAddr)
+	}
+}
+
+// TestB43ARNValueFromUnknownSecretOmits: ARN of a secret not in the plan → no
+// new element, no secret-delivery flow, element count unchanged vs no-secrets plan.
+func TestB43ARNValueFromUnknownSecretOmits(t *testing.T) {
+	baseline := parseECSPlan(t, rootModuleSecretPlan(t, `[{"name":"app","image":"app:1"}]`, false))
+	foreign := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:other/not-in-plan-XyZ123"
+	defs := `[{"name":"app","image":"app:1","secrets":[{"name":"DB","valueFrom":"` + foreign + `"}]}]`
+	doc := parseECSPlan(t, rootModuleSecretPlan(t, defs, false))
+	if len(doc.Elements) != len(baseline.Elements) {
+		t.Fatalf("elements=%d want %d (must not invent secret_store)", len(doc.Elements), len(baseline.Elements))
+	}
+	if flows := secretDeliveryFlows(doc); len(flows) != 0 {
+		t.Fatalf("foreign ARN flows=%d want 0", len(flows))
+	}
+}
+
+// TestB43UnqualifiedSecretRefRootOnly: root + module.m both have secret db;
+// root task def refs aws_secretsmanager_secret.db.arn → root element only.
+func TestB43UnqualifiedSecretRefRootOnly(t *testing.T) {
+	doc := parseECSPlan(t, dualModuleSecretRefPlan(t, dualSecretOpts{
+		taskModule: "", valueFrom: "aws_secretsmanager_secret.db.arn",
+		rootSecret: true, moduleSecret: true,
+	}))
+	flows := secretDeliveryFlows(doc)
+	if len(flows) != 1 {
+		t.Fatalf("flows=%d want 1", len(flows))
+	}
+	if addr := secretFlowFromAddr(doc, flows[0]); addr != "aws_secretsmanager_secret.db" {
+		t.Fatalf("matched %q want aws_secretsmanager_secret.db", addr)
+	}
+}
+
+// TestB43UnqualifiedSecretRefModuleLocal: task def inside module.m refs
+// aws_secretsmanager_secret.db.arn → module.m's element only.
+func TestB43UnqualifiedSecretRefModuleLocal(t *testing.T) {
+	doc := parseECSPlan(t, dualModuleSecretRefPlan(t, dualSecretOpts{
+		taskModule: "module.m", valueFrom: "aws_secretsmanager_secret.db.arn",
+		rootSecret: true, moduleSecret: true,
+	}))
+	flows := secretDeliveryFlows(doc)
+	if len(flows) != 1 {
+		t.Fatalf("flows=%d want 1", len(flows))
+	}
+	if addr := secretFlowFromAddr(doc, flows[0]); addr != "module.m.aws_secretsmanager_secret.db" {
+		t.Fatalf("matched %q want module.m.aws_secretsmanager_secret.db", addr)
+	}
+}
+
+// TestB43UnqualifiedSecretRefNoCrossModule: root task refs unqualified db but
+// only module.m has db → omit.
+func TestB43UnqualifiedSecretRefNoCrossModule(t *testing.T) {
+	doc := parseECSPlan(t, dualModuleSecretRefPlan(t, dualSecretOpts{
+		taskModule: "", valueFrom: "aws_secretsmanager_secret.db.arn",
+		rootSecret: false, moduleSecret: true,
+	}))
+	if flows := secretDeliveryFlows(doc); len(flows) != 0 {
+		t.Fatalf("cross-module unqualified ref: flows=%d want 0", len(flows))
+	}
+}
+
+type dualSecretOpts struct {
+	taskModule               string // "" = root, "module.m" = inside m
+	valueFrom                string
+	rootSecret, moduleSecret bool
+}
+
+func secretFlowFromAddr(doc DFD, f Flow) string {
+	for _, el := range doc.Elements {
+		if el.ID == f.From && len(el.Evidence.Addresses) == 1 {
+			return el.Evidence.Addresses[0]
+		}
+	}
+	return ""
+}
+
+func dualModuleSecretRefPlan(t *testing.T, opts dualSecretOpts) string {
+	t.Helper()
+	rootARN := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:root/db-Root01"
+	modARN := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:mod/db-Mod001"
+	grantARN := rootARN
+	if opts.taskModule != "" {
+		grantARN = modARN
+	}
+	if !opts.rootSecret && opts.moduleSecret {
+		grantARN = modARN
+	}
+	execPol := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["secretsmanager:GetSecretValue"],"Resource":["` + grantARN + `"]}]}`
+	defs := `[{"name":"app","image":"app:1","secrets":[{"name":"DB","valueFrom":"` + opts.valueFrom + `"}]}]`
+
+	var resources []map[string]any
+	prefix := opts.taskModule
+	if prefix != "" {
+		prefix += "."
+	}
+	resources = append(resources,
+		map[string]any{
+			"address": prefix + "aws_ecs_service.app", "mode": "managed", "type": "aws_ecs_service", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app"}},
+		},
+		map[string]any{
+			"address": prefix + "aws_ecs_task_definition.app", "mode": "managed", "type": "aws_ecs_task_definition", "name": "app",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{
+				"family": "app", "container_definitions": defs,
+			}, "after_unknown": map[string]any{"execution_role_arn": true}},
+		},
+		map[string]any{
+			"address": prefix + "aws_iam_role.exec", "mode": "managed", "type": "aws_iam_role", "name": "exec",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "exec"}},
+		},
+		map[string]any{
+			"address": prefix + "aws_iam_role_policy.exec_secrets", "mode": "managed", "type": "aws_iam_role_policy", "name": "exec_secrets",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "exec-secrets", "policy": execPol}},
+		},
+	)
+	if opts.rootSecret {
+		resources = append(resources, map[string]any{
+			"address": "aws_secretsmanager_secret.db", "mode": "managed", "type": "aws_secretsmanager_secret", "name": "db",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "root/db", "arn": rootARN}},
+		})
+	}
+	if opts.moduleSecret {
+		resources = append(resources, map[string]any{
+			"address": "module.m.aws_secretsmanager_secret.db", "mode": "managed", "type": "aws_secretsmanager_secret", "name": "db",
+			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "mod/db", "arn": modARN}},
+		})
+	}
+
+	svcExpr := map[string]any{
+		"task_definition": map[string]any{"references": []any{"aws_ecs_task_definition.app.arn", "aws_ecs_task_definition.app"}},
+	}
+	taskExpr := map[string]any{
+		"execution_role_arn": map[string]any{"references": []any{"aws_iam_role.exec.arn", "aws_iam_role.exec"}},
+	}
+	polExpr := map[string]any{
+		"role":   map[string]any{"references": []any{"aws_iam_role.exec.name", "aws_iam_role.exec"}},
+		"policy": map[string]any{"constant_value": execPol},
+	}
+
+	var root map[string]any
+	if opts.taskModule == "" {
+		cfg := []map[string]any{
+			{"address": "aws_ecs_service.app", "type": "aws_ecs_service", "name": "app", "expressions": svcExpr},
+			{"address": "aws_ecs_task_definition.app", "type": "aws_ecs_task_definition", "name": "app", "expressions": taskExpr},
+			{"address": "aws_iam_role.exec", "type": "aws_iam_role", "name": "exec", "expressions": map[string]any{}},
+			{"address": "aws_iam_role_policy.exec_secrets", "type": "aws_iam_role_policy", "name": "exec_secrets", "expressions": polExpr},
+		}
+		if opts.rootSecret {
+			cfg = append(cfg, map[string]any{"address": "aws_secretsmanager_secret.db", "type": "aws_secretsmanager_secret", "name": "db", "expressions": map[string]any{}})
+		}
+		moduleCalls := map[string]any{}
+		if opts.moduleSecret {
+			moduleCalls["m"] = map[string]any{
+				"module": map[string]any{
+					"resources": []any{
+						map[string]any{"address": "aws_secretsmanager_secret.db", "type": "aws_secretsmanager_secret", "name": "db", "mode": "managed", "expressions": map[string]any{}},
+					},
+				},
+			}
+		}
+		root = map[string]any{
+			"format_version":   "1.2",
+			"resource_changes": resources,
+			"configuration": map[string]any{"root_module": map[string]any{
+				"resources": cfg, "module_calls": moduleCalls,
+			}},
+		}
+	} else {
+		modResources := []any{
+			map[string]any{"address": "aws_ecs_service.app", "type": "aws_ecs_service", "name": "app", "mode": "managed", "expressions": svcExpr},
+			map[string]any{"address": "aws_ecs_task_definition.app", "type": "aws_ecs_task_definition", "name": "app", "mode": "managed", "expressions": taskExpr},
+			map[string]any{"address": "aws_iam_role.exec", "type": "aws_iam_role", "name": "exec", "mode": "managed", "expressions": map[string]any{}},
+			map[string]any{"address": "aws_iam_role_policy.exec_secrets", "type": "aws_iam_role_policy", "name": "exec_secrets", "mode": "managed", "expressions": polExpr},
+		}
+		if opts.moduleSecret {
+			modResources = append(modResources, map[string]any{
+				"address": "aws_secretsmanager_secret.db", "type": "aws_secretsmanager_secret", "name": "db", "mode": "managed", "expressions": map[string]any{},
+			})
+		}
+		rootCfg := []map[string]any{}
+		if opts.rootSecret {
+			rootCfg = append(rootCfg, map[string]any{"address": "aws_secretsmanager_secret.db", "type": "aws_secretsmanager_secret", "name": "db", "expressions": map[string]any{}})
+		}
+		root = map[string]any{
+			"format_version":   "1.2",
+			"resource_changes": resources,
+			"configuration": map[string]any{"root_module": map[string]any{
+				"resources": rootCfg,
+				"module_calls": map[string]any{
+					"m": map[string]any{"module": map[string]any{"resources": modResources}},
+				},
+			}},
+		}
+	}
+	raw, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// TestB43ARNValueFromComputedSecretARNOmits: planned secret with after_unknown
+// arn → no match from a literal valueFrom ARN (do not guess via name).
+func TestB43ARNValueFromComputedSecretARNOmits(t *testing.T) {
+	secretARN := "arn:aws:secretsmanager:eu-west-1:111122223333:secret:app/db-AbCdEf"
+	defs := `[{"name":"app","image":"app:1","secrets":[{"name":"DB","valueFrom":"` + secretARN + `"}]}]`
+	raw := rootModuleSecretPlan(t, defs, false)
+	var root map[string]any
+	if err := json.Unmarshal([]byte(raw), &root); err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range root["resource_changes"].([]any) {
+		m := r.(map[string]any)
+		if m["address"] != "module.db.aws_secretsmanager_secret.db" {
+			continue
+		}
+		ch := m["change"].(map[string]any)
+		after := ch["after"].(map[string]any)
+		delete(after, "arn")
+		ch["after"] = after
+		ch["after_unknown"] = map[string]any{"arn": true}
+		m["change"] = ch
+		root["resource_changes"].([]any)[i] = m
+		break
+	}
+	out, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := parseECSPlan(t, string(out))
+	if flows := secretDeliveryFlows(doc); len(flows) != 0 {
+		t.Fatalf("computed secret ARN: flows=%d want 0", len(flows))
+	}
+}

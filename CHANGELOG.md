@@ -4,6 +4,7 @@
 
 ### Fixed
 - S3 flows are now inferred for each ECS task definition (previously only when the plan had exactly one).
+- `container_definitions` on root-module ECS task definitions are now read for secrets.
 
 ## [0.24.1] — 2026-10-13
 

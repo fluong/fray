@@ -646,6 +646,10 @@ func secretRotated(secret planResource, resources []planResource, idx configInde
 }
 
 func containersFromPlan(task planResource) ([]containerSpec, bool) {
+	// Unknown at plan time → omit (do not guess from HCL or partial values).
+	if attrAfterUnknown(task, "container_definitions") {
+		return nil, false
+	}
 	raw, ok := task.values["container_definitions"].(string)
 	if !ok || strings.TrimSpace(raw) == "" {
 		return nil, false
@@ -1208,6 +1212,123 @@ func serviceTaskDefinition(svc planResource, resources []planResource, idx confi
 		return tasks[0], true
 	}
 	return planResource{}, false
+}
+
+// secretElementsFromValueFrom resolves a container secrets valueFrom to secret
+// store elements. module is the task definition's module path ("" = root).
+// module.* refs use elementsFromRefs; unqualified refs resolve only within
+// module (root↔root, module.x↔module.x). Literal ARNs match existing elements only.
+func secretElementsFromValueFrom(ref, module string, resources []planResource, elements []*Element) ([]*Element, bool) {
+	if ref == "" {
+		return nil, false
+	}
+	if strings.HasPrefix(ref, "module.") {
+		hits, amb := elementsFromRefs([]string{ref}, resources, elements, "aws_secretsmanager_secret")
+		if amb {
+			return nil, true
+		}
+		if len(hits) == 1 {
+			return hits, false
+		}
+		if len(hits) > 1 {
+			return nil, true
+		}
+	} else if !strings.HasPrefix(ref, "arn:") {
+		// Unqualified address: same module only, boundary match on typ.name.
+		var matched []*Element
+		for _, r := range resources {
+			if r.typ != "aws_secretsmanager_secret" || !sameModule(r.address, module) {
+				continue
+			}
+			_, _, name, ok := splitResourceAddress(r.address)
+			if !ok || !containsResource(ref, "aws_secretsmanager_secret", name) {
+				continue
+			}
+			for _, el := range elements {
+				if el.Kind == "secret_store" && len(el.Evidence.Addresses) == 1 && el.Evidence.Addresses[0] == r.address {
+					matched = append(matched, el)
+				}
+			}
+		}
+		matched = uniqueElements(matched)
+		if len(matched) == 1 {
+			return matched, false
+		}
+		if len(matched) > 1 {
+			return nil, true
+		}
+	}
+	// Literal ARN: match only an existing secret_store element whose backing
+	// resource already has a known ARN (or SM name) that covers this value.
+	// Never invent elements; unknown/computed ARN → omit (no guess).
+	if strings.HasPrefix(ref, "arn:") {
+		matched := secretElementsMatchingLiteralARN(ref, resources, elements)
+		if len(matched) == 1 {
+			return matched, false
+		}
+		if len(matched) > 1 {
+			return nil, true
+		}
+	}
+	return nil, false
+}
+
+// secretElementsMatchingLiteralARN finds existing secret_store elements for a
+// literal valueFrom ARN. Matches aws_secretsmanager_secret / aws_ssm_parameter
+// when the plan already carries a known ARN equal to ref, or (Secrets Manager
+// only) a known name matching the ARN name segment (incl. -?????? / -AbCdEf).
+// Resources with after_unknown.arn are skipped — no guess from name alone.
+func secretElementsMatchingLiteralARN(ref string, resources []planResource, elements []*Element) []*Element {
+	var matched []*Element
+	for _, el := range elements {
+		if el.Kind != "secret_store" || len(el.Evidence.Addresses) != 1 {
+			continue
+		}
+		addr := el.Evidence.Addresses[0]
+		var r *planResource
+		for i := range resources {
+			if resources[i].address == addr {
+				r = &resources[i]
+				break
+			}
+		}
+		if r == nil {
+			continue
+		}
+		switch r.typ {
+		case "aws_secretsmanager_secret", "aws_ssm_parameter":
+		default:
+			continue
+		}
+		if attrAfterUnknown(*r, "arn") {
+			continue
+		}
+		if arn, ok := r.values["arn"].(string); ok && arn != "" && arn == ref {
+			matched = append(matched, el)
+			continue
+		}
+		if r.typ != "aws_secretsmanager_secret" {
+			continue
+		}
+		name, _ := r.values["name"].(string)
+		if name == "" {
+			continue
+		}
+		parts := strings.SplitN(ref, ":", 6)
+		if len(parts) < 6 || parts[2] != "secretsmanager" {
+			continue
+		}
+		rest := parts[5]
+		const prefix = "secret:"
+		if !strings.HasPrefix(rest, prefix) {
+			continue
+		}
+		namePat := rest[len(prefix):]
+		if isSecretNameSuffixForm(namePat) && secretNamePatternMatches(namePat, name) {
+			matched = append(matched, el)
+		}
+	}
+	return uniqueElements(matched)
 }
 
 type iamStatement struct {
