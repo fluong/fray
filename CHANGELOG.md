@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- IAM policies attached with `aws_iam_policy_attachment` or the `*_exclusive`
+  resources now count toward a role's permissions.
+
 ## [0.26.0] — 2026-10-14
 
 ### Added
