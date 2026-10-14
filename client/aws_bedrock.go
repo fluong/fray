@@ -198,7 +198,8 @@ func roleAmazonBedrockFullAccess(module string, roleRefs []string, resources []p
 		if att.typ != "aws_iam_role_policy_attachment" || !sameModule(att.address, module) {
 			continue
 		}
-		if !overlaps(namedResources(idx.attrRefs(att.address, "role"), "aws_iam_role"), roles) {
+		matched, _ := matchRoleAttr(module, att, "role", roles, resources, idx)
+		if len(matched) == 0 {
 			continue
 		}
 		arn := ""

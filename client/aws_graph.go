@@ -1345,9 +1345,11 @@ type iamStatement struct {
 // whether any identity-policy source on those roles is unknown at plan time.
 //
 // Sources (union): aws_iam_role_policy_attachment → aws_iam_policy,
-// aws_iam_role_policy, aws_iam_role.inline_policy (only when config declares
-// blocks), and aws_iam_role.managed_policy_arns in-plan aws_iam_policy refs.
-// aws_iam_policy_attachment and *_exclusive resources are out of scope.
+// aws_iam_policy_attachment (roles=… only; users/groups ignored — no workload
+// graph for them), aws_iam_role_policy_attachments_exclusive,
+// aws_iam_role_policies_exclusive, aws_iam_role_policy,
+// aws_iam_role.inline_policy (only when config declares blocks), and
+// aws_iam_role.managed_policy_arns in-plan aws_iam_policy refs.
 //
 // For each source: data.aws_iam_policy_document refs win; else a known policy
 // JSON string is parsed into a synthetic doc; else the source is unknown.
@@ -1363,37 +1365,43 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		if att.typ != "aws_iam_role_policy_attachment" || !sameModule(att.address, module) {
 			continue
 		}
-		if !overlaps(namedResources(idx.attrRefs(att.address, "role"), "aws_iam_role"), roles) {
+		matched, unk := matchRoleAttr(module, att, "role", roles, resources, idx)
+		if unk {
+			unknown = true
+		}
+		if len(matched) == 0 {
 			continue
 		}
-		polNames := namedResources(idx.attrRefs(att.address, "policy_arn"), "aws_iam_policy")
-		if len(polNames) == 0 {
-			// AWS-managed ARN constants are ignored here (Bedrock FullAccess is
-			// handled separately). An unknown policy_arn with no in-plan policy
-			// ref and no constant is an unknown identity-policy source.
-			if attrAfterUnknown(att, "policy_arn") && idx.attrConstant(att.address, "policy_arn") == nil {
-				unknown = true
-			}
-			continue
+		got, unk := resolveAttachedPolicyARN(att, "policy_arn", module, resources, data, idx)
+		out = append(out, got...)
+		if unk {
+			unknown = true
 		}
-		for _, polName := range polNames {
-			pol, ok := findModuleResource(resources, module, "aws_iam_policy", polName)
-			if !ok {
-				unknown = true
-				continue
-			}
-			got, unk := resolvePolicyContent(pol, "policy", module, data, idx)
-			out = append(out, got...)
-			if unk {
-				unknown = true
-			}
-		}
+	}
+	got, unk := policyAttachmentDocs(module, roles, resources, data, idx)
+	out = append(out, got...)
+	if unk {
+		unknown = true
+	}
+	got, unk = rolePolicyAttachmentsExclusiveDocs(module, roles, resources, data, idx)
+	out = append(out, got...)
+	if unk {
+		unknown = true
+	}
+	got, unk = rolePoliciesExclusiveDocs(module, roles, resources, data, idx)
+	out = append(out, got...)
+	if unk {
+		unknown = true
 	}
 	for _, rp := range resources {
 		if rp.typ != "aws_iam_role_policy" || !sameModule(rp.address, module) {
 			continue
 		}
-		if !overlaps(namedResources(idx.attrRefs(rp.address, "role"), "aws_iam_role"), roles) {
+		matched, unk := matchRoleAttr(module, rp, "role", roles, resources, idx)
+		if unk {
+			unknown = true
+		}
+		if len(matched) == 0 {
 			continue
 		}
 		got, unk := resolvePolicyContent(rp, "policy", module, data, idx)
@@ -1421,6 +1429,271 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		}
 	}
 	return uniqueResources(out), unknown
+}
+
+// resolveAttachedPolicyARN resolves one attachment-like policy_arn / list
+// attribute the same way aws_iam_role_policy_attachment does.
+func resolveAttachedPolicyARN(holder planResource, arnAttr, module string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+	polNames := namedResources(idx.attrRefs(holder.address, arnAttr), "aws_iam_policy")
+	if len(polNames) == 0 {
+		// AWS-managed ARN constants are ignored here (Bedrock FullAccess is
+		// handled separately). An unknown ARN with no in-plan policy ref and
+		// no constant is an unknown identity-policy source.
+		if attrAfterUnknown(holder, arnAttr) && idx.attrConstant(holder.address, arnAttr) == nil {
+			return nil, true
+		}
+		return nil, false
+	}
+	for _, polName := range polNames {
+		pol, ok := findModuleResource(resources, module, "aws_iam_policy", polName)
+		if !ok {
+			unknown = true
+			continue
+		}
+		got, unk := resolvePolicyContent(pol, "policy", module, data, idx)
+		docs = append(docs, got...)
+		if unk {
+			unknown = true
+		}
+	}
+	return docs, unknown
+}
+
+// policyAttachmentDocs reads aws_iam_policy_attachment for the queried roles.
+// Only the `roles` argument is considered (users/groups have no workload graph).
+//
+// Unknown-roles rule: when `roles` is after_unknown, configuration references
+// name the roles the attachment could apply to — each overlapping role gets an
+// unknown identity-policy source (scope omitted). If those references cannot
+// be determined, every queried role in this module is marked unknown.
+func policyAttachmentDocs(module string, roles []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+	for _, att := range resources {
+		if att.typ != "aws_iam_policy_attachment" || !sameModule(att.address, module) {
+			continue
+		}
+		if attrAfterUnknown(att, "roles") {
+			roleNames := namedResources(idx.attrRefs(att.address, "roles"), "aws_iam_role")
+			if len(roleNames) == 0 {
+				unknown = true
+				continue
+			}
+			if overlaps(roleNames, roles) {
+				unknown = true
+			}
+			continue
+		}
+		matched, unk := matchRoleAttr(module, att, "roles", roles, resources, idx)
+		if unk {
+			unknown = true
+		}
+		if len(matched) == 0 {
+			continue
+		}
+		got, unk := resolveAttachedPolicyARN(att, "policy_arn", module, resources, data, idx)
+		docs = append(docs, got...)
+		if unk {
+			unknown = true
+		}
+	}
+	return docs, unknown
+}
+
+func rolePolicyAttachmentsExclusiveDocs(module string, roles []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+	for _, ex := range resources {
+		if ex.typ != "aws_iam_role_policy_attachments_exclusive" || !sameModule(ex.address, module) {
+			continue
+		}
+		matched, unk := matchRoleAttr(module, ex, "role_name", roles, resources, idx)
+		if unk {
+			unknown = true
+		}
+		if len(matched) == 0 {
+			continue
+		}
+		got, unk := resolveAttachedPolicyARN(ex, "policy_arns", module, resources, data, idx)
+		docs = append(docs, got...)
+		if unk {
+			unknown = true
+		}
+	}
+	return docs, unknown
+}
+
+// rolePoliciesExclusiveDocs reads aws_iam_role_policies_exclusive: each
+// policy_names entry must match an aws_iam_role_policy on that role in the
+// plan. A name with no matching inline policy → unknown source.
+func rolePoliciesExclusiveDocs(module string, roles []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+	for _, ex := range resources {
+		if ex.typ != "aws_iam_role_policies_exclusive" || !sameModule(ex.address, module) {
+			continue
+		}
+		matched, unk := matchRoleAttr(module, ex, "role_name", roles, resources, idx)
+		if unk {
+			unknown = true
+		}
+		if len(matched) == 0 {
+			continue
+		}
+		if attrAfterUnknown(ex, "policy_names") && len(exclusivePolicyNames(ex, idx)) == 0 {
+			unknown = true
+			continue
+		}
+		for _, want := range exclusivePolicyNames(ex, idx) {
+			rp, ok := findRolePolicyByName(resources, module, matched, want, idx)
+			if !ok {
+				unknown = true
+				continue
+			}
+			got, unk := resolvePolicyContent(rp, "policy", module, data, idx)
+			docs = append(docs, got...)
+			if unk {
+				unknown = true
+			}
+		}
+	}
+	return docs, unknown
+}
+
+// matchRoleAttr decides which queried roles (terraform local names) an
+// attachment-like role / roles / role_name attribute applies to.
+//
+// References to aws_iam_role.* attach as before. Literal role name strings:
+//   - equal a queried role's known plan `name` → attach;
+//   - match no role name in the plan → ignore (external role), unless a
+//     queried role's name is unknown (name_prefix / computed), in which case
+//     that role is marked unknown so scope is omitted rather than understated.
+func matchRoleAttr(module string, holder planResource, roleAttr string, queried []string, resources []planResource, idx configIndex) (matched []string, unknown bool) {
+	refNames := namedResources(idx.attrRefs(holder.address, roleAttr), "aws_iam_role")
+	if overlaps(refNames, queried) {
+		for _, q := range queried {
+			if overlaps([]string{q}, refNames) {
+				matched = append(matched, q)
+			}
+		}
+	}
+	for _, lit := range roleAttrLiterals(holder, roleAttr, idx) {
+		knownHit := false
+		for _, role := range resources {
+			if role.typ != "aws_iam_role" || !sameModule(role.address, module) {
+				continue
+			}
+			name, ok := roleKnownIAMName(role, idx)
+			if !ok || name != lit {
+				continue
+			}
+			knownHit = true
+			local := localTypeName(role.address)
+			if overlaps([]string{local}, queried) {
+				matched = append(matched, local)
+			}
+		}
+		if knownHit {
+			continue
+		}
+		// Literal matches no known role name in the plan.
+		for _, q := range queried {
+			role, ok := findModuleResource(resources, module, "aws_iam_role", q)
+			if !ok {
+				continue
+			}
+			if _, ok := roleKnownIAMName(role, idx); !ok {
+				unknown = true
+			}
+		}
+	}
+	return uniqueStrings(matched), unknown
+}
+
+func roleAttrLiterals(holder planResource, roleAttr string, idx configIndex) []string {
+	var out []string
+	appendLit := func(v any) {
+		switch t := v.(type) {
+		case string:
+			if s := strings.TrimSpace(t); s != "" {
+				out = append(out, s)
+			}
+		case []any:
+			for _, item := range t {
+				if s, ok := item.(string); ok {
+					if s = strings.TrimSpace(s); s != "" {
+						out = append(out, s)
+					}
+				}
+			}
+		}
+	}
+	appendLit(holder.values[roleAttr])
+	appendLit(idx.attrConstant(holder.address, roleAttr))
+	return uniqueStrings(out)
+}
+
+// roleKnownIAMName returns the role's AWS name when known at plan time.
+// name_prefix, after_unknown name, or a missing name → not ok.
+func roleKnownIAMName(role planResource, idx configIndex) (string, bool) {
+	if attrAfterUnknown(role, "name") || attrAfterUnknown(role, "name_prefix") {
+		return "", false
+	}
+	if hasConfigAttr(idx, role.address, "name_prefix") {
+		return "", false
+	}
+	if s, ok := role.values["name"].(string); ok && strings.TrimSpace(s) != "" {
+		return s, true
+	}
+	if s, ok := idx.attrConstant(role.address, "name").(string); ok && strings.TrimSpace(s) != "" {
+		return s, true
+	}
+	return "", false
+}
+
+func exclusivePolicyNames(ex planResource, idx configIndex) []string {
+	var names []string
+	for _, ref := range idx.attrRefs(ex.address, "policy_names") {
+		if n := namedResources([]string{ref}, "aws_iam_role_policy"); len(n) > 0 {
+			names = append(names, n...)
+			continue
+		}
+	}
+	appendStrings := func(v any) {
+		switch t := v.(type) {
+		case string:
+			if s := strings.TrimSpace(t); s != "" {
+				names = append(names, s)
+			}
+		case []any:
+			for _, item := range t {
+				if s, ok := item.(string); ok {
+					if s = strings.TrimSpace(s); s != "" {
+						names = append(names, s)
+					}
+				}
+			}
+		}
+	}
+	appendStrings(ex.values["policy_names"])
+	appendStrings(idx.attrConstant(ex.address, "policy_names"))
+	return uniqueStrings(names)
+}
+
+func findRolePolicyByName(resources []planResource, module string, roleNames []string, want string, idx configIndex) (planResource, bool) {
+	for _, rp := range resources {
+		if rp.typ != "aws_iam_role_policy" || !sameModule(rp.address, module) {
+			continue
+		}
+		matched, _ := matchRoleAttr(module, rp, "role", roleNames, resources, idx)
+		if len(matched) == 0 {
+			continue
+		}
+		if localTypeName(rp.address) == want {
+			return rp, true
+		}
+		if name, _ := rp.values["name"].(string); name == want {
+			return rp, true
+		}
+		if name, _ := idx.attrConstant(rp.address, "name").(string); name == want {
+			return rp, true
+		}
+	}
+	return planResource{}, false
 }
 
 // resolvePolicyContent reads holder.policyAttr: data.aws_iam_policy_document
