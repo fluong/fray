@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	apiv1 "github.com/fluong/fray/api/v1"
 )
 
 func main() {
@@ -27,12 +29,21 @@ func main() {
 	flag.StringVar(&opt.APIKey, "api-key", "", "org API key; defaults to FRAY_API_KEY")
 	flag.StringVar(&opt.OIDCToken, "oidc-token", "", "GitHub Actions OIDC token; defaults to FRAY_OIDC_TOKEN")
 	flag.StringVar(&opt.PayloadOut, "payload-out", "", "write the exact POST body to this path")
+	flag.StringVar(&opt.Stack, "stack", "", "optional stack label (^[a-z0-9][a-z0-9-]{0,31}$); defaults to FRAY_STACK")
 	flag.BoolVar(&opt.DryRun, "dry-run", false, "build the scan payload but do not POST")
 	flag.BoolVar(&opt.ShowPayload, "show-payload", false, "print the exact JSON that would be sent")
 	flag.BoolVar(&opt.FailOnUnenrolled, "fail-on-unenrolled", false, "exit non-zero when the GitHub App install does not cover this repo")
 	flag.BoolVar(&opt.ExternalPlan, "external-plan", false, "plan came from Action plan-file (validate JSON, warn on source mismatch; empty-DFD refuse applies to all plans)")
 	flag.BoolVar(&setupCheck, "check", false, "run setup checks only (no plan scan; GET /v1/readiness)")
 	flag.Parse()
+
+	if opt.Stack == "" {
+		opt.Stack = os.Getenv("FRAY_STACK")
+	}
+	if err := apiv1.ValidateStack(opt.Stack); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(2)
+	}
 
 	if setupCheck {
 		if opt.Source == "" || opt.Config == "" || opt.Remote == "" {

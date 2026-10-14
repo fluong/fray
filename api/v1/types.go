@@ -109,6 +109,8 @@ type ScanRequest struct {
 	BaseCommit          string          `json:"base_commit,omitempty"`
 	// ClientVersion is the Action/CLI SemVer (no leading "v"). Older servers ignore it.
 	ClientVersion string `json:"client_version,omitempty"`
+	// Stack is an optional Terraform stack label (B-39). Empty/omitted = default stack.
+	Stack string `json:"stack,omitempty"`
 }
 
 // RuleSkipped is a catalog rule the server did not evaluate because this
