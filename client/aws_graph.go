@@ -1148,12 +1148,66 @@ func elementsUnder(elements []*Element, module, kind string) []*Element {
 	return out
 }
 
+// taskDefinitionsInModule returns aws_ecs_task_definition resources in module
+// (root when module == ""), using sameModule so sibling modules are excluded.
+func taskDefinitionsInModule(resources []planResource, module string) []planResource {
+	var out []planResource
+	for _, r := range resources {
+		if r.typ == "aws_ecs_task_definition" && sameModule(r.address, module) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// taskAddress returns the sole task definition address in module, or "" when
+// zero or many (Bedrock and other callers that still require uniqueness).
 func taskAddress(resources []planResource, module string) string {
-	tasks := underType(resources, module, "aws_ecs_task_definition")
+	tasks := taskDefinitionsInModule(resources, module)
 	if len(tasks) != 1 {
 		return ""
 	}
 	return tasks[0].address
+}
+
+// serviceTaskDefinition resolves svc.task_definition to one plan resource.
+// Prefers configuration references; falls back to a sole task def in the same
+// module (byte-compatible with the pre-B-44 single-task path). Ok=false when
+// the service's task definition cannot be resolved uniquely.
+func serviceTaskDefinition(svc planResource, resources []planResource, idx configIndex) (planResource, bool) {
+	mod, _, _, _ := splitResourceAddress(svc.address)
+	refs := idx.attrRefs(svc.address, "task_definition")
+	seen := map[string]bool{}
+	var found []planResource
+	for _, ref := range refs {
+		for _, r := range resources {
+			if r.typ != "aws_ecs_task_definition" || seen[r.address] {
+				continue
+			}
+			_, _, name, ok := splitResourceAddress(r.address)
+			if !ok || !sameModule(r.address, mod) {
+				continue
+			}
+			// Boundary match only (typ.name, then . / [ / end) so app does not
+			// steal refs aimed at app_worker. Full-address strings.Contains is
+			// wrong for that prefix case.
+			if containsResource(ref, "aws_ecs_task_definition", name) {
+				found = append(found, r)
+				seen[r.address] = true
+			}
+		}
+	}
+	if len(found) == 1 {
+		return found[0], true
+	}
+	if len(found) > 1 {
+		return planResource{}, false
+	}
+	tasks := taskDefinitionsInModule(resources, mod)
+	if len(tasks) == 1 {
+		return tasks[0], true
+	}
+	return planResource{}, false
 }
 
 type iamStatement struct {

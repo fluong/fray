@@ -125,16 +125,15 @@ func awsServiceElement(r planResource, resources []planResource, idx configIndex
 		attrs["max_instances"] = n
 	}
 	mod, _, _, _ := splitResourceAddress(r.address)
-	tasks := underType(resources, mod, "aws_ecs_task_definition")
-	if len(tasks) == 1 {
+	if task, ok := serviceTaskDefinition(r, resources, idx); ok {
 		specs := containers[mod]
-		if planned, ok := containersFromPlan(tasks[0]); ok {
+		if planned, ok := containersFromPlan(task); ok {
 			specs = planned
 		}
 		if pinned, ok := imagePinned(specs); ok {
 			attrs["image_pinned_by_digest"] = pinned
 		}
-	} else if len(tasks) > 1 {
+	} else if len(taskDefinitionsInModule(resources, mod)) > 1 {
 		*warnings = append(*warnings, "ambiguous task definition on "+r.address+"; image not read")
 	}
 	return &Element{
@@ -336,16 +335,19 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 			continue
 		}
 		mod, _, _, _ := splitResourceAddress(svc.address)
-		tasks := underType(resources, mod, "aws_ecs_task_definition")
-		if len(tasks) != 1 {
+		task, ok := serviceTaskDefinition(svc, resources, idx)
+		if !ok {
+			// Unresolvable task_definition → omit this service's secret/S3 flows.
 			continue
 		}
 		specs := containers[mod]
-		if planned, ok := containersFromPlan(tasks[0]); ok {
+		if planned, ok := containersFromPlan(task); ok {
 			specs = planned
 		}
-		flows = append(flows, secretFlowsFrom(svc, svcEl, mod, specs, resources, data, idx, elements, &warnings)...)
-		flows = append(flows, bucketFlows(svc, svcEl, mod, resources, data, idx, elements, &warnings)...)
+		// When plan container_definitions is unknown/absent, keep HCL-sourced
+		// specs (pre-B-43 module path). Root-module unknown with no HCL → omit.
+		flows = append(flows, secretFlowsFrom(svc, svcEl, mod, task.address, specs, resources, data, idx, elements, &warnings)...)
+		flows = append(flows, bucketFlows(svc, svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
 	}
 	flows = append(flows, dbFlows(resources, idx, elements, &warnings)...)
 
@@ -366,10 +368,10 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 	return dedupeFlows(flows), bounds, extra, warnings
 }
 
-func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []containerSpec, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
+func secretFlowsFrom(svc planResource, svcEl *Element, module, taskAddr string, specs []containerSpec, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
 	seen := map[string]bool{}
 	var flows []*Flow
-	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "execution_role_arn"), resources, data, idx)
+	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddr, "execution_role_arn"), resources, data, idx)
 	for _, spec := range specs {
 		for _, ref := range spec.secrets {
 			hits, ambiguous := elementsFromRefs([]string{ref}, resources, elements, "aws_secretsmanager_secret")
@@ -404,8 +406,11 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module string, specs []co
 	return flows
 }
 
-func bucketFlows(svc planResource, svcEl *Element, module string, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
-	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddress(resources, module), "task_role_arn"), resources, data, idx)
+func bucketFlows(svc planResource, svcEl *Element, module, taskAddr string, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
+	if taskAddr == "" {
+		return nil
+	}
+	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddr, "task_role_arn"), resources, data, idx)
 	hits, grants, actions, cause, ambiguous, actionWarn := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
 	if ambiguous {
 		*warnings = append(*warnings, "ambiguous bucket for "+svc.address)

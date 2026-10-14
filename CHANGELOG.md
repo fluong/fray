@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- S3 flows are now inferred for each ECS task definition (previously only when the plan had exactly one).
+
 ## [0.24.1] — 2026-10-13
 
 ### Fixed
