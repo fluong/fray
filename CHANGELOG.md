@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.25.1] — 2026-10-14
+
 ### Fixed
 - Secrets in a root-module ECS task definition are now detected when the task definition is created in the same plan as the secret (read from the Terraform configuration).
 
@@ -421,7 +423,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.25.1...HEAD
+[0.25.1]: https://github.com/fluong/fray/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/fluong/fray/compare/v0.24.1...v0.25.0
 [0.24.1]: https://github.com/fluong/fray/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/fluong/fray/compare/v0.23.0...v0.24.0
