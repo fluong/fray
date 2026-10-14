@@ -1,0 +1,36 @@
+{
+  "id": "FR-999",
+  "title": "Synthetic rule with catalog fields",
+  "threat": "Synthetic threat for schema fixtures",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["spoofing"],
+  "severity": "low",
+  "platforms": ["aws"],
+  "category": "exposure",
+  "target": "element",
+  "when": [
+    { "op": "equals", "field": "kind", "value": "process" }
+  ],
+  "pass": [
+    { "op": "equals", "field": "kind", "value": "process" }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  },
+  "introduced": "2026-10-14",
+  "min_action": "v0.27.0",
+  "remediations": [
+    {
+      "provider": "aws",
+      "resource": "aws_example",
+      "text": "Apply the fix.",
+      "explanation": "Why the fix matters.",
+      "catalog_text": "Apply the fix without placeholders.",
+      "catalog_explanation": "Why the fix matters, catalog wording."
+    }
+  ]
+}

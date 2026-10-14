@@ -1,0 +1,31 @@
+{
+  "id": "FR-995",
+  "title": "Synthetic unknown remediation key",
+  "threat": "Synthetic threat for schema fixtures",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["spoofing"],
+  "severity": "low",
+  "platforms": ["aws"],
+  "target": "element",
+  "when": [
+    { "op": "equals", "field": "kind", "value": "process" }
+  ],
+  "pass": [
+    { "op": "equals", "field": "kind", "value": "process" }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  },
+  "remediations": [
+    {
+      "provider": "aws",
+      "resource": "aws_example",
+      "text": "Apply the fix.",
+      "extra_field": "rejected"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "FR-996",
+  "title": "Synthetic empty catalog_text",
+  "threat": "Synthetic threat for schema fixtures",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["spoofing"],
+  "severity": "low",
+  "platforms": ["aws"],
+  "target": "element",
+  "when": [
+    { "op": "equals", "field": "kind", "value": "process" }
+  ],
+  "pass": [
+    { "op": "equals", "field": "kind", "value": "process" }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  },
+  "remediations": [
+    {
+      "provider": "aws",
+      "resource": "aws_example",
+      "text": "Apply the fix.",
+      "catalog_text": ""
+    }
+  ]
+}

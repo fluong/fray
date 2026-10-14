@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Rule schema: accept `min_action` and remediation `catalog_text` / `catalog_explanation`.
+
 ## [0.27.0] — 2026-10-14
 
 ### Added
