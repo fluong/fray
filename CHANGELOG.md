@@ -2,11 +2,14 @@
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-10-14
+
 ### Added
 - Optional `stack` Action input / `-stack` CLI flag / `FRAY_STACK` for several
   Terraform roots in one repository. Each named stack gets its own PR comment,
   merge baseline, SARIF category (`fray/<stack>`), and artifact names. Empty
   `stack` keeps today’s behaviour.
+- Requires the hosted service from 2026-10-14 or later for `stack` (older servers ignore it; without `stack` nothing changes).
 
 ### Changed
 - `rule.schema.json`: `introduced` is a date (YYYY-MM-DD), matching the published rule catalog.
@@ -451,7 +454,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.26.1...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/fluong/fray/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/fluong/fray/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/fluong/fray/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/fluong/fray/compare/v0.25.0...v0.25.1
