@@ -439,6 +439,9 @@ func isEachRef(ref string) bool {
 }
 
 func isDataParamGroupRef(ref string) bool {
+	// OUT OF SCOPE (B-47): data.aws_db_parameter_group /
+	// data.aws_rds_cluster_parameter_group expose no parameter list, so TLS
+	// cannot be decided from them. Keep omit (caller skips these refs).
 	return strings.Contains(ref, "data.aws_db_parameter_group.") ||
 		strings.Contains(ref, ".data.aws_db_parameter_group.") ||
 		strings.Contains(ref, "data.aws_rds_cluster_parameter_group.") ||

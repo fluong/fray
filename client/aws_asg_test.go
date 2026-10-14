@@ -218,11 +218,11 @@ func TestASGPublicIPAndAdmin(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			asg, resources, idx := tc.build()
-			got, known := asgPublicIP(asg, resources, idx)
+			got, known := asgPublicIP(asg, resources, nil, idx)
 			if known != tc.wantPublicOK || (known && got != tc.wantPublic) {
 				t.Fatalf("public_ip=(%v,%v) want (%v,%v)", got, known, tc.wantPublic, tc.wantPublicOK)
 			}
-			gotA, knownA := asgAdminPortsOpen(asg, resources, idx)
+			gotA, knownA := asgAdminPortsOpen(asg, resources, nil, idx)
 			if knownA != tc.wantAdminOK || (knownA && gotA != tc.wantAdmin) {
 				t.Fatalf("admin_ports_open=(%v,%v) want (%v,%v)", gotA, knownA, tc.wantAdmin, tc.wantAdminOK)
 			}
@@ -238,7 +238,7 @@ func TestASGElementNameAndKind(t *testing.T) {
 		tmplWorldSSH:        true,
 		tmplActions:         []string{"no-op"},
 	})
-	el := awsASGElement(asg, resources, idx)
+	el := awsASGElement(asg, resources, nil, idx)
 	if el.Kind != "virtual_machine" || el.Type != "process" || el.Provenance != "iac" {
 		t.Fatalf("meta: kind=%s type=%s provenance=%s", el.Kind, el.Type, el.Provenance)
 	}

@@ -582,7 +582,7 @@ func TestLBPublicTable(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			lb, resources, idx := tc.build()
-			got, known := lbPublic(lb, resources, idx)
+			got, known := lbPublic(lb, resources, nil, idx)
 			if known != tc.wantKnown || (known && got != tc.wantVal) {
 				t.Fatalf("got (%v,%v) want (%v,%v)", got, known, tc.wantVal, tc.wantKnown)
 			}
@@ -608,7 +608,7 @@ func TestForEachVPCRuleInstancesLB(t *testing.T) {
 			},
 		}
 		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
-		got, known := lbPublic(lb, append(resources, app, rule), idx)
+		got, known := lbPublic(lb, append(resources, app, rule), nil, idx)
 		if !known || !got {
 			t.Fatalf("http key: got (%v,%v) want (true,true) world", got, known)
 		}
@@ -623,7 +623,7 @@ func TestForEachVPCRuleInstancesLB(t *testing.T) {
 			},
 		}
 		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
-		got, known := lbPublic(lb, append(resources, app, rule), idx)
+		got, known := lbPublic(lb, append(resources, app, rule), nil, idx)
 		if !known || got {
 			t.Fatalf("db key: got (%v,%v) want (false,true) peer", got, known)
 		}

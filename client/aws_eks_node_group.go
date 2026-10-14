@@ -7,7 +7,7 @@ import (
 // awsEKSNodeGroupElement maps a managed aws_eks_node_group to a virtual_machine
 // process for FR-034. No flows are created. The display name always reads as
 // an EKS node group (never "instance").
-func awsEKSNodeGroupElement(r planResource, resources []planResource, idx configIndex) *Element {
+func awsEKSNodeGroupElement(r planResource, resources, data []planResource, idx configIndex) *Element {
 	_, _, name, _ := splitResourceAddress(r.address)
 	attrs := map[string]any{}
 	// CreateNodegroup: if launchTemplate is set, remoteAccess must not be —
@@ -21,10 +21,10 @@ func awsEKSNodeGroupElement(r planResource, resources []planResource, idx config
 			Attributes: attrs,
 		}
 	}
-	if v, ok := ngPublicIP(r, resources, idx); ok {
+	if v, ok := ngPublicIP(r, resources, data, idx); ok {
 		attrs["public_ip"] = v
 	}
-	if v, ok := ngAdminPortsOpen(r, resources, idx); ok {
+	if v, ok := ngAdminPortsOpen(r, resources, data, idx); ok {
 		attrs["admin_ports_open"] = v
 	}
 	return &Element{
@@ -37,9 +37,9 @@ func awsEKSNodeGroupElement(r planResource, resources []planResource, idx config
 
 // ngPublicIP: launch-template NI associate_public_ip_address when explicit;
 // else subnet_ids with the ASG subnet rule.
-func ngPublicIP(ng planResource, resources []planResource, idx configIndex) (public bool, known bool) {
+func ngPublicIP(ng planResource, resources, data []planResource, idx configIndex) (public bool, known bool) {
 	if instanceDeclaresLaunchTemplate(ng, idx) {
-		lt := resolveInstanceLaunchTemplate(ng, resources, idx)
+		lt := resolveInstanceLaunchTemplate(ng, resources, data, idx)
 		if lt.declared && !lt.usable {
 			return false, false
 		}
@@ -59,14 +59,14 @@ func ngPublicIP(ng planResource, resources []planResource, idx configIndex) (pub
 				return false, true
 			}
 			hasIPv6, ipv6Known := asgLaunchHasIPv6(src)
-			return ngPublicIPFromSubnets(ng, resources, idx, hasIPv6, ipv6Known)
+			return ngPublicIPFromSubnets(ng, resources, data, idx, hasIPv6, ipv6Known)
 		}
 	}
-	return ngPublicIPFromSubnets(ng, resources, idx, false, true)
+	return ngPublicIPFromSubnets(ng, resources, data, idx, false, true)
 }
 
-func ngPublicIPFromSubnets(ng planResource, resources []planResource, idx configIndex, tmplIPv6, tmplIPv6Known bool) (public bool, known bool) {
-	subnets, allResolved, ok := resolveNamedSubnets(ng, "subnet_ids", resources, idx)
+func ngPublicIPFromSubnets(ng planResource, resources, data []planResource, idx configIndex, tmplIPv6, tmplIPv6Known bool) (public bool, known bool) {
+	subnets, allResolved, ok := resolveNamedSubnets(ng, "subnet_ids", resources, data, idx)
 	if !ok {
 		return false, false
 	}
@@ -119,7 +119,7 @@ func ngPublicIPFromSubnets(ng planResource, resources []planResource, idx config
 	// target vpc_config.cluster_security_group_id are classified; with none, the
 	// documented default has no internet SSH/RDP —
 	// https://docs.aws.amazon.com/eks/latest/userguide/sec-group-reqs.html
-func ngAdminPortsOpen(ng planResource, resources []planResource, idx configIndex) (open bool, known bool) {
+func ngAdminPortsOpen(ng planResource, resources, data []planResource, idx configIndex) (open bool, known bool) {
 	hasRA := ngDeclaresRemoteAccess(ng, idx)
 	hasLT := instanceDeclaresLaunchTemplate(ng, idx)
 	if hasRA && hasLT {
@@ -131,28 +131,28 @@ func ngAdminPortsOpen(ng planResource, resources []planResource, idx configIndex
 			return true, true
 		}
 		// Restricted source SGs (or remote_access without a key) → cluster SG path.
-		return ngAdminFromClusterSG(ng, resources, idx)
+		return ngAdminFromClusterSG(ng, resources, data, idx)
 	}
 
 	if hasLT {
-		lt := resolveInstanceLaunchTemplate(ng, resources, idx)
+		lt := resolveInstanceLaunchTemplate(ng, resources, data, idx)
 		if lt.declared && !lt.usable {
 			return false, false
 		}
 		if lt.usable {
 			refs := launchTemplateSecurityGroupRefs(lt.tmpl, idx)
 			if len(refs) > 0 {
-				return adminPortsFromSGRefs(refs, resources, idx)
+				return adminPortsFromSGRefs(refs, resources, data, idx)
 			}
 		}
-		return ngAdminFromClusterSG(ng, resources, idx)
+		return ngAdminFromClusterSG(ng, resources, data, idx)
 	}
 
-	return ngAdminFromClusterSG(ng, resources, idx)
+	return ngAdminFromClusterSG(ng, resources, data, idx)
 }
 
-func adminPortsFromSGRefs(refs []string, resources []planResource, idx configIndex) (open bool, known bool) {
-	sgs, ok := resolveSecurityGroupRefs(refs, resources, idx)
+func adminPortsFromSGRefs(refs []string, resources, data []planResource, idx configIndex) (open bool, known bool) {
+	sgs, ok := resolveSecurityGroupRefs(refs, resources, data, idx)
 	if !ok || len(sgs) == 0 {
 		return false, false
 	}
@@ -249,13 +249,25 @@ func ngRemoteAccessSourceSGRefs(ng planResource, idx configIndex) []string {
 	return uniqueStrings(filterLikelySGRefs(refs))
 }
 
-func ngAdminFromClusterSG(ng planResource, resources []planResource, idx configIndex) (open bool, known bool) {
-	cluster, ok := resolveNGCluster(ng, resources, idx)
+func ngAdminFromClusterSG(ng planResource, resources, data []planResource, idx configIndex) (open bool, known bool) {
+	cluster, ok := resolveNGCluster(ng, resources, data, idx)
 	if !ok {
 		// No cluster in plan — cannot read extra rules; documented default is closed.
 		return false, true
 	}
 	sources := collectClusterSGIngressSources(cluster, resources, idx)
+	if isDataAddress(cluster.address) {
+		// Data clusters expose identity / vpc_config.cluster_security_group_id for
+		// linkage only. In-plan rules attached to that SG are positive evidence;
+		// absence must not invent "closed" (rules may exist outside the plan).
+		for _, port := range []int{22, 3389} {
+			_, world := classifyAdminIngressSources(sources, resources, idx, port)
+			if world {
+				return true, true
+			}
+		}
+		return false, false
+	}
 	sawUnknown := false
 	for _, port := range []int{22, 3389} {
 		cls, world := classifyAdminIngressSources(sources, resources, idx, port)
@@ -273,7 +285,7 @@ func ngAdminFromClusterSG(ng planResource, resources []planResource, idx configI
 	return false, true
 }
 
-func resolveNGCluster(ng planResource, resources []planResource, idx configIndex) (planResource, bool) {
+func resolveNGCluster(ng planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := idx.attrRefs(ng.address, "cluster_name")
 	var hit planResource
 	found := false
@@ -281,8 +293,20 @@ func resolveNGCluster(ng planResource, resources []planResource, idx configIndex
 		if isVarRef(ref) || isBareModuleRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_eks_cluster") {
-			return planResource{}, false
+		if isDataTypeRef(ref, "aws_eks_cluster") {
+			name := resourceNameFromRef(ref, "aws_eks_cluster")
+			if name == "" {
+				continue
+			}
+			c, ok := findDataResource(data, "aws_eks_cluster", name, ref)
+			if !ok {
+				return planResource{}, false
+			}
+			if found && hit.address != c.address {
+				return planResource{}, false
+			}
+			hit, found = c, true
+			continue
 		}
 		if isModuleOutputRef(ref) {
 			c, ok := resolveModuleOutputResource(ref, "aws_eks_cluster", idx, resources, 0)
@@ -394,7 +418,7 @@ func classifyAdminIngressSources(sources []ingressSource, resources []planResour
 }
 
 // resolveNamedSubnets resolves subnet refs under attr (e.g. subnet_ids).
-func resolveNamedSubnets(holder planResource, attr string, resources []planResource, idx configIndex) (subnets []planResource, allResolved, ok bool) {
+func resolveNamedSubnets(holder planResource, attr string, resources, data []planResource, idx configIndex) (subnets []planResource, allResolved, ok bool) {
 	refs := idx.attrRefs(holder.address, attr)
 	if len(refs) == 0 {
 		return nil, false, false
@@ -410,9 +434,25 @@ func resolveNamedSubnets(holder planResource, attr string, resources []planResou
 		if isBareModuleRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_subnet") || strings.Contains(ref, ".data.aws_subnet.") {
-			allResolved = false
-			ok = true
+		if isDataTypeRef(ref, "aws_subnet") {
+			name := resourceNameFromRef(ref, "aws_subnet")
+			if name == "" {
+				allResolved = false
+				ok = true
+				continue
+			}
+			sn, resolved := findDataResource(data, "aws_subnet", name, ref)
+			if !resolved {
+				allResolved = false
+				ok = true
+				continue
+			}
+			if seen[sn.address] {
+				continue
+			}
+			seen[sn.address] = true
+			subnets = append(subnets, sn)
+			foundAny = true
 			continue
 		}
 		if isModuleOutputRef(ref) {

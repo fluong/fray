@@ -3,19 +3,18 @@ package client
 import (
 	"fmt"
 	"sort"
-	"strings"
 )
 
 // awsASGElement maps a managed aws_autoscaling_group to a virtual_machine
 // process for FR-034. No flows are created. The display name always reads as
 // an Auto Scaling group (never "instance").
-func awsASGElement(r planResource, resources []planResource, idx configIndex) *Element {
+func awsASGElement(r planResource, resources, data []planResource, idx configIndex) *Element {
 	_, _, name, _ := splitResourceAddress(r.address)
 	attrs := map[string]any{}
-	if v, ok := asgPublicIP(r, resources, idx); ok {
+	if v, ok := asgPublicIP(r, resources, data, idx); ok {
 		attrs["public_ip"] = v
 	}
-	if v, ok := asgAdminPortsOpen(r, resources, idx); ok {
+	if v, ok := asgAdminPortsOpen(r, resources, data, idx); ok {
 		attrs["admin_ports_open"] = v
 	}
 	return &Element{
@@ -32,8 +31,8 @@ func awsASGElement(r planResource, resources []planResource, idx configIndex) *E
 // explicit. Otherwise vpc_zone_identifier subnets: true if any known subnet has
 // map_public_ip_on_launch; false only when every subnet is in plan, private,
 // and there is no IPv6 on the template(s) or subnets; else omit.
-func asgPublicIP(asg planResource, resources []planResource, idx configIndex) (public bool, known bool) {
-	src := resolveASGLaunchSource(asg, resources, idx)
+func asgPublicIP(asg planResource, resources, data []planResource, idx configIndex) (public bool, known bool) {
+	src := resolveASGLaunchSource(asg, resources, data, idx)
 	if src.unknown {
 		return false, false
 	}
@@ -53,11 +52,11 @@ func asgPublicIP(asg planResource, resources []planResource, idx configIndex) (p
 	}
 
 	hasIPv6, ipv6Known := asgLaunchHasIPv6(src)
-	return asgPublicIPFromSubnets(asg, resources, idx, hasIPv6, ipv6Known)
+	return asgPublicIPFromSubnets(asg, resources, data, idx, hasIPv6, ipv6Known)
 }
 
-func asgPublicIPFromSubnets(asg planResource, resources []planResource, idx configIndex, tmplIPv6, tmplIPv6Known bool) (public bool, known bool) {
-	subnets, allResolved, ok := resolveASGSubnets(asg, resources, idx)
+func asgPublicIPFromSubnets(asg planResource, resources, data []planResource, idx configIndex, tmplIPv6, tmplIPv6Known bool) (public bool, known bool) {
+	subnets, allResolved, ok := resolveASGSubnets(asg, resources, data, idx)
 	if !ok {
 		return false, false
 	}
@@ -96,8 +95,8 @@ func asgPublicIPFromSubnets(asg planResource, resources []planResource, idx conf
 	return false, true
 }
 
-func asgAdminPortsOpen(asg planResource, resources []planResource, idx configIndex) (open bool, known bool) {
-	src := resolveASGLaunchSource(asg, resources, idx)
+func asgAdminPortsOpen(asg planResource, resources, data []planResource, idx configIndex) (open bool, known bool) {
+	src := resolveASGLaunchSource(asg, resources, data, idx)
 	if src.unknown {
 		return false, false
 	}
@@ -105,7 +104,7 @@ func asgAdminPortsOpen(asg planResource, resources []planResource, idx configInd
 	if !ok || len(refs) == 0 {
 		return false, false
 	}
-	sgs, ok := resolveSecurityGroupRefs(refs, resources, idx)
+	sgs, ok := resolveSecurityGroupRefs(refs, resources, data, idx)
 	if !ok || len(sgs) == 0 {
 		return false, false
 	}
@@ -127,14 +126,14 @@ func asgAdminPortsOpen(asg planResource, resources []planResource, idx configInd
 	return false, true
 }
 
-func resolveSecurityGroupRefs(refs []string, resources []planResource, idx configIndex) ([]planResource, bool) {
+func resolveSecurityGroupRefs(refs []string, resources, data []planResource, idx configIndex) ([]planResource, bool) {
 	var out []planResource
 	seen := map[string]bool{}
 	for _, ref := range refs {
 		if isVarRef(ref) {
 			continue
 		}
-		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, idx)
+		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, data, idx)
 		if skip {
 			continue
 		}
@@ -161,9 +160,9 @@ type asgLaunchSource struct {
 	unknown   bool // declared but unresolvable / version / conflict
 }
 
-func resolveASGLaunchSource(asg planResource, resources []planResource, idx configIndex) asgLaunchSource {
+func resolveASGLaunchSource(asg planResource, resources, data []planResource, idx configIndex) asgLaunchSource {
 	if instanceDeclaresLaunchTemplate(asg, idx) {
-		lt := resolveInstanceLaunchTemplate(asg, resources, idx)
+		lt := resolveInstanceLaunchTemplate(asg, resources, data, idx)
 		if !lt.declared {
 			return asgLaunchSource{}
 		}
@@ -173,14 +172,14 @@ func resolveASGLaunchSource(asg planResource, resources []planResource, idx conf
 		return asgLaunchSource{templates: []planResource{lt.tmpl}}
 	}
 	if asgDeclaresMixedInstancesPolicy(asg, idx) {
-		tmpls, ok := resolveASGMixedLaunchTemplates(asg, resources, idx)
+		tmpls, ok := resolveASGMixedLaunchTemplates(asg, resources, data, idx)
 		if !ok {
 			return asgLaunchSource{unknown: true}
 		}
 		return asgLaunchSource{templates: tmpls}
 	}
 	if asgDeclaresLaunchConfiguration(asg, idx) {
-		lc, ok := findASGLaunchConfiguration(asg, resources, idx)
+		lc, ok := findASGLaunchConfiguration(asg, resources, data, idx)
 		if !ok {
 			return asgLaunchSource{unknown: true}
 		}
@@ -206,7 +205,7 @@ func asgDeclaresLaunchConfiguration(asg planResource, idx configIndex) bool {
 	return false
 }
 
-func findASGLaunchConfiguration(asg planResource, resources []planResource, idx configIndex) (planResource, bool) {
+func findASGLaunchConfiguration(asg planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := idx.attrRefs(asg.address, "launch_configuration")
 	var hit planResource
 	found := false
@@ -214,8 +213,20 @@ func findASGLaunchConfiguration(asg planResource, resources []planResource, idx 
 		if isVarRef(ref) || isBareModuleRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_launch_configuration") {
-			return planResource{}, false
+		if isDataTypeRef(ref, "aws_launch_configuration") {
+			name := resourceNameFromRef(ref, "aws_launch_configuration")
+			if name == "" {
+				continue
+			}
+			lc, ok := findDataResource(data, "aws_launch_configuration", name, ref)
+			if !ok {
+				return planResource{}, false
+			}
+			if found && hit.address != lc.address {
+				return planResource{}, false
+			}
+			hit, found = lc, true
+			continue
 		}
 		if isModuleOutputRef(ref) {
 			lc, ok := resolveModuleOutputResource(ref, "aws_launch_configuration", idx, resources, 0)
@@ -247,7 +258,7 @@ func findASGLaunchConfiguration(asg planResource, resources []planResource, idx 
 	return hit, true
 }
 
-func resolveASGMixedLaunchTemplates(asg planResource, resources []planResource, idx configIndex) ([]planResource, bool) {
+func resolveASGMixedLaunchTemplates(asg planResource, resources, data []planResource, idx configIndex) ([]planResource, bool) {
 	specs := asgMixedTemplateSpecs(asg)
 	if len(specs) == 0 {
 		// Config declares mixed policy but no planned specs — try refs only.
@@ -259,8 +270,24 @@ func resolveASGMixedLaunchTemplates(asg planResource, resources []planResource, 
 		var out []planResource
 		seen := map[string]bool{}
 		for _, ref := range refs {
-			if strings.Contains(ref, "data.aws_launch_template") {
-				return nil, false
+			if isDataTypeRef(ref, "aws_launch_template") {
+				name := resourceNameFromRef(ref, "aws_launch_template")
+				if name == "" {
+					continue
+				}
+				lt, ok := findDataResource(data, "aws_launch_template", name, ref)
+				if !ok {
+					return nil, false
+				}
+				if seen[lt.address] {
+					continue
+				}
+				if !launchTemplateVersionDecision("", nil, true, lt) {
+					return nil, false
+				}
+				seen[lt.address] = true
+				out = append(out, lt)
+				continue
 			}
 			name := resourceNameFromRef(ref, "aws_launch_template")
 			if name == "" {
@@ -289,7 +316,7 @@ func resolveASGMixedLaunchTemplates(asg planResource, resources []planResource, 
 	var out []planResource
 	seen := map[string]bool{}
 	for _, spec := range specs {
-		lt, ok := resolveLaunchTemplateSpec(spec, asg, resources, idx)
+		lt, ok := resolveLaunchTemplateSpec(spec, asg, resources, data, idx)
 		if !ok {
 			return nil, false
 		}
@@ -346,7 +373,7 @@ func asgMixedTemplateSpecs(asg planResource) []map[string]any {
 	return specs
 }
 
-func resolveLaunchTemplateSpec(spec map[string]any, asg planResource, resources []planResource, idx configIndex) (planResource, bool) {
+func resolveLaunchTemplateSpec(spec map[string]any, asg planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := idx.attrRefs(asg.address, "mixed_instances_policy")
 	if id, _ := spec["launch_template_id"].(string); id != "" {
 		for _, r := range resources {
@@ -357,9 +384,20 @@ func resolveLaunchTemplateSpec(spec map[string]any, asg planResource, resources 
 				return r, true
 			}
 		}
+		if lt, ok := findDataResourceByID(data, "aws_launch_template", id); ok {
+			return lt, true
+		}
 	}
 	if name, _ := spec["launch_template_name"].(string); name != "" {
 		for _, r := range resources {
+			if r.typ != "aws_launch_template" {
+				continue
+			}
+			if s, _ := r.values["name"].(string); s == name {
+				return r, true
+			}
+		}
+		for _, r := range data {
 			if r.typ != "aws_launch_template" {
 				continue
 			}
@@ -372,8 +410,25 @@ func resolveLaunchTemplateSpec(spec map[string]any, asg planResource, resources 
 	var hit planResource
 	found := false
 	for _, ref := range refs {
-		if strings.Contains(ref, "data.aws_launch_template") {
-			return planResource{}, false
+		if isDataTypeRef(ref, "aws_launch_template") {
+			n := resourceNameFromRef(ref, "aws_launch_template")
+			if n == "" {
+				continue
+			}
+			lt, ok := findDataResource(data, "aws_launch_template", n, ref)
+			if !ok {
+				return planResource{}, false
+			}
+			if specName, _ := spec["launch_template_name"].(string); specName != "" {
+				if s, _ := lt.values["name"].(string); s != "" && s != specName {
+					continue
+				}
+			}
+			if found && hit.address != lt.address {
+				continue
+			}
+			hit, found = lt, true
+			continue
 		}
 		n := resourceNameFromRef(ref, "aws_launch_template")
 		if n == "" {
@@ -535,8 +590,8 @@ func asgLaunchSecurityGroupRefs(src asgLaunchSource, idx configIndex) ([]string,
 	return first, true
 }
 
-func resolveASGSubnets(asg planResource, resources []planResource, idx configIndex) (subnets []planResource, allResolved, ok bool) {
-	return resolveNamedSubnets(asg, "vpc_zone_identifier", resources, idx)
+func resolveASGSubnets(asg planResource, resources, data []planResource, idx configIndex) (subnets []planResource, allResolved, ok bool) {
+	return resolveNamedSubnets(asg, "vpc_zone_identifier", resources, data, idx)
 }
 
 func stringSlicesEqual(a, b []string) bool {

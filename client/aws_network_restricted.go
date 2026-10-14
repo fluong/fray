@@ -23,16 +23,16 @@ const (
 //     network boundary flow)
 //   - internal=false and every resolved SG is restricted on listener ports →
 //     public=false
-//   - internal absent, unresolvable SG refs (incl. data.aws_security_group),
-//     unknown prefix lists, or port-specific world with unknown listener
-//     ports → known=false (omit; no public_client path — fail closed on
-//     exposure inference)
+//   - internal absent, unresolvable SG refs, data SG without positive
+//     in-plan world evidence, unknown prefix lists, or port-specific world
+//     with unknown listener ports → known=false (omit; no public_client
+//     path — fail closed on exposure inference)
 //
 // Uses the same ingress collection and world classification as
 // dbNetworkRestricted (inline ingress, aws_security_group_rule,
 // aws_vpc_security_group_ingress_rule, managed prefix lists; IPv4 </16 and
 // IPv6 </32 are world). SG associations are resolved across modules.
-func lbPublic(lb planResource, resources []planResource, idx configIndex) (public bool, known bool) {
+func lbPublic(lb planResource, resources, data []planResource, idx configIndex) (public bool, known bool) {
 	internal, ok := lb.values["internal"].(bool)
 	if !ok {
 		return false, false
@@ -40,12 +40,12 @@ func lbPublic(lb planResource, resources []planResource, idx configIndex) (publi
 	if internal {
 		return false, true
 	}
-	return lbInternetExposed(lb, resources, idx)
+	return lbInternetExposed(lb, resources, data, idx)
 }
 
 // lbInternetExposed is the SG/world half of lbPublic (caller already excluded internal).
-func lbInternetExposed(lb planResource, resources []planResource, idx configIndex) (exposed bool, known bool) {
-	sgs, ok := resolveLBSecurityGroups(lb, resources, idx)
+func lbInternetExposed(lb planResource, resources, data []planResource, idx configIndex) (exposed bool, known bool) {
+	sgs, ok := resolveLBSecurityGroups(lb, resources, data, idx)
 	if !ok || len(sgs) == 0 {
 		return false, false
 	}
@@ -75,7 +75,7 @@ func lbInternetExposed(lb planResource, resources []planResource, idx configInde
 	return false, true
 }
 
-func resolveLBSecurityGroups(lb planResource, resources []planResource, idx configIndex) ([]planResource, bool) {
+func resolveLBSecurityGroups(lb planResource, resources, data []planResource, idx configIndex) ([]planResource, bool) {
 	refs := lbSecurityGroupRefs(lb, idx)
 	if len(refs) == 0 {
 		return nil, false
@@ -86,7 +86,7 @@ func resolveLBSecurityGroups(lb planResource, resources []planResource, idx conf
 		if isVarRef(ref) {
 			continue
 		}
-		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, idx)
+		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, data, idx)
 		if skip {
 			continue
 		}
@@ -130,8 +130,8 @@ func listenerPortSet(lb planResource, resources []planResource, idx configIndex)
 
 // dbNetworkRestricted reports attributes.network_restricted for an RDS /
 // Aurora instance or cluster. known=false means leave the attribute absent.
-func dbNetworkRestricted(db planResource, resources []planResource, idx configIndex) (restricted bool, known bool) {
-	sgs, ok := resolveDBSecurityGroups(db, resources, idx)
+func dbNetworkRestricted(db planResource, resources, data []planResource, idx configIndex) (restricted bool, known bool) {
+	sgs, ok := resolveDBSecurityGroups(db, resources, data, idx)
 	if !ok {
 		return false, false
 	}
@@ -157,7 +157,7 @@ func dbNetworkRestricted(db planResource, resources []planResource, idx configIn
 	return true, true
 }
 
-func resolveDBSecurityGroups(db planResource, resources []planResource, idx configIndex) ([]planResource, bool) {
+func resolveDBSecurityGroups(db planResource, resources, data []planResource, idx configIndex) ([]planResource, bool) {
 	refs := dbVpcSecurityGroupRefs(db, idx)
 	if len(refs) == 0 {
 		// No config references: cannot trust plan ID lists alone (often computed).
@@ -170,7 +170,7 @@ func resolveDBSecurityGroups(db planResource, resources []planResource, idx conf
 		if isVarRef(ref) {
 			continue
 		}
-		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, idx)
+		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, data, idx)
 		if skip {
 			continue
 		}
@@ -189,17 +189,22 @@ func resolveDBSecurityGroups(db planResource, resources []planResource, idx conf
 	return out, true
 }
 
-// resolveSecurityGroupRef resolves a config reference to a managed
+// resolveSecurityGroupRef resolves a config reference to a managed or data
 // aws_security_group, including module.<m>.<output> chains (depth ≤ 3).
 // ok=false with skip=true means the ref is ignorable noise (bare module path).
-func resolveSecurityGroupRef(ref string, resources []planResource, idx configIndex) (planResource, bool) {
-	sg, ok, _ := resolveSecurityGroupRefDetailed(ref, resources, idx)
+func resolveSecurityGroupRef(ref string, resources, data []planResource, idx configIndex) (planResource, bool) {
+	sg, ok, _ := resolveSecurityGroupRefDetailed(ref, resources, data, idx)
 	return sg, ok
 }
 
-func resolveSecurityGroupRefDetailed(ref string, resources []planResource, idx configIndex) (sg planResource, ok, skip bool) {
-	if strings.Contains(ref, "data.aws_security_group.") || strings.Contains(ref, ".data.aws_security_group.") {
-		return planResource{}, false, false
+func resolveSecurityGroupRefDetailed(ref string, resources, data []planResource, idx configIndex) (sg planResource, ok, skip bool) {
+	if isDataTypeRef(ref, "aws_security_group") {
+		name := resourceNameFromRef(ref, "aws_security_group")
+		if name == "" {
+			return planResource{}, false, false
+		}
+		sg, ok = findDataResource(data, "aws_security_group", name, ref)
+		return sg, ok, false
 	}
 	if isModuleOutputRef(ref) {
 		sg, ok := resolveModuleOutputResource(ref, "aws_security_group", idx, resources, 0)
@@ -375,6 +380,25 @@ func findSecurityGroup(resources []planResource, name, ref string) (planResource
 
 func classifySGIngress(sg planResource, resources []planResource, idx configIndex, port int, portKnown bool) (cls networkSourceClass, worldOnPort bool) {
 	sources := collectSGIngressSources(sg, resources, idx)
+	if isDataAddress(sg.address) {
+		// data.aws_security_group has no rules. In-plan attached rules may
+		// prove world exposure (positive evidence only). Never conclude
+		// restricted=true — rules outside the plan are unknown.
+		for _, src := range sources {
+			cls := classifyIngressSource(src, resources, idx)
+			covers := ingressCoversPort(src, port, portKnown)
+			if cls == netSrcWorld && covers == coverYes {
+				return netSrcWorld, true
+			}
+			if cls == netSrcWorld && covers == coverUnknown {
+				return netSrcUnknown, false
+			}
+			if cls == netSrcUnknown && covers != coverNo {
+				return netSrcUnknown, false
+			}
+		}
+		return netSrcUnknown, false
+	}
 	if len(sources) == 0 {
 		// Egress-only or empty ingress: restricted.
 		return netSrcRestricted, false
