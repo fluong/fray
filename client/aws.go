@@ -48,6 +48,10 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	rootTaskContainers, err := readRootTaskDefinitionContainers(moduleDir)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 
 	var warnings []string
 	var elements []*Element
@@ -72,7 +76,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 		add(awsLBElement(r, resources, idx))
 	}
 	for _, r := range services {
-		add(awsServiceElement(r, resources, idx, containers, &warnings))
+		add(awsServiceElement(r, resources, idx, containers, rootTaskContainers, &warnings))
 	}
 	for _, r := range instances {
 		add(awsInstanceElement(r, resources, idx))
@@ -96,7 +100,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	// Lambda function elements are created on demand for function URLs, API
 	// integrations, and Bedrock invoke grants inside awsConnections.
 
-	flows, bounds, extra, flowWarns := awsConnections(resources, data, idx, elements, byAddr, containers)
+	flows, bounds, extra, flowWarns := awsConnections(resources, data, idx, elements, byAddr, containers, rootTaskContainers)
 	warnings = append(warnings, flowWarns...)
 	elements = append(elements, extra...)
 	return elements, flows, bounds, warnings, nil
@@ -116,7 +120,7 @@ func awsLBElement(r planResource, resources []planResource, idx configIndex) *El
 	}
 }
 
-func awsServiceElement(r planResource, resources []planResource, idx configIndex, containers map[string][]containerSpec, warnings *[]string) *Element {
+func awsServiceElement(r planResource, resources []planResource, idx configIndex, containers, rootTaskContainers map[string][]containerSpec, warnings *[]string) *Element {
 	name, _ := r.values["name"].(string)
 	attrs := map[string]any{}
 	if n, ok, warn := serviceMax(r, resources, idx); warn != "" {
@@ -126,10 +130,7 @@ func awsServiceElement(r planResource, resources []planResource, idx configIndex
 	}
 	mod, _, _, _ := splitResourceAddress(r.address)
 	if task, ok := serviceTaskDefinition(r, resources, idx); ok {
-		specs := containers[mod]
-		if planned, ok := containersFromPlan(task); ok {
-			specs = planned
-		}
+		specs := resolveContainerSpecs(mod, task, containers, rootTaskContainers)
 		if pinned, ok := imagePinned(specs); ok {
 			attrs["image_pinned_by_digest"] = pinned
 		}
@@ -264,7 +265,7 @@ func awsSecretElement(r planResource, resources []planResource, idx configIndex,
 	}
 }
 
-func awsConnections(resources, data []planResource, idx configIndex, elements []*Element, byAddr map[string]*Element, containers map[string][]containerSpec) ([]*Flow, []*Boundary, []*Element, []string) {
+func awsConnections(resources, data []planResource, idx configIndex, elements []*Element, byAddr map[string]*Element, containers, rootTaskContainers map[string][]containerSpec) ([]*Flow, []*Boundary, []*Element, []string) {
 	var warnings []string
 	var flows []*Flow
 	var extra []*Element
@@ -340,12 +341,9 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 			// Unresolvable task_definition → omit this service's secret/S3 flows.
 			continue
 		}
-		specs := containers[mod]
-		if planned, ok := containersFromPlan(task); ok {
-			specs = planned
-		}
-		// When plan container_definitions is unknown/absent, keep HCL-sourced
-		// specs (pre-B-43 module path). Root-module unknown with no HCL → omit.
+		// Plan value known → plan wins. Else module-call HCL (module.*) or
+		// root-resource HCL fallback when container_definitions is unknown.
+		specs := resolveContainerSpecs(mod, task, containers, rootTaskContainers)
 		flows = append(flows, secretFlowsFrom(svc, svcEl, mod, task.address, specs, resources, data, idx, elements, &warnings)...)
 		flows = append(flows, bucketFlows(svc, svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
 	}
@@ -366,6 +364,23 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		})
 	}
 	return dedupeFlows(flows), bounds, extra, warnings
+}
+
+// resolveContainerSpecs prefers a known plan container_definitions value.
+// When unknown/absent: module-call HCL for module addresses, or root-module
+// aws_ecs_task_definition HCL for root tasks. Never invents from flat refs.
+func resolveContainerSpecs(mod string, task planResource, containers, rootTaskContainers map[string][]containerSpec) []containerSpec {
+	specs := containers[mod]
+	if planned, ok := containersFromPlan(task); ok {
+		return planned
+	}
+	taskMod, _, name, ok := splitResourceAddress(task.address)
+	if ok && taskMod == "" {
+		if hcl, ok := rootTaskContainers[name]; ok {
+			return hcl
+		}
+	}
+	return specs
 }
 
 func secretFlowsFrom(svc planResource, svcEl *Element, module, taskAddr string, specs []containerSpec, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {

@@ -56,7 +56,8 @@ func readRootContainers(moduleDir string) (map[string][]containerSpec, error) {
 			if !ok {
 				continue
 			}
-			specs, ok := parseContainers(attr.Expr)
+			// Module-call path: object/map form only (pre-B-49).
+			specs, ok := parseContainersObject(attr.Expr)
 			if !ok {
 				continue
 			}
@@ -66,7 +67,108 @@ func readRootContainers(moduleDir string) (map[string][]containerSpec, error) {
 	return out, nil
 }
 
-func parseContainers(expr hclsyntax.Expression) ([]containerSpec, bool) {
+// readRootTaskDefinitionContainers reads container_definitions from root-module
+// aws_ecs_task_definition resource blocks. Used when the plan value is unknown
+// (secret/resource created in the same plan). Blocks with count/for_each, or
+// duplicate names across .tf files, are omitted. Child-module source files are
+// not read.
+func readRootTaskDefinitionContainers(moduleDir string) (map[string][]containerSpec, error) {
+	if moduleDir == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(moduleDir)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]containerSpec{}
+	seen := map[string]bool{}
+	dup := map[string]bool{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tf") {
+			continue
+		}
+		path := filepath.Join(moduleDir, entry.Name())
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		file, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
+		if diags.HasErrors() {
+			return nil, fmt.Errorf("%s: %s", path, diags.Error())
+		}
+		body, ok := file.Body.(*hclsyntax.Body)
+		if !ok {
+			continue
+		}
+		for _, block := range body.Blocks {
+			if block.Type != "resource" || len(block.Labels) != 2 {
+				continue
+			}
+			if block.Labels[0] != "aws_ecs_task_definition" {
+				continue
+			}
+			name := block.Labels[1]
+			if seen[name] {
+				dup[name] = true
+				delete(out, name)
+				continue
+			}
+			seen[name] = true
+			if dup[name] {
+				continue
+			}
+			if _, hasCount := block.Body.Attributes["count"]; hasCount {
+				continue
+			}
+			if _, hasForEach := block.Body.Attributes["for_each"]; hasForEach {
+				continue
+			}
+			attr, ok := block.Body.Attributes["container_definitions"]
+			if !ok {
+				continue
+			}
+			// Root resource path: object/map, jsonencode([{...}]), or bare [{...}].
+			specs, ok := containersFromRootExpr(attr.Expr)
+			if !ok {
+				continue
+			}
+			out[name] = specs
+		}
+	}
+	return out, nil
+}
+
+// containersFromRootExpr turns a root-module aws_ecs_task_definition
+// container_definitions expression into specs. Accepts object/map form,
+// jsonencode([{...}]), and bare [{...}]. local/var/file()/templatefile() omit.
+func containersFromRootExpr(expr hclsyntax.Expression) ([]containerSpec, bool) {
+	if call, ok := expr.(*hclsyntax.FunctionCallExpr); ok {
+		if call.Name != "jsonencode" || len(call.Args) != 1 {
+			return nil, false
+		}
+		expr = call.Args[0]
+	}
+	if tup, ok := expr.(*hclsyntax.TupleConsExpr); ok {
+		var out []containerSpec
+		for _, item := range tup.Exprs {
+			obj, ok := item.(*hclsyntax.ObjectConsExpr)
+			if !ok {
+				return nil, false
+			}
+			spec, ok := oneContainer(obj)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, spec)
+		}
+		return out, len(out) > 0
+	}
+	return parseContainersObject(expr)
+}
+
+// parseContainersObject handles the module-call object/map form only:
+// { image = ... } or { app = { image = ... }, ... }.
+func parseContainersObject(expr hclsyntax.Expression) ([]containerSpec, bool) {
 	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
 	if !ok {
 		return nil, false

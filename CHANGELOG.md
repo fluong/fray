@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Secrets in a root-module ECS task definition are now detected when the task definition is created in the same plan as the secret (read from the Terraform configuration).
+
 ## [0.25.0] — 2026-10-14
 
 ### Fixed
