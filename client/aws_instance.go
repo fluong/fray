@@ -7,13 +7,13 @@ import (
 
 // awsInstanceElement maps a managed aws_instance to a virtual_machine process.
 // No flows are created to or from the instance in this version.
-func awsInstanceElement(r planResource, resources []planResource, idx configIndex) *Element {
+func awsInstanceElement(r planResource, resources, data []planResource, idx configIndex) *Element {
 	_, _, name, _ := splitResourceAddress(r.address)
 	attrs := map[string]any{}
-	if v, ok := instancePublicIP(r, resources, idx); ok {
+	if v, ok := instancePublicIP(r, resources, data, idx); ok {
 		attrs["public_ip"] = v
 	}
-	if v, ok := instanceAdminPortsOpen(r, resources, idx); ok {
+	if v, ok := instanceAdminPortsOpen(r, resources, data, idx); ok {
 		attrs["admin_ports_open"] = v
 	}
 	return &Element{
@@ -34,17 +34,17 @@ func awsInstanceElement(r planResource, resources []planResource, idx configInde
 //
 // omit (known=false): subnet not in plan / data source, unknown values,
 // IPv6 without a public IPv4, conflicting NICs. IPv6 never sets true.
-func instancePublicIP(inst planResource, resources []planResource, idx configIndex) (public bool, known bool) {
+func instancePublicIP(inst planResource, resources, data []planResource, idx configIndex) (public bool, known bool) {
 	if instanceHasEIP(inst, resources, idx) {
 		return true, true
 	}
 
-	ipv4, ipv4Known := instancePublicIPv4(inst, resources, idx)
+	ipv4, ipv4Known := instancePublicIPv4(inst, resources, data, idx)
 	if ipv4Known && ipv4 {
 		return true, true
 	}
 
-	hasIPv6, ipv6Known := instanceHasIPv6(inst, resources, idx)
+	hasIPv6, ipv6Known := instanceHasIPv6(inst, resources, data, idx)
 	if ipv4Known && !ipv4 {
 		if ipv6Known && !hasIPv6 {
 			return false, true
@@ -60,7 +60,7 @@ func instancePublicIP(inst planResource, resources []planResource, idx configInd
 // associate_public_ip_address is consulted before the subnet path. If the
 // template is declared but not usable, the result is omitted — never false via
 // subnet alone when the template could override it.
-func instancePublicIPv4(inst planResource, resources []planResource, idx configIndex) (public bool, known bool) {
+func instancePublicIPv4(inst planResource, resources, data []planResource, idx configIndex) (public bool, known bool) {
 	if conflict, ok := instanceNICPublicIPConflict(inst, resources, idx); ok && conflict {
 		return false, false
 	}
@@ -71,7 +71,7 @@ func instancePublicIPv4(inst planResource, resources []planResource, idx configI
 		return false, false
 	}
 
-	lt := resolveInstanceLaunchTemplate(inst, resources, idx)
+	lt := resolveInstanceLaunchTemplate(inst, resources, data, idx)
 	if lt.declared && !lt.usable {
 		return false, false
 	}
@@ -86,9 +86,9 @@ func instancePublicIPv4(inst planResource, resources []planResource, idx configI
 
 	// Unset on instance (and template NI): inherit from subnet — instance
 	// subnet_id first, else template network_interfaces subnet_id.
-	subnet, ok := resolveInstanceSubnet(inst, resources, idx)
+	subnet, ok := resolveInstanceSubnet(inst, resources, data, idx)
 	if !ok && lt.usable {
-		subnet, ok = resolveLaunchTemplateSubnet(lt.tmpl, resources, idx)
+		subnet, ok = resolveLaunchTemplateSubnet(lt.tmpl, resources, data, idx)
 	}
 	if !ok {
 		return false, false
@@ -141,7 +141,7 @@ func instanceNICPublicIPConflict(inst planResource, resources []planResource, id
 	return seenTrue && seenFalse, checked
 }
 
-func instanceHasIPv6(inst planResource, resources []planResource, idx configIndex) (has bool, known bool) {
+func instanceHasIPv6(inst planResource, resources, data []planResource, idx configIndex) (has bool, known bool) {
 	if n, ok := number(inst.values["ipv6_address_count"]); ok {
 		if n > 0 {
 			return true, true
@@ -160,10 +160,10 @@ func instanceHasIPv6(inst planResource, resources []planResource, idx configInde
 		return true, true
 	}
 
-	lt := resolveInstanceLaunchTemplate(inst, resources, idx)
-	subnet, ok := resolveInstanceSubnet(inst, resources, idx)
+	lt := resolveInstanceLaunchTemplate(inst, resources, data, idx)
+	subnet, ok := resolveInstanceSubnet(inst, resources, data, idx)
 	if !ok && lt.usable {
-		subnet, ok = resolveLaunchTemplateSubnet(lt.tmpl, resources, idx)
+		subnet, ok = resolveLaunchTemplateSubnet(lt.tmpl, resources, data, idx)
 	}
 	if ok {
 		if v, ok := subnet.values["assign_ipv6_address_on_creation"].(bool); ok && v {
@@ -273,7 +273,7 @@ func networkInterfaceRefBelongsTo(ref string, inst planResource, resources []pla
 	return false
 }
 
-func resolveInstanceSubnet(inst planResource, resources []planResource, idx configIndex) (planResource, bool) {
+func resolveInstanceSubnet(inst planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := instanceSubnetRefs(inst, idx)
 	if len(refs) == 0 {
 		return planResource{}, false
@@ -284,8 +284,20 @@ func resolveInstanceSubnet(inst planResource, resources []planResource, idx conf
 		if isVarRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_subnet") || strings.Contains(ref, ".data.aws_subnet.") {
-			return planResource{}, false
+		if isDataTypeRef(ref, "aws_subnet") {
+			name := resourceNameFromRef(ref, "aws_subnet")
+			if name == "" {
+				return planResource{}, false
+			}
+			sn, ok := findDataResource(data, "aws_subnet", name, ref)
+			if !ok {
+				return planResource{}, false
+			}
+			if found && hit.address != sn.address {
+				return planResource{}, false
+			}
+			hit, found = sn, true
+			continue
 		}
 		if isModuleOutputRef(ref) {
 			sn, ok := resolveModuleOutputResource(ref, "aws_subnet", idx, resources, 0)
@@ -387,8 +399,8 @@ func resourceNameFromRef(ref, typ string) string {
 // false if every SG was read and none is.
 // omit if no SGs, unresolvable refs, or none world and any unknown.
 // Only tcp and all-protocol (-1) rules count; udp/icmp do not.
-func instanceAdminPortsOpen(inst planResource, resources []planResource, idx configIndex) (open bool, known bool) {
-	sgs, ok := resolveInstanceSecurityGroups(inst, resources, idx)
+func instanceAdminPortsOpen(inst planResource, resources, data []planResource, idx configIndex) (open bool, known bool) {
+	sgs, ok := resolveInstanceSecurityGroups(inst, resources, data, idx)
 	if !ok || len(sgs) == 0 {
 		return false, false
 	}
@@ -410,8 +422,8 @@ func instanceAdminPortsOpen(inst planResource, resources []planResource, idx con
 	return false, true
 }
 
-func resolveInstanceSecurityGroups(inst planResource, resources []planResource, idx configIndex) ([]planResource, bool) {
-	refs := instanceSecurityGroupRefs(inst, resources, idx)
+func resolveInstanceSecurityGroups(inst planResource, resources, data []planResource, idx configIndex) ([]planResource, bool) {
+	refs := instanceSecurityGroupRefs(inst, resources, data, idx)
 	if len(refs) == 0 {
 		return nil, false
 	}
@@ -421,7 +433,7 @@ func resolveInstanceSecurityGroups(inst planResource, resources []planResource, 
 		if isVarRef(ref) {
 			continue
 		}
-		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, idx)
+		sg, ok, skip := resolveSecurityGroupRefDetailed(ref, resources, data, idx)
 		if skip {
 			continue
 		}
@@ -441,7 +453,7 @@ func resolveInstanceSecurityGroups(inst planResource, resources []planResource, 
 	return out, true
 }
 
-func instanceSecurityGroupRefs(inst planResource, resources []planResource, idx configIndex) []string {
+func instanceSecurityGroupRefs(inst planResource, resources, data []planResource, idx configIndex) []string {
 	var refs []string
 	refs = append(refs, idx.attrRefs(inst.address, "vpc_security_group_ids")...)
 	refs = append(refs, idx.attrRefs(inst.address, "security_groups")...)
@@ -469,7 +481,7 @@ func instanceSecurityGroupRefs(inst planResource, resources []planResource, idx 
 		return filtered
 	}
 
-	lt := resolveInstanceLaunchTemplate(inst, resources, idx)
+	lt := resolveInstanceLaunchTemplate(inst, resources, data, idx)
 	if lt.declared && !lt.usable {
 		return nil
 	}
@@ -517,6 +529,28 @@ func filterLikelySGRefs(refs []string) []string {
 // all-protocol (-1) sources participate; udp/icmp are ignored.
 func classifySGAdminIngress(sg planResource, resources []planResource, idx configIndex, port int) (cls networkSourceClass, worldOnPort bool) {
 	sources := collectSGIngressSources(sg, resources, idx)
+	if isDataAddress(sg.address) {
+		// data.aws_security_group has no rules. In-plan attached rules may
+		// prove admin_ports_open=true; never conclude false (rules outside
+		// the plan are unknown).
+		for _, src := range sources {
+			if !adminProtocolCounts(src.protocol) {
+				continue
+			}
+			c := classifyIngressSource(src, resources, idx)
+			covers := ingressCoversPort(src, port, true)
+			if c == netSrcWorld && covers == coverYes {
+				return netSrcWorld, true
+			}
+			if c == netSrcWorld && covers == coverUnknown {
+				return netSrcUnknown, false
+			}
+			if c == netSrcUnknown && covers != coverNo {
+				return netSrcUnknown, false
+			}
+		}
+		return netSrcUnknown, false
+	}
 	if len(sources) == 0 {
 		return netSrcRestricted, false
 	}
@@ -574,12 +608,12 @@ type launchTemplateRef struct {
 	usable   bool // planned values apply to what this instance will launch
 }
 
-func resolveInstanceLaunchTemplate(inst planResource, resources []planResource, idx configIndex) launchTemplateRef {
+func resolveInstanceLaunchTemplate(inst planResource, resources, data []planResource, idx configIndex) launchTemplateRef {
 	if !instanceDeclaresLaunchTemplate(inst, idx) {
 		return launchTemplateRef{}
 	}
 	out := launchTemplateRef{declared: true}
-	tmpl, ok := findInstanceLaunchTemplate(inst, resources, idx)
+	tmpl, ok := findInstanceLaunchTemplate(inst, resources, data, idx)
 	if !ok {
 		return out
 	}
@@ -598,7 +632,7 @@ func instanceDeclaresLaunchTemplate(inst planResource, idx configIndex) bool {
 	return len(asList(inst.values["launch_template"])) > 0
 }
 
-func findInstanceLaunchTemplate(inst planResource, resources []planResource, idx configIndex) (planResource, bool) {
+func findInstanceLaunchTemplate(inst planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := idx.attrRefs(inst.address, "launch_template")
 	var hit planResource
 	found := false
@@ -606,8 +640,20 @@ func findInstanceLaunchTemplate(inst planResource, resources []planResource, idx
 		if isVarRef(ref) || isBareModuleRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_launch_template") {
-			return planResource{}, false
+		if isDataTypeRef(ref, "aws_launch_template") {
+			name := resourceNameFromRef(ref, "aws_launch_template")
+			if name == "" {
+				continue
+			}
+			lt, ok := findDataResource(data, "aws_launch_template", name, ref)
+			if !ok {
+				return planResource{}, false
+			}
+			if found && hit.address != lt.address {
+				return planResource{}, false
+			}
+			hit, found = lt, true
+			continue
 		}
 		if isModuleOutputRef(ref) {
 			lt, ok := resolveModuleOutputResource(ref, "aws_launch_template", idx, resources, 0)
@@ -801,7 +847,7 @@ func launchTemplateSecurityGroupRefs(tmpl planResource, idx configIndex) []strin
 	return uniqueStrings(filterLikelySGRefs(idx.attrRefs(tmpl.address, "network_interfaces")))
 }
 
-func resolveLaunchTemplateSubnet(tmpl planResource, resources []planResource, idx configIndex) (planResource, bool) {
+func resolveLaunchTemplateSubnet(tmpl planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	var refs []string
 	for _, ref := range idx.attrRefs(tmpl.address, "network_interfaces") {
 		if strings.Contains(ref, "aws_subnet") {
@@ -817,8 +863,20 @@ func resolveLaunchTemplateSubnet(tmpl planResource, resources []planResource, id
 		if isVarRef(ref) {
 			continue
 		}
-		if strings.Contains(ref, "data.aws_subnet") || strings.Contains(ref, ".data.aws_subnet.") {
-			return planResource{}, false
+		if isDataTypeRef(ref, "aws_subnet") {
+			name := resourceNameFromRef(ref, "aws_subnet")
+			if name == "" {
+				return planResource{}, false
+			}
+			sn, ok := findDataResource(data, "aws_subnet", name, ref)
+			if !ok {
+				return planResource{}, false
+			}
+			if found && hit.address != sn.address {
+				return planResource{}, false
+			}
+			hit, found = sn, true
+			continue
 		}
 		if isModuleOutputRef(ref) {
 			sn, ok := resolveModuleOutputResource(ref, "aws_subnet", idx, resources, 0)

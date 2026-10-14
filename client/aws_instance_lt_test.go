@@ -220,13 +220,13 @@ func TestInstanceLaunchTemplateMerge(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			inst, resources, idx := tc.build()
 			if tc.checkPublic {
-				got, known := instancePublicIP(inst, resources, idx)
+				got, known := instancePublicIP(inst, resources, nil, idx)
 				if known != tc.wantPublicOK || (known && got != tc.wantPublic) {
 					t.Fatalf("public_ip=(%v,%v) want (%v,%v)", got, known, tc.wantPublic, tc.wantPublicOK)
 				}
 			}
 			if tc.checkAdmin {
-				got, known := instanceAdminPortsOpen(inst, resources, idx)
+				got, known := instanceAdminPortsOpen(inst, resources, nil, idx)
 				if known != tc.wantAdminOK || (known && got != tc.wantAdmin) {
 					t.Fatalf("admin_ports_open=(%v,%v) want (%v,%v)", got, known, tc.wantAdmin, tc.wantAdminOK)
 				}

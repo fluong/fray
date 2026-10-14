@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- Subnets, launch templates, launch configurations and EKS clusters read through
+  data sources now count (from the plan's prior state when resolved during planning).
+
 ## [0.25.1] — 2026-10-14
 
 ### Fixed

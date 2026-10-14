@@ -256,7 +256,7 @@ func TestEKSNodeGroupPublicIPAndAdmin(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ng, resources, idx := tc.build()
-			el := awsEKSNodeGroupElement(ng, resources, idx)
+			el := awsEKSNodeGroupElement(ng, resources, nil, idx)
 			gotPub, pubOK := el.Attributes["public_ip"].(bool)
 			if pubOK != tc.wantPublicOK {
 				t.Fatalf("public_ip known=%v want %v (attrs=%v)", pubOK, tc.wantPublicOK, el.Attributes)
@@ -280,7 +280,7 @@ func TestEKSNodeGroupElementNameAndKind(t *testing.T) {
 		subnetPublic: []bool{false},
 		withCluster:  true,
 	})
-	el := awsEKSNodeGroupElement(ng, resources, idx)
+	el := awsEKSNodeGroupElement(ng, resources, nil, idx)
 	if el.Kind != "virtual_machine" || el.Type != "process" || el.Provenance != "iac" {
 		t.Fatalf("meta: kind=%s type=%s provenance=%s", el.Kind, el.Type, el.Provenance)
 	}

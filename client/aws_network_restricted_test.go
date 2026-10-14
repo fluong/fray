@@ -729,7 +729,7 @@ func TestDBNetworkRestrictedTable(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			db, resources, idx := tc.build()
-			got, known := dbNetworkRestricted(db, resources, idx)
+			got, known := dbNetworkRestricted(db, resources, nil, idx)
 			if known != tc.wantKnown || (known && got != tc.wantVal) {
 				t.Fatalf("got (%v,%v) want (%v,%v)", got, known, tc.wantVal, tc.wantKnown)
 			}
@@ -757,7 +757,7 @@ func TestForEachVPCRuleInstancesDB(t *testing.T) {
 			},
 		}
 		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
-		got, known := dbNetworkRestricted(db, append(resources, app, rule), idx)
+		got, known := dbNetworkRestricted(db, append(resources, app, rule), nil, idx)
 		if !known || got {
 			t.Fatalf("http key: got (%v,%v) want (false,true) world", got, known)
 		}
@@ -772,7 +772,7 @@ func TestForEachVPCRuleInstancesDB(t *testing.T) {
 			},
 		}
 		idx.resources["aws_vpc_security_group_ingress_rule.this"] = sharedCfg
-		got, known := dbNetworkRestricted(db, append(resources, app, rule), idx)
+		got, known := dbNetworkRestricted(db, append(resources, app, rule), nil, idx)
 		if !known || !got {
 			t.Fatalf("db key: got (%v,%v) want (true,true) peer", got, known)
 		}

@@ -70,22 +70,22 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 		add(awsSecretElement(r, resources, idx, lifecycle.protected(r.address)))
 	}
 	for _, r := range dbs {
-		add(awsDBElement(r, resources, idx, lifecycle.protected(r.address)))
+		add(awsDBElement(r, resources, data, idx, lifecycle.protected(r.address)))
 	}
 	for _, r := range lbs {
-		add(awsLBElement(r, resources, idx))
+		add(awsLBElement(r, resources, data, idx))
 	}
 	for _, r := range services {
 		add(awsServiceElement(r, resources, idx, containers, rootTaskContainers, &warnings))
 	}
 	for _, r := range instances {
-		add(awsInstanceElement(r, resources, idx))
+		add(awsInstanceElement(r, resources, data, idx))
 	}
 	for _, r := range asgs {
-		add(awsASGElement(r, resources, idx))
+		add(awsASGElement(r, resources, data, idx))
 	}
 	for _, r := range nodeGroups {
-		add(awsEKSNodeGroupElement(r, resources, idx))
+		add(awsEKSNodeGroupElement(r, resources, data, idx))
 	}
 	for _, r := range restAPIs {
 		if restAPIInternetEntry(r, resources, idx) {
@@ -106,10 +106,10 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	return elements, flows, bounds, warnings, nil
 }
 
-func awsLBElement(r planResource, resources []planResource, idx configIndex) *Element {
+func awsLBElement(r planResource, resources, data []planResource, idx configIndex) *Element {
 	name, _ := r.values["name"].(string)
 	attrs := map[string]any{}
-	if public, ok := lbPublic(r, resources, idx); ok {
+	if public, ok := lbPublic(r, resources, data, idx); ok {
 		attrs["public"] = public
 	}
 	return &Element{
@@ -145,7 +145,7 @@ func awsServiceElement(r planResource, resources []planResource, idx configIndex
 	}
 }
 
-func awsDBElement(r planResource, resources []planResource, idx configIndex, prevent bool) *Element {
+func awsDBElement(r planResource, resources, data []planResource, idx configIndex, prevent bool) *Element {
 	name, _ := r.values["identifier"].(string)
 	if name == "" {
 		name, _ = r.values["cluster_identifier"].(string)
@@ -169,7 +169,7 @@ func awsDBElement(r planResource, resources []planResource, idx configIndex, pre
 	} else if v, ok := r.values["deletion_protection"].(bool); ok {
 		attrs["deletion_protection"] = v
 	}
-	if restricted, ok := dbNetworkRestricted(r, resources, idx); ok {
+	if restricted, ok := dbNetworkRestricted(r, resources, data, idx); ok {
 		attrs["network_restricted"] = restricted
 	}
 	if tls, ok := dbTLSEnforced(r, resources, idx); ok {

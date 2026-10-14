@@ -128,7 +128,7 @@ func TestInstancePublicIPTable(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			inst, resources, idx := tc.build()
-			got, known := instancePublicIP(inst, resources, idx)
+			got, known := instancePublicIP(inst, resources, nil, idx)
 			if known != tc.wantKnown || (known && got != tc.wantVal) {
 				t.Fatalf("public_ip=(%v,%v) want (%v,%v)", got, known, tc.wantVal, tc.wantKnown)
 			}
@@ -359,7 +359,7 @@ func TestInstanceAdminPortsOpenTable(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			inst, resources, idx := tc.build()
-			got, known := instanceAdminPortsOpen(inst, resources, idx)
+			got, known := instanceAdminPortsOpen(inst, resources, nil, idx)
 			if known != tc.wantKnown || (known && got != tc.wantVal) {
 				t.Fatalf("admin_ports_open=(%v,%v) want (%v,%v)", got, known, tc.wantVal, tc.wantKnown)
 			}
