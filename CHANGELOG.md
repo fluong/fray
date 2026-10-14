@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- `rule.schema.json`: `introduced` is a date (YYYY-MM-DD), matching the published rule catalog.
+
 ## [0.26.1] — 2026-10-14
 
 ### Fixed
