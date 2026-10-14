@@ -415,6 +415,11 @@ fray ... -dry-run -payload-out payload.json
 | `-base-commit` / `-base-source` | PR base sha + sources for module-arg attribution |
 | `-out` | Writes `findings.json`, `findings.sarif`, `threat-model.md`, `pr-comment.md` |
 
+`findings.json` is the API's `finding/v1` list plus an optional local `addresses`
+field (Terraform addresses from the local plan; never sent to the server). See
+`schema/findings-file.schema.json` for the local file shape; the wire contract
+remains `schema/finding.schema.json`.
+
 Exit `1` when the gate blocks; exit `2` on usage or transport errors.
 
 ## Config

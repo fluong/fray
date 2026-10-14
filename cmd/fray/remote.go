@@ -285,7 +285,7 @@ func runRemote(opt options) (bool, error) {
 	if err := os.MkdirAll(opt.Out, 0o755); err != nil {
 		return false, err
 	}
-	body, err := apiv1.MarshalFindings(resp.Findings)
+	body, err := marshalFindingsFile(resp.Findings, doc)
 	if err != nil {
 		return false, err
 	}

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- `findings.json` lists the Terraform addresses behind each finding.
+
 ### Fixed
 - Subnets, launch templates, launch configurations and EKS clusters read through
   data sources now count (from the plan's prior state when resolved during planning).
