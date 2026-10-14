@@ -33,7 +33,8 @@
 ## Tagging a release
 
 1. Date the `[x.y.z]` section in `CHANGELOG.md`; drop any “(pending tag)” wording
-   in `README.md`.
+   in `README.md`; update every category-(a) current-release reference
+   (`go install …@vX.Y.Z`, “Latest release”) to the new tag.
 2. Push `main`; wait for both the **guardrails** and **test** workflows to pass
    on that commit.
 3. Annotated tag and push:

@@ -10,7 +10,7 @@ ships rules.
 **New here?** → [Getting started](docs/getting-started.md) (shortest path to a
 first green scan). Stuck? → [Troubleshooting](#troubleshooting).
 
-Latest release: **v0.10.0**. `v0.1.0` is retracted (non-public fixtures leaked
+Latest release: **v0.27.1**. `v0.1.0` is retracted (non-public fixtures leaked
 into the module zip; see `go.mod`).
 
 Related:
@@ -52,7 +52,7 @@ Details: [redaction key rotation](#redaction-key-rotation).
 
 Pin third-party actions by commit SHA (same shape as the post-install setup
 page). Use the commit SHA of the release tag
-(`git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{}`); tags are
+(`git ls-remote https://github.com/fluong/fray refs/tags/vX.Y.Z^{}`); tags are
 immutable but SHAs are what Actions guarantees. Replace the example commit SHA with
 that 40-character hex:
 
@@ -269,7 +269,7 @@ jobs:
           persist-credentials: false
 
       # Use the commit SHA of the release tag
-      # (git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{});
+      # (git ls-remote https://github.com/fluong/fray refs/tags/vX.Y.Z^{});
       # tags are immutable but SHAs are what Actions guarantees.
       - uses: fluong/fray@31dd1117d41b0ecd1121e64ad7cc05355ebdcf45 # v0.27.1
         with:
@@ -418,7 +418,7 @@ JSON plan API) and pass that file as `plan-file`. Nested-module
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.10.0
+go install github.com/fluong/fray/cmd/fray@v0.27.1
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 export FRAY_API_URL=https://api.getfray.dev

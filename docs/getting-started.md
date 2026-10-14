@@ -44,7 +44,7 @@ Redaction is **on by default**. Keep `FRAY_REDACTION_KEY` set unless you deliber
 ## 4. Copy-paste workflow
 
 Pin third-party actions by **commit SHA**. Use the commit SHA of the release tag
-(`git ls-remote https://github.com/fluong/fray refs/tags/v0.10.0^{}`); tags are
+(`git ls-remote https://github.com/fluong/fray refs/tags/vX.Y.Z^{}`); tags are
 immutable but SHAs are what Actions guarantees. Replace the example commit SHA below
 with that 40-character hex.
 
