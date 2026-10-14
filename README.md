@@ -88,7 +88,42 @@ jobs:
 
 See [GitHub Action](#github-action) for every input.
 
-Fray currently supports one Fray job per repository; if your repo holds several Terraform stacks, point the job at one of them.
+### Several Terraform stacks in one repository
+
+A repository can run several Fray jobs (or a matrix), one per Terraform root.
+Give each job its own `working-directory`, `stack`, and `waivers-file`:
+
+```yaml
+jobs:
+  fray:
+    strategy:
+      matrix:
+        include:
+          - dir: infra/aws
+            stack: infra-aws
+            waivers: .fray/waivers-aws.yml
+          - dir: infra/gcp
+            stack: infra-gcp
+            waivers: .fray/waivers-gcp.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: fluong/fray@90e8cd7593cb3b1c2ce1cff06425a55a2d9f97f7 # v0.26.1
+        with:
+          api-url: https://api.getfray.dev
+          working-directory: ${{ matrix.dir }}
+          stack: ${{ matrix.stack }}
+          waivers-file: ${{ matrix.waivers }}
+          redaction-key: ${{ secrets.FRAY_REDACTION_KEY }}
+```
+
+`stack` is a short label (`^[a-z0-9][a-z0-9-]{0,31}$`), not a path — use
+`working-directory` for the Terraform root. Each named stack gets its own PR
+comment, merge baseline, and Code Scanning category (`fray/<stack>`). Omit
+`stack` (the default) to keep today’s single-comment behaviour.
 
 ### When a repo is not enrolled
 
@@ -251,8 +286,10 @@ jobs:
 | `api-url` | — | Required. Hosted API: `https://api.getfray.dev` (never a `*.run.app` URL). |
 | `working-directory` | `.` | Terraform root (contains `.tf` sources). |
 | `config` | `fray.yaml` | Path relative to the workspace. |
+| `waivers-file` | `.fray/waivers.yml` | Path relative to the workspace. Use one file per stack when running several. |
+| `stack` | `""` | Optional stack label (not a path). Named stacks get their own PR comment, baseline, and SARIF category. See [Several Terraform stacks](#several-terraform-stacks-in-one-repository). |
 | `redaction-key` | `""` | Required unless `fray.yaml` sets `redaction: off`. |
-| `show-payload` | `false` | Upload `payload.json` as the `fray-payload` artifact. |
+| `show-payload` | `false` | Upload `payload.json` as the `fray-payload` artifact (`fray-payload-<stack>` when `stack` is set). |
 | `fail-on-unenrolled` | `false` | Fail the job when the GitHub App install does not cover this repo (see below). |
 | `fail-on-rate-limit` | `false` | Fail the job when the API returns HTTP 429 `rate_limited` (see [Limits](#limits)). Also covered by `fail-on-skip`. |
 | `fail-on-skip` | `false` | Fail the job on **any** soft-skip (enrollment or rate limit). Default: warn + exit 0. Supersedes soft-skip for rate limit when true (`fail-on-rate-limit` still works alone). |
@@ -289,7 +326,8 @@ On each run the Action:
    the supplied JSON is used instead (still needs the Terraform root checked out
    for locations / waivers).
 2. Scans via OIDC (`aud=fray`)
-3. Updates a single PR comment in place (hidden `<!-- fray -->` marker)
+3. Updates a PR comment in place (hidden `<!-- fray -->` marker, or
+   `<!-- fray:<stack> -->` when `stack` is set)
 4. Uploads SARIF via `github/codeql-action/upload-sarif` (category `fray`,
    tool name `Fray`) when `upload-sarif` is true (default). The workflow must
    grant **`security-events: write`**; private repos also need Code Scanning
