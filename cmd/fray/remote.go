@@ -26,6 +26,9 @@ import (
 var errEnrollmentRejected = errors.New("enrollment rejected")
 
 func runRemote(opt options) (bool, error) {
+	if err := apiv1.ValidateStack(opt.Stack); err != nil {
+		return false, err
+	}
 	if opt.OIDCToken == "" {
 		opt.OIDCToken = os.Getenv("FRAY_OIDC_TOKEN")
 	}
@@ -146,6 +149,7 @@ func runRemote(opt options) (bool, error) {
 		IsDefaultBranch:     isDefault,
 		BaseCommit:          opt.BaseCommit,
 		ClientVersion:       version.Version,
+		Stack:               opt.Stack,
 	})
 	if err != nil {
 		return false, err
@@ -319,7 +323,7 @@ func runRemote(opt options) (bool, error) {
 			baselineNote = render.NoBaselineNote
 		}
 	}
-	comment := render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, baselineNote, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported, resp.RulesSkipped)
+	comment := render.StackCommentHeading(opt.Stack) + render.PRComment(doc, resp.Findings, baseline, texts, locs, changedInputs, baselineNote, resp.Advisory, resp.Enrichments, resp.Waivers, waiversReported, resp.RulesSkipped)
 	if err := os.WriteFile(filepath.Join(opt.Out, "pr-comment.md"), []byte(comment), 0o644); err != nil {
 		return false, err
 	}

@@ -11,7 +11,10 @@ type options struct {
 	Repo, Commit, Declared, Branch, DefaultBranch, Remote string
 	BaseCommit, BaseSource, APIKey, OIDCToken             string
 	PayloadOut                                            string
-	DryRun, ShowPayload, FailOnUnenrolled                 bool
+	// Stack is an optional Terraform stack label (B-39). Empty = default stack.
+	// When the flag is unset, FRAY_STACK is consulted (Action input).
+	Stack                                 string
+	DryRun, ShowPayload, FailOnUnenrolled bool
 	// ExternalPlan is set when the Action plan-file input supplied the plan
 	// (not terraform show in this job). Enables validation, mismatch warning,
 	// and the empty-DFD guard before any API call.
