@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.28.2] — 2026-10-15
+
 ### Added
 - Schema: rule fields `from.`/`to.internet_reachable`,
   `to.attributes.tls_enforced`, `attributes.customer_managed_key`; rule
@@ -492,7 +494,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.28.1...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.28.2...HEAD
+[0.28.2]: https://github.com/fluong/fray/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/fluong/fray/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/fluong/fray/compare/v0.27.2...v0.28.0
 [0.27.2]: https://github.com/fluong/fray/compare/v0.27.1...v0.27.2
