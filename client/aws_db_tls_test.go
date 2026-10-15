@@ -194,6 +194,66 @@ func TestDBTLSEnforced(t *testing.T) {
 			wantVal: true, wantKnown: true,
 		},
 		{
+			name: "after_unknown no refs pg16 → true",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "aws_db_instance.db",
+					values:       map[string]any{"engine": "postgres", "engine_version": "16"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				return db, []planResource{db}, configIndex{resources: map[string]exprSet{}}
+			},
+			wantVal: true, wantKnown: true,
+		},
+		{
+			name: "after_unknown no refs pg16.4 → true",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "aws_db_instance.db",
+					values:       map[string]any{"engine": "postgres", "engine_version": "16.4"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				return db, []planResource{db}, configIndex{resources: map[string]exprSet{}}
+			},
+			wantVal: true, wantKnown: true,
+		},
+		{
+			name: "after_unknown no refs pg15 → true",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "aws_db_instance.db",
+					values:       map[string]any{"engine": "postgres", "engine_version": "15"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				return db, []planResource{db}, configIndex{resources: map[string]exprSet{}}
+			},
+			wantVal: true, wantKnown: true,
+		},
+		{
+			name: "after_unknown no refs pg14.10 → false",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "aws_db_instance.db",
+					values:       map[string]any{"engine": "postgres", "engine_version": "14.10"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				return db, []planResource{db}, configIndex{resources: map[string]exprSet{}}
+			},
+			wantVal: false, wantKnown: true,
+		},
+		{
+			name: "after_unknown no refs unknown version → omit",
+			build: func() (planResource, []planResource, configIndex) {
+				db := planResource{
+					typ: "aws_db_instance", address: "aws_db_instance.db",
+					values:       map[string]any{"engine": "postgres", "engine_version": "latest"},
+					afterUnknown: map[string]any{"parameter_group_name": true},
+				}
+				return db, []planResource{db}, configIndex{resources: map[string]exprSet{}}
+			},
+			wantVal: false, wantKnown: false,
+		},
+		{
 			name: "known name matching planned group → resolved",
 			build: func() (planResource, []planResource, configIndex) {
 				db := planResource{

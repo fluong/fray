@@ -2435,6 +2435,14 @@ func s3Action(a string) bool {
 	return lower == "*" || lower == "s3:*" || strings.HasPrefix(lower, "s3:")
 }
 
+// rdsAction matches data-plane DB access actions. Control-plane rds:* is out.
+func rdsAction(a string) bool {
+	lower := strings.ToLower(strings.TrimSpace(a))
+	return lower == "*" ||
+		strings.HasPrefix(lower, "rds-db:") ||
+		strings.HasPrefix(lower, "rds-data:")
+}
+
 func wildcardResources(resources []any) bool {
 	for _, r := range resources {
 		s, ok := r.(string)
@@ -2775,6 +2783,203 @@ func secretTargetName(sec *Element, resources []planResource) string {
 	return ""
 }
 
+// awsDBScope classifies IAM grants for a compute → relational_db flow.
+// Broadest wins; grants that name a different instance are ignored.
+func awsDBScope(dest *Element, docs []planResource, idx configIndex, resources []planResource, elements []*Element) (scope string, grants []string, cause string) {
+	_ = elements
+	account := false
+	covers := false
+	accountCause, coverCause := "", ""
+	for _, doc := range docs {
+		for _, st := range docStatements(doc) {
+			if !grantsAction(st, rdsAction) {
+				continue
+			}
+			if resourcesFullyKnown(st.resources) {
+				for _, raw := range st.resources {
+					arn, _ := raw.(string)
+					acc, match := classifyRDSdbARN(arn, dest, resources)
+					if acc {
+						account = true
+						accountCause = st.doc
+					}
+					if match {
+						covers = true
+						coverCause = st.doc
+					}
+				}
+				continue
+			}
+			// Null or partially unknown resources: accept only when the policy
+			// doc config references this destination's resource_id /
+			// cluster_resource_id / arn (plan-time unknown values).
+			if docRefsDBResource(doc, dest, idx) {
+				covers = true
+				coverCause = st.doc
+			}
+		}
+	}
+	var scopes []string
+	if covers {
+		scopes = append(scopes, "resource")
+		cause = coverCause
+	}
+	if account {
+		scopes = append(scopes, "account")
+		cause = accountCause
+	}
+	grants = normalizeAuthzGrants(scopes...)
+	return effectiveAuthzScope(grants), grants, cause
+}
+
+// classifyRDSdbARN classifies an RDS data-plane Resource ARN for dest.
+// For dbuser ARNs, only the dbi-resource-id segment decides: wildcard → account,
+// this instance → resource (region/account/user wildcards ignored), other → omit.
+// Bare "*" and non-dbuser rds-db ARNs with wildcards → account.
+// A grant naming a different instance returns (false, false) — ignore.
+func classifyRDSdbARN(arn string, dest *Element, resources []planResource) (account, covers bool) {
+	if arn == "" {
+		return false, false
+	}
+	if arn == "*" {
+		return true, false
+	}
+	destRes, ok := planResourceByElement(dest, resources)
+	if !ok {
+		if strings.ContainsAny(arn, "*?") {
+			return true, false
+		}
+		return false, false
+	}
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) >= 6 && parts[2] == "rds-db" {
+		rest := parts[5]
+		if !strings.HasPrefix(rest, "dbuser:") {
+			if strings.ContainsAny(rest, "*?") {
+				return true, false
+			}
+			return false, false
+		}
+		body := rest[len("dbuser:"):]
+		dbiID, _, _ := strings.Cut(body, "/")
+		if strings.ContainsAny(dbiID, "*?") {
+			return true, false
+		}
+		want := dbResourceID(destRes)
+		if want == "" {
+			return false, false
+		}
+		if dbiID == want {
+			return false, true
+		}
+		return false, false
+	}
+	if len(parts) >= 6 && parts[2] == "rds" {
+		if strings.ContainsAny(parts[3], "*?") || strings.ContainsAny(parts[4], "*?") {
+			return true, false
+		}
+		rest := parts[5]
+		if strings.ContainsAny(rest, "*?") {
+			return true, false
+		}
+		if matchRDSDataARN(rest, destRes) {
+			return false, true
+		}
+		return false, false
+	}
+	if strings.ContainsAny(arn, "*?") {
+		return true, false
+	}
+	return false, false
+}
+
+func dbResourceID(r planResource) string {
+	switch r.typ {
+	case "aws_db_instance":
+		if id, ok := r.values["resource_id"].(string); ok {
+			return id
+		}
+	case "aws_rds_cluster":
+		if id, ok := r.values["cluster_resource_id"].(string); ok {
+			return id
+		}
+	}
+	return ""
+}
+
+// matchRDSDataARN matches "cluster:<id>" / "db:<id>" against the destination.
+func matchRDSDataARN(rest string, dest planResource) bool {
+	kind, id, ok := strings.Cut(rest, ":")
+	if !ok || id == "" {
+		return false
+	}
+	switch kind {
+	case "cluster":
+		if dest.typ != "aws_rds_cluster" {
+			return false
+		}
+		for _, key := range []string{"cluster_identifier", "id", "arn"} {
+			if v, ok := dest.values[key].(string); ok && v != "" && (v == id || strings.HasSuffix(v, ":"+id) || strings.HasSuffix(v, ":cluster:"+id)) {
+				return true
+			}
+		}
+		if arn, ok := dest.values["arn"].(string); ok && arn == "arn:aws:rds:::"+rest {
+			return true
+		}
+		// Full ARN passed as rest already split — compare cluster id field.
+		if cid, ok := dest.values["cluster_identifier"].(string); ok && cid == id {
+			return true
+		}
+	case "db":
+		if dest.typ != "aws_db_instance" {
+			return false
+		}
+		for _, key := range []string{"identifier", "id"} {
+			if v, ok := dest.values[key].(string); ok && v == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// docRefsDBResource reports whether a policy document's config references the
+// destination DB's resource_id, cluster_resource_id, or arn (plan-unknown values).
+func docRefsDBResource(doc planResource, dest *Element, idx configIndex) bool {
+	if dest == nil || len(dest.Evidence.Addresses) != 1 {
+		return false
+	}
+	_, typ, name, ok := splitResourceAddress(dest.Evidence.Addresses[0])
+	if !ok || (typ != "aws_db_instance" && typ != "aws_rds_cluster") {
+		return false
+	}
+	for _, ref := range idx.attrRefs(doc.address, "statement") {
+		if !containsResource(ref, typ, name) {
+			continue
+		}
+		if strings.Contains(ref, ".resource_id") ||
+			strings.Contains(ref, ".cluster_resource_id") ||
+			strings.Contains(ref, typ+"."+name+".arn") ||
+			strings.HasSuffix(ref, typ+"."+name) {
+			return true
+		}
+	}
+	return false
+}
+
+func planResourceByElement(el *Element, resources []planResource) (planResource, bool) {
+	if el == nil || len(el.Evidence.Addresses) != 1 {
+		return planResource{}, false
+	}
+	addr := el.Evidence.Addresses[0]
+	for _, r := range resources {
+		if r.address == addr {
+			return r, true
+		}
+	}
+	return planResource{}, false
+}
+
 // classifyS3ARN classifies an S3 Resource ARN.
 // Object-key wildcards (bucket/*, bucket/prefix*) → resource for that bucket.
 // Wildcards in the bucket name (arn:aws:s3:::*, app-*, */*) → account.
@@ -3023,6 +3228,74 @@ func ingressRefsSG(sg planResource, idx configIndex) bool {
 	return false
 }
 
+// peerSecurityGroups returns SGs that the DB SG admits via inline ingress,
+// aws_security_group_rule (source_security_group_id), or
+// aws_vpc_security_group_ingress_rule (referenced_security_group_id).
+// A peer matches only in the same module as the resource holding the
+// reference (DB SG for inline ingress; the rule resource otherwise) —
+// same module-relative rule as resourceRefsSG.
+func peerSecurityGroups(dbSG planResource, resources []planResource, idx configIndex) []planResource {
+	seen := map[string]bool{}
+	var out []planResource
+	add := func(peer planResource) {
+		if peer.address == "" || peer.address == dbSG.address || seen[peer.address] {
+			return
+		}
+		seen[peer.address] = true
+		out = append(out, peer)
+	}
+	matchPeer := func(holder planResource, ref string) {
+		holderMod, _, _, ok := splitResourceAddress(holder.address)
+		if !ok {
+			return
+		}
+		for _, other := range resources {
+			if other.typ != "aws_security_group" || other.address == dbSG.address {
+				continue
+			}
+			otherMod, _, name, ok := splitResourceAddress(other.address)
+			if !ok || otherMod != holderMod {
+				continue
+			}
+			if !containsResource(ref, "aws_security_group", name) {
+				continue
+			}
+			if strings.HasPrefix(ref, "module.") {
+				if holderMod == "" || !strings.HasPrefix(ref, holderMod+".") {
+					continue
+				}
+			}
+			add(other)
+		}
+	}
+	for _, ref := range idx.attrRefs(dbSG.address, "ingress") {
+		matchPeer(dbSG, ref)
+	}
+	for _, r := range resources {
+		switch r.typ {
+		case "aws_security_group_rule":
+			if !securityGroupRuleOnSG(r, dbSG, idx) {
+				continue
+			}
+			typ, _ := r.values["type"].(string)
+			if !strings.EqualFold(typ, "ingress") {
+				continue
+			}
+			for _, ref := range idx.attrRefs(r.address, "source_security_group_id") {
+				matchPeer(r, ref)
+			}
+		case "aws_vpc_security_group_ingress_rule":
+			if !ruleOnSG(r, dbSG, idx) {
+				continue
+			}
+			for _, ref := range idx.attrRefs(r.address, "referenced_security_group_id") {
+				matchPeer(r, ref)
+			}
+		}
+	}
+	return out
+}
+
 func elementsUsingSG(sgAddress, kind string, elements []*Element, idx configIndex) []*Element {
 	_, _, name, ok := splitResourceAddress(sgAddress)
 	if !ok {
@@ -3045,20 +3318,117 @@ func elementsUsingSG(sgAddress, kind string, elements []*Element, idx configInde
 	return uniqueElements(out)
 }
 
-func sourceServices(sg planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
-	var out []*Element
-	for _, ref := range idx.attrRefs(sg.address, "ingress") {
-		for _, other := range resources {
-			if other.typ != "aws_security_group" || other.address == sg.address {
+// resourceRefsSG reports whether r's attr references sg in the same module
+// (same rule as ecsServicesOnTargetGroups: in-module refs are relative).
+func resourceRefsSG(r, sg planResource, attr string, idx configIndex) bool {
+	sgMod, _, sgName, ok := splitResourceAddress(sg.address)
+	if !ok {
+		return false
+	}
+	rMod, _, _, ok := splitResourceAddress(r.address)
+	if !ok || rMod != sgMod {
+		return false
+	}
+	for _, ref := range idx.attrRefs(r.address, attr) {
+		if !containsResource(ref, "aws_security_group", sgName) {
+			continue
+		}
+		if strings.HasPrefix(ref, "module.") {
+			if sgMod == "" || !strings.HasPrefix(ref, sgMod+".") {
 				continue
 			}
-			_, _, name, ok := splitResourceAddress(other.address)
-			if ok && containsResource(ref, "aws_security_group", name) {
-				out = append(out, elementsUsingSG(other.address, "container_service", elements, idx)...)
+		}
+		return true
+	}
+	return false
+}
+
+// plainElementsUsingSG finds root/plain resources that reference sg and already
+// have a DFD element of the expected kind (Lambda only when modeled).
+func plainElementsUsingSG(sg planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
+	var out []*Element
+	for _, r := range resources {
+		var kind string
+		var attrs []string
+		switch r.typ {
+		case "aws_ecs_service":
+			kind, attrs = "container_service", []string{"network_configuration"}
+		case "aws_instance":
+			kind, attrs = "virtual_machine", []string{"vpc_security_group_ids", "security_groups"}
+		case "aws_lambda_function":
+			kind, attrs = "serverless_function", []string{"vpc_config"}
+		case "aws_db_instance", "aws_rds_cluster":
+			kind, attrs = "relational_db", []string{"vpc_security_group_ids"}
+		default:
+			continue
+		}
+		matched := false
+		for _, attr := range attrs {
+			if resourceRefsSG(r, sg, attr, idx) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		el := elementForAddress(r.address, elements)
+		if el == nil || el.Kind != kind {
+			continue
+		}
+		out = append(out, el)
+	}
+	return out
+}
+
+func dbDestinations(dbSG planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
+	var out []*Element
+	out = append(out, elementsUsingSG(dbSG.address, "relational_db", elements, idx)...)
+	for _, el := range plainElementsUsingSG(dbSG, resources, elements, idx) {
+		if el.Kind == "relational_db" {
+			out = append(out, el)
+		}
+	}
+	return uniqueElements(out)
+}
+
+// dbSources collects workload elements that reach the DB through peer SGs.
+// Plain (explicit) hits are kept at any count. Module-path hits for a peer
+// are kept only when that peer resolves to exactly one workload; several
+// module workloads behind one peer are ambiguous (warn, drop those hits).
+// A workload found by both paths is deduped.
+func dbSources(dbSG planResource, peers []planResource, resources []planResource, elements []*Element, idx configIndex, warnings *[]string) []*Element {
+	var out []*Element
+	for _, peer := range peers {
+		var moduleHits []*Element
+		moduleHits = append(moduleHits, elementsUsingSG(peer.address, "container_service", elements, idx)...)
+		moduleHits = append(moduleHits, elementsUsingSG(peer.address, "virtual_machine", elements, idx)...)
+		moduleHits = append(moduleHits, elementsUsingSG(peer.address, "serverless_function", elements, idx)...)
+		moduleHits = uniqueElements(moduleHits)
+		switch len(moduleHits) {
+		case 0:
+			// none
+		case 1:
+			out = append(out, moduleHits[0])
+		default:
+			if warnings != nil {
+				*warnings = append(*warnings, "ambiguous database path through "+dbSG.address)
+			}
+		}
+		for _, el := range plainElementsUsingSG(peer, resources, elements, idx) {
+			switch el.Kind {
+			case "container_service", "virtual_machine", "serverless_function":
+				out = append(out, el)
 			}
 		}
 	}
 	return uniqueElements(out)
+}
+
+// sourceServices is retained for callers that still want the pre-plain single
+// peer-SG → container_service module path (tests / legacy).
+func sourceServices(sg planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
+	return dbSources(sg, peerSecurityGroups(sg, resources, idx), resources, elements, idx, nil)
 }
 
 func containsResource(ref, typ, name string) bool {

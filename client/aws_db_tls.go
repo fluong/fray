@@ -20,7 +20,9 @@ const maxParamGroupDepth = 3
 // exactly one matching group exists under the nearest common module call and
 // that group's name/name_prefix is unknown or prefix-derived. A literal
 // default.* in another branch is a second candidate unless create/count is
-// statically known.
+// statically known. When after_unknown with no config refs (provider
+// Optional+Computed default), engineTLSDefault applies — RDS PostgreSQL
+// major ≥15 → true, ≤14 → false.
 //
 // Parameters: rds.force_ssl (postgres, aurora-postgresql);
 // require_secure_transport (mysql, mariadb, aurora-mysql). Values
@@ -62,6 +64,11 @@ func dbTLSEnforced(r planResource, resources []planResource, idx configIndex) (e
 	case unknown:
 		g, def, ok := resolveParamGroupBinding(r, resources, idx, groupAttr, groupType, true)
 		if !ok {
+			// Provider Optional+Computed: omitted parameter_group_name is
+			// after_unknown with no config refs → engine default.* group.
+			if len(refs) == 0 {
+				return engineTLSDefault(engine, version, r.typ)
+			}
 			return false, false
 		}
 		if def != "" {

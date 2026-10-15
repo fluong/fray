@@ -22,6 +22,8 @@ var ignoredTypes = map[string]bool{
 	"google_folder_iam_audit_config":                 true,
 	"google_organization_iam_audit_config":           true,
 	"google_project_iam_member":                      true,
+	"google_project_iam_binding":                     true,
+	"google_project_iam_policy":                      true,
 	"google_secret_manager_secret_iam_member":        true,
 	"google_cloud_run_v2_service_iam_member":         true,
 	"google_logging_project_sink":                    true,
@@ -207,7 +209,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			invokers = append(invokers, r)
 		case "google_secret_manager_secret_iam_member":
 			secretIAM = append(secretIAM, r)
-		case "google_project_iam_member":
+		case "google_project_iam_member", "google_project_iam_binding", "google_project_iam_policy":
 			projectIAM = append(projectIAM, r)
 		case "google_project_iam_audit_config",
 			"google_folder_iam_audit_config",
@@ -340,7 +342,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		return DFD{}, warnings, err
 	}
 
-	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, resources, elements, attachedSQL, &warnings)
+	flows := mechanicalFlows(services, secrets, r2, invokers, secretIAM, projectIAM, resources, elements, attachedSQL, idx, &warnings)
 	flows = append(flows, awsFlows...)
 	for _, f := range cfg.Flows {
 		flow, err := declaredFlow(f, elements)
@@ -930,7 +932,7 @@ func secretRef(env map[string]any) string {
 	return ""
 }
 
-func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectIAM, allResources []planResource, elements []*Element, attachedSQL map[string]*Element, warnings *[]string) []*Flow {
+func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectIAM, allResources []planResource, elements []*Element, attachedSQL map[string]*Element, idx configIndex, warnings *[]string) []*Flow {
 	var flows []*Flow
 	secretByID := map[string]*Element{}
 	for _, s := range secrets {
@@ -1047,11 +1049,22 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 		}
 		// Cloud SQL connector/proxy attachment wins over inferred DATABASE_URL.
 		if sqlEl := attachedSQL[svc.address]; sqlEl != nil {
-			flows = append(flows, &Flow{
+			flow := &Flow{
 				From: secTemp(svcEl), To: secTemp(sqlEl),
 				DataClass: "unknown", Transport: "tls",
-			})
+			}
+			if sqlRes, ok := planResourceByElement(sqlEl, allResources); ok {
+				if scope, grants, cause := cloudSQLScope(sa, sqlRes, projectIAM, idx); scope != "" {
+					flow.AuthzScope = scope
+					flow.AuthzGrants = grants
+					if cause != "" {
+						flow.Causes = map[string]string{"authz_scope": cause}
+					}
+				}
+			}
+			flows = append(flows, flow)
 		} else if db != nil && hasEnv(svc, "DATABASE_URL") {
+			// Inferred DATABASE_URL Postgres: omit authz_scope (no IAM signal).
 			flows = append(flows, &Flow{
 				From: secTemp(svcEl), To: secTemp(db),
 				DataClass: "unknown", Transport: "tls",
@@ -1537,6 +1550,260 @@ func secretScope(secretID, sa string, secretIAM, projectIAM []planResource) (sco
 		cause = resourceCause
 	}
 	return scope, grants, cause
+}
+
+var cloudSQLIAMRoles = map[string]bool{
+	"roles/cloudsql.client":       true,
+	"roles/cloudsql.instanceUser": true,
+	"roles/cloudsql.admin":        true,
+}
+
+// cloudSQLScope classifies project IAM grants for Cloud Run → Cloud SQL.
+// Unconditional binding → project; IAM Condition on this instance → resource;
+// other/unparseable conditions or different instance → omit that binding.
+func cloudSQLScope(sa string, sqlRes planResource, projectIAM []planResource, idx configIndex) (scope string, grants []string, cause string) {
+	if sa == "" {
+		return "", nil, ""
+	}
+	instName, _ := sqlRes.values["name"].(string)
+	var scopes []string
+	resourceCause, projectCause := "", ""
+	for _, m := range expandProjectIAM(projectIAM) {
+		role, _ := m.values["role"].(string)
+		if !cloudSQLIAMRoles[role] {
+			continue
+		}
+		if !projectIAMMemberMatches(m, sa) {
+			continue
+		}
+		if !iamConditionBlockPresent(m, idx) {
+			// Truly unconditional: no condition in after, config, or after_unknown.
+			scopes = append(scopes, "project")
+			projectCause = m.address
+			continue
+		}
+		// Condition block exists. Prefer config refs to this instance when the
+		// expression is unknown; otherwise parse the expression or omit.
+		if condRefsThisInstance(m, sqlRes, idx) {
+			scopes = append(scopes, "resource")
+			resourceCause = m.address
+			continue
+		}
+		expr := iamConditionExpression(m)
+		if expr == "" {
+			continue // condition present but unreadable → omit
+		}
+		match, ok := cloudSQLConditionMatches(expr, instName, sqlRes, idx)
+		if !ok {
+			continue // unparseable
+		}
+		if match {
+			scopes = append(scopes, "resource")
+			resourceCause = m.address
+		}
+	}
+	grants = normalizeAuthzGrants(scopes...)
+	scope = effectiveAuthzScope(grants)
+	switch scope {
+	case "project":
+		cause = projectCause
+	case "resource":
+		cause = resourceCause
+	}
+	return scope, grants, cause
+}
+
+// expandProjectIAM flattens google_project_iam_policy policy_data into
+// synthetic member-shaped resources; member/binding pass through.
+func expandProjectIAM(in []planResource) []planResource {
+	var out []planResource
+	for _, m := range in {
+		switch m.typ {
+		case "google_project_iam_policy":
+			out = append(out, projectIAMFromPolicyData(m)...)
+		default:
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func projectIAMFromPolicyData(pol planResource) []planResource {
+	raw, _ := pol.values["policy_data"].(string)
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var doc struct {
+		Bindings []struct {
+			Role      string         `json:"role"`
+			Members   []string       `json:"members"`
+			Condition map[string]any `json:"condition"`
+		} `json:"bindings"`
+	}
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return nil
+	}
+	var out []planResource
+	for i, b := range doc.Bindings {
+		vals := map[string]any{"role": b.Role, "members": anyStrings(b.Members)}
+		if len(b.Condition) > 0 {
+			vals["condition"] = b.Condition
+		}
+		out = append(out, planResource{
+			address: fmt.Sprintf("%s#binding[%d]", pol.address, i),
+			typ:     "google_project_iam_binding",
+			values:  vals,
+		})
+	}
+	return out
+}
+
+func anyStrings(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
+}
+
+func projectIAMMemberMatches(m planResource, sa string) bool {
+	if memberIs(m.values["member"], sa) {
+		return true
+	}
+	for _, mem := range asList(m.values["members"]) {
+		if memberIs(mem, sa) {
+			return true
+		}
+	}
+	return false
+}
+
+func iamConditionExpression(m planResource) string {
+	switch c := m.values["condition"].(type) {
+	case map[string]any:
+		s, _ := c["expression"].(string)
+		return strings.TrimSpace(s)
+	case []any:
+		if len(c) == 0 {
+			return ""
+		}
+		if cm, ok := c[0].(map[string]any); ok {
+			s, _ := cm["expression"].(string)
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+// iamConditionBlockPresent reports a condition block in after values, config
+// expressions/refs, or after_unknown — including empty expression / unknown.
+// An empty condition list or absent condition is not present.
+func iamConditionBlockPresent(m planResource, idx configIndex) bool {
+	if attrUnknownMap(m.afterUnknown, "condition") {
+		return true
+	}
+	switch c := m.values["condition"].(type) {
+	case map[string]any:
+		if len(c) > 0 {
+			return true
+		}
+	case []any:
+		if len(c) > 0 {
+			return true
+		}
+	}
+	if hasConfigAttr(idx, m.address, "condition") {
+		return true
+	}
+	key, ok := resourceKey(m.address)
+	if !ok {
+		return false
+	}
+	set := idx.resources[key]
+	for attr := range set.raw {
+		if attr == "condition" || strings.HasPrefix(attr, "condition.") {
+			return true
+		}
+	}
+	for attr := range set.refs {
+		if attr == "condition" || strings.HasPrefix(attr, "condition.") {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	cloudSQLCondNameRe = regexp.MustCompile(`resource\.name\s*==\s*"projects/[^"]+/instances/([^"]+)"`)
+	cloudSQLCondTypeRe = regexp.MustCompile(`resource\.type\s*==\s*"sqladmin\.googleapis\.com/Instance"`)
+	cloudSQLCondSvcRe  = regexp.MustCompile(`resource\.service\s*==\s*"sqladmin\.googleapis\.com"`)
+)
+
+// cloudSQLConditionMatches reports whether expr scopes to this instance.
+// ok=false means unparseable (omit). ok=true && match=false means another instance.
+func cloudSQLConditionMatches(expr, instName string, sqlRes planResource, idx configIndex) (match, ok bool) {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return false, false
+	}
+	// Split on && and require every clause to be known.
+	parts := strings.Split(expr, "&&")
+	var named string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return false, false
+		}
+		if m := cloudSQLCondNameRe.FindStringSubmatch(p); m != nil {
+			named = m[1]
+			continue
+		}
+		if cloudSQLCondTypeRe.MatchString(p) || cloudSQLCondSvcRe.MatchString(p) {
+			continue
+		}
+		return false, false // unknown clause
+	}
+	if named == "" {
+		return false, false
+	}
+	if instName != "" && named == instName {
+		return true, true
+	}
+	// Literal name may equal a referenced instance when values.name is set.
+	if v, ok := sqlRes.values["name"].(string); ok && v == named {
+		return true, true
+	}
+	return false, true
+}
+
+func condRefsThisInstance(m, sqlRes planResource, idx configIndex) bool {
+	_, typ, name, ok := splitResourceAddress(sqlRes.address)
+	if !ok || typ != "google_sql_database_instance" {
+		return false
+	}
+	for _, attr := range []string{"condition", "condition.expression"} {
+		for _, ref := range idx.attrRefs(m.address, attr) {
+			if containsResource(ref, typ, name) && (strings.Contains(ref, ".name") || strings.HasSuffix(ref, typ+"."+name)) {
+				return true
+			}
+		}
+	}
+	// Nested under condition map — also check all attrs that mention condition.
+	key, ok := resourceKey(m.address)
+	if !ok {
+		return false
+	}
+	for attr, refs := range idx.resources[key].refs {
+		if !strings.Contains(attr, "condition") {
+			continue
+		}
+		for _, ref := range refs {
+			if containsResource(ref, typ, name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func projectRole(members []planResource, role, sa string) string {

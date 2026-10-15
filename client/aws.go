@@ -356,7 +356,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		flows = append(flows, secretFlowsFrom(svc, svcEl, mod, task.address, specs, resources, data, idx, elements, &warnings)...)
 		flows = append(flows, bucketFlows(svc, svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
 	}
-	flows = append(flows, dbFlows(resources, idx, elements, &warnings)...)
+	flows = append(flows, dbFlows(resources, data, idx, elements, &warnings)...)
 
 	bedrockFlows, bedrockEl := bedrockConnections(resources, data, idx, byAddr, &extra)
 	flows = append(flows, bedrockFlows...)
@@ -469,30 +469,63 @@ func bucketFlows(svc planResource, svcEl *Element, module, taskAddr string, reso
 	return []*Flow{flow}
 }
 
-func dbFlows(resources []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
+func dbFlows(resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
 	var flows []*Flow
 	for _, sg := range resources {
 		if sg.typ != "aws_security_group" {
 			continue
 		}
-		if !ingressRefsSG(sg, idx) {
+		peers := peerSecurityGroups(sg, resources, idx)
+		if len(peers) == 0 {
 			continue
 		}
-		dest := elementsUsingSG(sg.address, "relational_db", elements, idx)
+		dest := dbDestinations(sg, resources, elements, idx)
 		if len(dest) == 0 {
 			continue
 		}
-		sources := sourceServices(sg, resources, elements, idx)
-		if len(dest) != 1 || len(sources) != 1 {
+		// Several DBs behind one SG (module path may list every DB in the
+		// module) cannot be told apart — keep the pre-plain-ALB drop.
+		if len(dest) != 1 {
 			*warnings = append(*warnings, "ambiguous database path through "+sg.address)
 			continue
 		}
-		flows = append(flows, &Flow{
-			From: sources[0].canonicalKey(), To: dest[0].canonicalKey(),
-			DataClass: "unknown", Transport: "unknown",
-		})
+		// Explicit peer-SG / workload wiring: one flow per source workload.
+		for _, src := range dbSources(sg, peers, resources, elements, idx, warnings) {
+			flow := &Flow{
+				From: src.canonicalKey(), To: dest[0].canonicalKey(),
+				DataClass: "unknown", Transport: "unknown",
+			}
+			if scope, grants, cause := dbAuthzForFlow(src, dest[0], resources, data, idx, elements); scope != "" {
+				flow.AuthzScope = scope
+				flow.AuthzGrants = grants
+				if cause != "" {
+					flow.Causes = map[string]string{"authz_scope": cause}
+				}
+			}
+			flows = append(flows, flow)
+		}
 	}
 	return flows
+}
+
+// dbAuthzForFlow attaches IAM DB-access scope from the source ECS task role.
+// SG topology is unchanged; password-only paths (no matching DB actions) omit
+// authz_scope. Unknown identity-policy sources omit scope (same as secrets).
+func dbAuthzForFlow(src, dest *Element, resources, data []planResource, idx configIndex, elements []*Element) (scope string, grants []string, cause string) {
+	svc, ok := planResourceByElement(src, resources)
+	if !ok || svc.typ != "aws_ecs_service" {
+		return "", nil, ""
+	}
+	task, ok := serviceTaskDefinition(svc, resources, idx)
+	if !ok {
+		return "", nil, ""
+	}
+	mod, _, _, _ := splitResourceAddress(svc.address)
+	docs, unknownDocs := roleDocuments(mod, idx.attrRefs(task.address, "task_role_arn"), resources, data, idx)
+	if unknownDocs {
+		return "", nil, ""
+	}
+	return awsDBScope(dest, docs, idx, resources, elements)
 }
 
 // awsObjectLock reports object_lock for an S3 bucket.
