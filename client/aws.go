@@ -323,12 +323,12 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		flows = append(flows, flow)
 		addInside(lbEl)
 
-		for _, svc := range servicesFronted(lb, resources, elements, idx, &warnings) {
+		for _, hit := range servicesFronted(lb, resources, elements, idx, &warnings) {
 			flows = append(flows, &Flow{
-				From: lbEl.canonicalKey(), To: svc.canonicalKey(),
-				DataClass: "unknown", Transport: targetTransport(lb, resources, idx),
+				From: lbEl.canonicalKey(), To: hit.el.canonicalKey(),
+				DataClass: "unknown", Transport: hit.transport,
 			})
-			addInside(svc)
+			addInside(hit.el)
 		}
 	}
 

@@ -1044,7 +1044,58 @@ func listenerRefPointsTo(ref string, ln planResource, ruleMod string) bool {
 	return lnMod == ruleMod
 }
 
-func servicesFronted(lb planResource, resources []planResource, elements []*Element, idx configIndex, warnings *[]string) []*Element {
+// frontedService is a container_service reached from a public LB, with the
+// transport for the LB→service hop.
+type frontedService struct {
+	el        *Element
+	transport string
+}
+
+func servicesFronted(lb planResource, resources []planResource, elements []*Element, idx configIndex, warnings *[]string) []frontedService {
+	mod, _, _, ok := splitResourceAddress(lb.address)
+	if !ok {
+		return nil
+	}
+	modEls := servicesFrontedByModule(lb, resources, elements, idx)
+	// Ambiguity applies only to the module-ALB path (unchanged).
+	if len(modEls) > 1 {
+		*warnings = append(*warnings, "ambiguous service behind "+lb.address)
+		modEls = nil
+	}
+
+	var plainHits []frontedService
+	var unresolved bool
+	// Plain path only when this LB is not a terraform-aws-modules/alb call.
+	if len(targetGroupKeys(idx.callConstant(mod, "listeners"))) == 0 {
+		plainHits, unresolved = servicesFrontedByPlain(lb, resources, elements, idx)
+		if unresolved {
+			*warnings = append(*warnings, "unresolvable target group behind "+lb.address)
+		}
+	}
+
+	modTransport := targetTransport(lb, resources, idx)
+	var out []frontedService
+	seen := map[string]bool{}
+	for _, el := range modEls {
+		k := el.canonicalKey()
+		out = append(out, frontedService{el: el, transport: modTransport})
+		seen[k] = true
+	}
+	for _, hit := range plainHits {
+		k := hit.el.canonicalKey()
+		if seen[k] {
+			continue // keep module result
+		}
+		seen[k] = true
+		out = append(out, hit)
+	}
+	return out
+}
+
+// servicesFrontedByModule links an ALB to ECS via terraform-aws-modules/alb
+// shape: module listeners[*].forward.target_group_key and sibling module
+// calls that reference target_groups["key"].
+func servicesFrontedByModule(lb planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
 	mod, _, _, ok := splitResourceAddress(lb.address)
 	if !ok {
 		return nil
@@ -1073,12 +1124,284 @@ func servicesFronted(lb planResource, resources []planResource, elements []*Elem
 			hits = append(hits, elementsUnder(elements, module, "container_service")...)
 		}
 	}
-	hits = uniqueElements(hits)
-	if len(hits) > 1 {
-		*warnings = append(*warnings, "ambiguous service behind "+lb.address)
-		return nil
+	return uniqueElements(hits)
+}
+
+// servicesFrontedByPlain links a public aws_lb to ECS services using plain
+// resources: listener/rule forward → aws_lb_target_group ← ecs_service.load_balancer.
+// Multiple attached services are all returned (not ambiguous).
+func servicesFrontedByPlain(lb planResource, resources []planResource, elements []*Element, idx configIndex) ([]frontedService, bool) {
+	tgs, unresolved := plainListenerTargetGroups(lb, resources, idx)
+	if len(tgs) == 0 {
+		return nil, unresolved
+	}
+	return ecsServicesOnTargetGroups(tgs, resources, elements, idx), unresolved
+}
+
+// plainListenerTargetGroups resolves aws_lb_target_group resources named by
+// forward actions on this LB's listeners and listener rules. Cognito/OIDC
+// authenticate steps are ignored; only forward targets count. Unresolvable
+// forwards (var / data / module output / literal ARN) set unresolved.
+func plainListenerTargetGroups(lb planResource, resources []planResource, idx configIndex) ([]planResource, bool) {
+	lbMod, _, _, ok := splitResourceAddress(lb.address)
+	if !ok {
+		return nil, false
+	}
+	var out []planResource
+	seen := map[string]bool{}
+	unresolved := false
+	add := func(tg planResource) {
+		if seen[tg.address] {
+			return
+		}
+		seen[tg.address] = true
+		out = append(out, tg)
+	}
+	for _, ln := range listenersFor(lb, resources, idx) {
+		if u := collectPlainTargetGroups(ln.address, "default_action", asList(ln.values["default_action"]), resources, idx, lbMod, add); u {
+			unresolved = true
+		}
+		for _, rule := range listenerRulesFor(ln, resources, idx) {
+			if u := collectPlainTargetGroups(rule.address, "action", asList(rule.values["action"]), resources, idx, lbMod, add); u {
+				unresolved = true
+			}
+		}
+	}
+	return out, unresolved
+}
+
+func collectPlainTargetGroups(addr, attr string, valueActions []any, resources []planResource, idx configIndex, lbMod string, add func(planResource)) bool {
+	key, ok := resourceKey(addr)
+	if !ok {
+		return false
+	}
+	raw := idx.resources[key].raw[attr]
+	refs, unresolved, sawForward := forwardTargetGroupRefs(raw)
+	if !sawForward {
+		if valueActionsHaveForward(valueActions) {
+			// Values show a forward but configuration has no forward expression
+			// we can attribute — do not guess from literal ARNs.
+			return true
+		}
+		return false
+	}
+	for _, ref := range refs {
+		tg, ok := targetGroupInModule(ref, resources, lbMod)
+		if !ok {
+			unresolved = true
+			continue
+		}
+		add(tg)
+	}
+	return unresolved
+}
+
+// forwardTargetGroupRefs walks listener/rule action expressions and returns
+// aws_lb_target_group references from forward actions only.
+func forwardTargetGroupRefs(raw any) (refs []string, unresolved, sawForward bool) {
+	for _, m := range exprActionMaps(raw) {
+		if !exprIsForwardAction(m) {
+			continue
+		}
+		sawForward = true
+		var part []string
+		if v, ok := m["target_group_arn"]; ok {
+			collectRefs(v, &part)
+		}
+		if v, ok := m["forward"]; ok {
+			collectRefs(v, &part)
+		}
+		if len(part) == 0 {
+			unresolved = true
+			continue
+		}
+		gotTG := false
+		for _, ref := range part {
+			switch {
+			case strings.Contains(ref, "aws_lb_target_group."):
+				refs = append(refs, ref)
+				gotTG = true
+			case unresolvableTargetGroupRef(ref):
+				unresolved = true
+			}
+		}
+		if !gotTG {
+			unresolved = true
+		}
+	}
+	return uniqueStrings(refs), unresolved, sawForward
+}
+
+func exprActionMaps(raw any) []map[string]any {
+	var out []map[string]any
+	for _, item := range asList(raw) {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func exprIsForwardAction(m map[string]any) bool {
+	if strings.EqualFold(exprStringConstant(m["type"]), "forward") {
+		return true
+	}
+	if _, ok := m["forward"]; ok {
+		return true
+	}
+	if _, ok := m["target_group_arn"]; ok {
+		// Legacy shape: target_group_arn without type, or type elsewhere.
+		// Exclude authenticate-only blocks that happen to nest unrelated fields.
+		if exprIsAuthAction(m) {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+func exprIsAuthAction(m map[string]any) bool {
+	t := strings.ToLower(exprStringConstant(m["type"]))
+	if t == "authenticate-cognito" || t == "authenticate-oidc" {
+		return true
+	}
+	_, hasCog := m["authenticate_cognito"]
+	_, hasOIDC := m["authenticate_oidc"]
+	return hasCog || hasOIDC
+}
+
+func exprStringConstant(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case map[string]any:
+		if s, ok := t["constant_value"].(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func valueActionsHaveForward(actions []any) bool {
+	for _, a := range actions {
+		m, ok := a.(map[string]any)
+		if !ok {
+			continue
+		}
+		t := strings.ToLower(stringAttr(m["type"]))
+		if t == "forward" || stringAttr(m["target_group_arn"]) != "" || len(asList(m["forward"])) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func unresolvableTargetGroupRef(ref string) bool {
+	if strings.Contains(ref, "aws_lb_target_group.") {
+		return false
+	}
+	if strings.HasPrefix(ref, "var.") || strings.Contains(ref, ".var.") {
+		return true
+	}
+	if strings.HasPrefix(ref, "data.") || strings.Contains(ref, ".data.") {
+		return true
+	}
+	// Module output (module.x.out) rather than module.x.aws_lb_target_group.y.
+	if strings.HasPrefix(ref, "module.") && !strings.Contains(ref, ".aws_lb_target_group.") {
+		return true
+	}
+	return false
+}
+
+func targetGroupInModule(ref string, resources []planResource, lbMod string) (planResource, bool) {
+	var hits []planResource
+	for _, r := range resources {
+		if r.typ != "aws_lb_target_group" {
+			continue
+		}
+		rMod, _, name, ok := splitResourceAddress(r.address)
+		if !ok || rMod != lbMod || !containsResource(ref, "aws_lb_target_group", name) {
+			continue
+		}
+		if strings.HasPrefix(ref, "module.") {
+			if rMod == "" || !strings.HasPrefix(ref, rMod+".") {
+				continue
+			}
+		}
+		hits = append(hits, r)
+	}
+	if len(hits) != 1 {
+		return planResource{}, false
+	}
+	return hits[0], true
+}
+
+func ecsServicesOnTargetGroups(tgs []planResource, resources []planResource, elements []*Element, idx configIndex) []frontedService {
+	var hits []frontedService
+	seen := map[string]bool{}
+	for _, svc := range resources {
+		if svc.typ != "aws_ecs_service" {
+			continue
+		}
+		svcMod, _, _, ok := splitResourceAddress(svc.address)
+		if !ok {
+			continue
+		}
+		refs := idx.attrRefs(svc.address, "load_balancer")
+		if len(refs) == 0 {
+			continue
+		}
+		var attached []planResource
+		for _, tg := range tgs {
+			tgMod, _, name, ok := splitResourceAddress(tg.address)
+			if !ok || tgMod != svcMod {
+				// In-module refs are relative (no module. prefix); require the
+				// service and target group to share a module address.
+				continue
+			}
+			for _, ref := range refs {
+				if !containsResource(ref, "aws_lb_target_group", name) {
+					continue
+				}
+				if strings.HasPrefix(ref, "module.") {
+					if tgMod == "" || !strings.HasPrefix(ref, tgMod+".") {
+						continue
+					}
+				}
+				attached = append(attached, tg)
+				break
+			}
+		}
+		if len(attached) == 0 {
+			continue
+		}
+		el := elementForAddress(svc.address, elements)
+		if el == nil || el.Kind != "container_service" {
+			continue
+		}
+		k := el.canonicalKey()
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		hits = append(hits, frontedService{el: el, transport: transportFromTargetGroups(attached)})
 	}
 	return hits
+}
+
+// transportFromTargetGroups: HTTP → plaintext (wins); else HTTPS/TLS → tls;
+// else unknown.
+func transportFromTargetGroups(tgs []planResource) string {
+	transport := "unknown"
+	for _, r := range tgs {
+		switch strings.ToUpper(stringAttr(r.values["protocol"])) {
+		case "HTTP":
+			return "plaintext"
+		case "HTTPS", "TLS":
+			transport = "tls"
+		}
+	}
+	return transport
 }
 
 func targetGroupKeys(constant any) []string {
@@ -1110,11 +1433,24 @@ func targetTransport(lb planResource, resources []planResource, idx configIndex)
 	}
 	keys := targetGroupKeys(idx.callConstant(mod, "listeners"))
 	transport := "unknown"
-	for _, r := range underType(resources, mod, "aws_lb_target_group") {
-		key := forEachKey(r.address)
-		if len(keys) > 0 && !containsString(keys, key) {
-			continue
+	if len(keys) > 0 {
+		for _, r := range underType(resources, mod, "aws_lb_target_group") {
+			key := forEachKey(r.address)
+			if !containsString(keys, key) {
+				continue
+			}
+			switch strings.ToUpper(stringAttr(r.values["protocol"])) {
+			case "HTTP":
+				return "plaintext"
+			case "HTTPS", "TLS":
+				transport = "tls"
+			}
 		}
+		return transport
+	}
+	// Plain aws_lb path: protocol from listener-forwarded target groups.
+	tgs, _ := plainListenerTargetGroups(lb, resources, idx)
+	for _, r := range tgs {
 		switch strings.ToUpper(stringAttr(r.values["protocol"])) {
 		case "HTTP":
 			return "plaintext"
