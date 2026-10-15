@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.27.2] — 2026-10-15
+
 ### Added
 - Schema: new DFD attribute `provider_deletion_protection` (emitted from a
   later release). Docs: FR-038 rule page.
@@ -463,7 +465,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.27.2...HEAD
+[0.27.2]: https://github.com/fluong/fray/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/fluong/fray/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/fluong/fray/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/fluong/fray/compare/v0.26.0...v0.26.1
