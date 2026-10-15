@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-10-15
+
+### Added
+- Client: FR-028 now evaluates; DB flows carry `authz_scope` from
+  `rds-db:connect` / `rds-data` grants (AWS) and Cloud SQL project IAM
+  bindings including IAM Conditions (GCP). Note: unconditional project-level
+  `roles/cloudsql.client` bindings are common and will report FR-028 open
+  (medium); add an IAM Condition on the instance to scope them.
+- DB flows are now detected for plain (non-module) security-group wiring and
+  for several callers sharing a database; previously only module-based
+  single-caller paths were linked. Expect new findings on database flows
+  (FR-028, FR-035, FR-026) where they apply.
+
+### Fixed
+- RDS for PostgreSQL 15+ with the default parameter group now reports
+  `tls_enforced=true` (FR-031 mitigated instead of unverified).
+
 ## [0.30.0] — 2026-10-15
 
 ### Added
@@ -515,7 +532,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/fluong/fray/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/fluong/fray/compare/v0.29.1...v0.30.0
 [0.29.1]: https://github.com/fluong/fray/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/fluong/fray/compare/v0.28.2...v0.29.0
