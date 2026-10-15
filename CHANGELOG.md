@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- Client: documented `tls_enforced` engine defaults for Aurora PostgreSQL /
+  MySQL, MariaDB, and MySQL when the effective parameter group is the engine
+  default (B-03).
+
 ## [0.28.0] — 2026-10-15
 
 ### Added

@@ -27,15 +27,8 @@ const maxParamGroupDepth = 3
 // 1/ON/on/true → true; 0/OFF/off/false → false.
 //
 // When the parameter is unset in a custom group, or there is no custom group
-// (absent name or default.*):
-//
-//	postgres on aws_db_instance with major version >= 15 → true; major <= 14 → false.
-//	// Source: https://docs.aws.amazon.com/AmazonRDS/Latest/UserGuide/PostgreSQL.Concepts.General.SSL.html
-//	// "The rds.force_ssl parameter default value is 1 (on) for RDS for
-//	// PostgreSQL version 15 and later. For all other RDS for PostgreSQL major
-//	// versions 14 and older, the default value of this parameter is 0 (off)."
-//
-// Any other engine, Aurora, or unparseable engine_version → omit.
+// (absent name or default.*), engineTLSDefault applies (documented defaults
+// only; see that function). Unparseable/unknown engine_version → omit.
 func dbTLSEnforced(r planResource, resources []planResource, idx configIndex) (enforced bool, known bool) {
 	engine, _ := r.values["engine"].(string)
 	engine = strings.ToLower(strings.TrimSpace(engine))
@@ -592,22 +585,69 @@ func parseTLSParamValue(v string) (enforced bool, known bool) {
 	}
 }
 
+// engineTLSDefault returns the provider's documented default for
+// rds.force_ssl / require_secure_transport when the effective parameter group
+// is the engine default (or no custom group is in the plan). Documented OFF
+// is emitted as false (known), matching postgres major ≤14 — not omitted.
+//
+// Sources (cite in branches below):
+//
+//	postgres (aws_db_instance):
+//	https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.SSL.html
+//	aurora-postgresql (aws_rds_cluster):
+//	https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraPostgreSQL.Security.html
+//	aurora-mysql (aws_rds_cluster):
+//	https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraMySQL.Upgrade-v3-v84-security.html
+//	mariadb (aws_db_instance):
+//	https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/mariadb-ssl-connections.require-ssl.html
+//	mysql (aws_db_instance):
+//	https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/mysql-ssl-connections.require-ssl.html
 func engineTLSDefault(engine, version, typ string) (enforced bool, known bool) {
-	// Aurora and non-postgres engines have no documented default we rely on.
-	if typ != "aws_db_instance" || engine != "postgres" {
+	switch {
+	case typ == "aws_db_instance" && engine == "postgres":
+		// Major ≥15 → ON (1); ≤14 → OFF (0). Unparseable → omit.
+		major, ok := engineMajor(version)
+		if !ok {
+			return false, false
+		}
+		if major >= 15 {
+			return true, true
+		}
+		return false, true
+
+	case typ == "aws_rds_cluster" && engine == "aurora-postgresql":
+		// Major ≥17 → ON; ≤16 → OFF. Unparseable → omit.
+		major, ok := engineMajor(version)
+		if !ok {
+			return false, false
+		}
+		if major >= 17 {
+			return true, true
+		}
+		return false, true
+
+	case typ == "aws_rds_cluster" && engine == "aurora-mysql":
+		// Aurora MySQL 8.4 → ON; Aurora MySQL v3 (8.0-compatible) → omit
+		// (no documented default we rely on).
+		return auroraMySQLTLSDefault(version)
+
+	case typ == "aws_db_instance" && engine == "mariadb":
+		// ≥11.8 → ON; 10.5–11.4 → OFF; <10.5 → omit (parameter unsupported);
+		// 11.5–11.7 (between documented bands) → omit.
+		return mariadbTLSDefault(version)
+
+	case typ == "aws_db_instance" && engine == "mysql":
+		// Documented default OFF for require_secure_transport.
+		return false, true
+
+	default:
 		return false, false
 	}
-	major, ok := postgresMajor(version)
-	if !ok {
-		return false, false
-	}
-	if major >= 15 {
-		return true, true
-	}
-	return false, true
 }
 
-func postgresMajor(version string) (int, bool) {
+// engineMajor parses the leading integer major from an engine_version string
+// (e.g. "16.3", "8.0.mysql_aurora.3.04.1" → 8).
+func engineMajor(version string) (int, bool) {
 	version = strings.TrimSpace(version)
 	if version == "" {
 		return 0, false
@@ -621,4 +661,66 @@ func postgresMajor(version string) (int, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// engineMajorMinor parses leading major.minor (e.g. "11.8.2" → 11, 8).
+func engineMajorMinor(version string) (major, minor int, ok bool) {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return 0, 0, false
+	}
+	// Strip trailing vendor suffixes after a second-level segment when needed
+	// (e.g. "8.0.mysql_aurora.3.04.1" → major=8, minor=0).
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	maj, err1 := strconv.Atoi(parts[0])
+	minStr := parts[1]
+	// minor may be non-numeric in odd strings; take leading digits only
+	j := 0
+	for j < len(minStr) && minStr[j] >= '0' && minStr[j] <= '9' {
+		j++
+	}
+	if j == 0 {
+		return 0, 0, false
+	}
+	min, err2 := strconv.Atoi(minStr[:j])
+	if err1 != nil || err2 != nil || maj <= 0 {
+		return 0, 0, false
+	}
+	return maj, min, true
+}
+
+func auroraMySQLTLSDefault(version string) (enforced bool, known bool) {
+	maj, min, ok := engineMajorMinor(version)
+	if !ok {
+		return false, false
+	}
+	if maj == 8 && min == 4 {
+		return true, true
+	}
+	// 8.0-compatible (Aurora MySQL v3) and anything else → omit.
+	return false, false
+}
+
+func mariadbTLSDefault(version string) (enforced bool, known bool) {
+	maj, min, ok := engineMajorMinor(version)
+	if !ok {
+		return false, false
+	}
+	// ≥11.8 → ON.
+	if maj > 11 || (maj == 11 && min >= 8) {
+		return true, true
+	}
+	// 11.5–11.7 sit between documented bands → omit.
+	if maj == 11 && min >= 5 {
+		return false, false
+	}
+	// 10.5–11.4 → OFF.
+	if maj == 11 || (maj == 10 && min >= 5) {
+		return false, true
+	}
+	// <10.5 → omit (parameter unsupported).
+	return false, false
 }
