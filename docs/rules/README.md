@@ -23,6 +23,8 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-026](FR-026.md) | Traffic that crosses a trust boundary is encrypted | medium | Information disclosure | AWS, Google Cloud |  |
 | [FR-030](FR-030.md) | Relational database is encrypted at rest | high | Information disclosure | AWS, Google Cloud | 2026-10-11 |
 | [FR-031](FR-031.md) | Database requires TLS for client connections | medium | Information disclosure | AWS, Google Cloud | 2026-10-12 |
+| [FR-035](FR-035.md) | Traffic from internet-reachable compute to a datastore is encrypted | high | Information disclosure | AWS, Google Cloud | 2026-10-15 |
+| [FR-036](FR-036.md) | Object storage is encrypted with a customer-managed key | medium | Information disclosure | AWS, Google Cloud | 2026-10-15 |
 
 ## Identity
 
