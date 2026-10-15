@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Schema: new DFD attribute `provider_deletion_protection` (emitted from a
+  later release). Docs: FR-038 rule page.
+
 ## [0.27.1] — 2026-10-14
 
 ### Changed

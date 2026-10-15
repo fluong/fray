@@ -52,6 +52,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-012](FR-012.md) | Object storage cannot be destroyed by the tool | medium | Tampering, Denial of service | AWS, Google Cloud, Cloudflare |  |
 | [FR-014](FR-014.md) | Object storage keeps prior versions | medium | Tampering, Denial of service | AWS, Google Cloud, Cloudflare |  |
 | [FR-033](FR-033.md) | Relational database cannot be destroyed by the tool | medium | Tampering, Denial of service | AWS, Google Cloud | 2026-10-11 |
+| [FR-038](FR-038.md) | Relational database is protected from console and API deletion | medium | Tampering, Denial of service | AWS, Google Cloud | 2026-10-15 |
 
 ## Supply chain
 
