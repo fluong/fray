@@ -598,6 +598,10 @@
         "deletion_protection": {
           "type": "boolean"
         },
+        "provider_deletion_protection": {
+          "type": "boolean",
+          "description": "true when the cloud provider refuses console/API deletion (RDS/Aurora deletion_protection, Cloud SQL settings.deletion_protection_enabled); not set from lifecycle.prevent_destroy or Cloud SQL's Terraform-only deletion_protection argument."
+        },
         "region": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"

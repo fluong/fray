@@ -327,6 +327,7 @@
         "attributes.public_access_blocked",
         "attributes.encrypted_at_rest",
         "attributes.deletion_protection",
+        "attributes.provider_deletion_protection",
         "attributes.region",
         "attributes.max_instances",
         "attributes.image_pinned_by_digest",

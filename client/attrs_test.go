@@ -42,7 +42,7 @@ func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 func TestAllowedAttributesMatchSchemaAndCode(t *testing.T) {
 	// Attributes accepted by the server before the client emits them (server-first).
 	// Remove from this list in the client change that adds them to the allow-list.
-	pendingSchemaOnly := []string{}
+	pendingSchemaOnly := []string{"provider_deletion_protection"}
 
 	schemaKeys := loadSchemaAttributeKeys(t)
 	allow := AllowedAttributeKeys()
