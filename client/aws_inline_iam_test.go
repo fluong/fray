@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const demoDFDSHA = "0445a0fae7db111c28918be57bb53124d4df048c1ebd4a039865dcc445ecf14b"
+const demoDFDSHA = "9026da862cda65efa002de9085c910a0eadb6366f5077df43931346e0c48a765"
 
 // Distinctive values for no-leak checks (must never appear on the wire DFD).
 const (

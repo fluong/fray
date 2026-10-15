@@ -21,6 +21,7 @@
       "provider": "aws",
       "attributes": {
         "acls_disabled": true,
+        "customer_managed_key": false,
         "deletion_protection": false,
         "encrypted_at_rest": true,
         "public": true,

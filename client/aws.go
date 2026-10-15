@@ -225,6 +225,9 @@ func awsBucketElement(r planResource, resources []planResource, idx configIndex,
 			attrs["encrypted_at_rest"] = true
 		}
 	}
+	if cmk, ok := customerManagedKey(r, resources, idx); ok {
+		attrs["customer_managed_key"] = cmk
+	}
 	if locked, known := awsObjectLock(r, resources, idx); known {
 		attrs["object_lock"] = locked
 	} else if reason := awsObjectLockAbsentReason(r, resources, idx); reason != "" {

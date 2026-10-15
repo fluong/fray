@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Client: emit `customer_managed_key` for object storage (enables FR-036).
+  FR-035 also evaluates on this Action version.
+
 ## [0.28.2] — 2026-10-15
 
 ### Added

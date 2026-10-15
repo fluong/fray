@@ -63,11 +63,14 @@ var ignoredTypes = map[string]bool{
 	"aws_route":                                          true,
 	"aws_route_table":                                    true,
 	"aws_route_table_association":                        true,
+	"aws_kms_alias":                                      true,
+	"aws_kms_key":                                        true,
 	"aws_s3_bucket_logging":                              true,
 	"aws_s3_bucket_ownership_controls":                   true,
 	"aws_s3_bucket_public_access_block":                  true,
 	"aws_s3_bucket_server_side_encryption_configuration": true,
 	"aws_s3_bucket_versioning":                           true,
+	"google_kms_crypto_key":                              true,
 	"aws_secretsmanager_secret_rotation":                 true,
 	"aws_secretsmanager_secret_version":                  true,
 	"aws_ec2_managed_prefix_list":                        true,
@@ -256,7 +259,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 		add(secretElement(r, secretAudit, lifecycle.protected(r.address)))
 	}
 	for _, r := range gcs {
-		add(gcsElement(r, storageAudit, lifecycle.protected(r.address)))
+		add(gcsElement(r, storageAudit, lifecycle.protected(r.address), idx))
 	}
 	for _, r := range r2 {
 		add(r2Element(r, resources, idx, lifecycle.protected(r.address)))
@@ -542,7 +545,7 @@ func secretElement(r planResource, audit *bool, prevent bool) *Element {
 	}
 }
 
-func gcsElement(r planResource, audit *bool, prevent bool) *Element {
+func gcsElement(r planResource, audit *bool, prevent bool, idx configIndex) *Element {
 	name, _ := r.values["name"].(string)
 	attrs := map[string]any{}
 	if audit != nil {
@@ -562,6 +565,9 @@ func gcsElement(r planResource, audit *bool, prevent bool) *Element {
 		attrs["object_lock"] = locked
 	}
 	setObjectDeletion(attrs, r.values, prevent)
+	if cmk, ok := gcsCustomerManagedKey(r, idx); ok {
+		attrs["customer_managed_key"] = cmk
+	}
 	return &Element{
 		Name: DisplayName(r.address, name, "object_storage"), Type: "datastore", Kind: "object_storage", Provider: "gcp",
 		Provenance: "iac",
