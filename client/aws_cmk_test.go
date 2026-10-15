@@ -66,6 +66,21 @@ func TestCustomerManagedKeyAWSTable(t *testing.T) {
 			want: want{false, true},
 		},
 		{
+			// Coverage shape: plain aws_s3_bucket, provider v4+ marks the
+			// Optional+Computed inline SSE attribute after_unknown even when
+			// the user never wrote the block → treat as SSE-S3 default.
+			name: "plain bucket, computed after_unknown inline SSE → false",
+			build: func() (planResource, []planResource, configIndex) {
+				b := planResource{
+					typ: "aws_s3_bucket", address: "aws_s3_bucket.uploads",
+					values:       map[string]any{"bucket": "uploads"},
+					afterUnknown: map[string]any{"server_side_encryption_configuration": true},
+				}
+				return b, []planResource{b}, configIndex{resources: map[string]exprSet{}, calls: map[string]exprSet{}}
+			},
+			want: want{false, true},
+		},
+		{
 			name: "sibling present, sse_algorithm after_unknown → omit",
 			build: func() (planResource, []planResource, configIndex) {
 				sib, idx := sibling(
@@ -100,6 +115,8 @@ func TestCustomerManagedKeyAWSTable(t *testing.T) {
 			want: want{false, false},
 		},
 		{
+			// User wrote the legacy inline block (config expression present);
+			// algorithm unreadable → omit. after_unknown alone is not enough.
 			name: "legacy inline present, sse_algorithm after_unknown → omit",
 			build: func() (planResource, []planResource, configIndex) {
 				b := planResource{
@@ -122,7 +139,22 @@ func TestCustomerManagedKeyAWSTable(t *testing.T) {
 						}},
 					},
 				}
-				return b, []planResource{b}, configIndex{resources: map[string]exprSet{}, calls: map[string]exprSet{}}
+				idx := configIndex{
+					resources: map[string]exprSet{
+						b.address: {
+							raw: map[string]any{
+								"server_side_encryption_configuration": map[string]any{
+									"references": []any{"var.sse_algo"},
+								},
+							},
+							refs: map[string][]string{
+								"server_side_encryption_configuration": {"var.sse_algo"},
+							},
+						},
+					},
+					calls: map[string]exprSet{},
+				}
+				return b, []planResource{b}, idx
 			},
 			want: want{false, false},
 		},
@@ -462,6 +494,75 @@ func TestCustomerManagedKeyGCPTable(t *testing.T) {
 				t.Fatalf("got val=%v known=%v want val=%v known=%v", got, known, tc.want, tc.known)
 			}
 		})
+	}
+}
+
+// TestCustomerManagedKeyPlainBucketParse is the coverage-repo shape under AWS
+// provider v5: a plain aws_s3_bucket with no SSE sibling and no inline SSE in
+// configuration, but after_unknown.server_side_encryption_configuration=true
+// (Optional+Computed). Expect customer_managed_key=false, not omitted.
+func TestCustomerManagedKeyPlainBucketParse(t *testing.T) {
+	plan, err := json.Marshal(map[string]any{
+		"format_version": "1.2",
+		"resource_changes": []any{
+			map[string]any{
+				"address": "aws_s3_bucket.uploads", "mode": "managed", "type": "aws_s3_bucket", "name": "uploads",
+				"change": map[string]any{
+					"actions": []any{"create"},
+					"after": map[string]any{
+						"bucket":        "uploads",
+						"force_destroy": true,
+					},
+					"after_unknown": map[string]any{
+						"id":     true,
+						"arn":    true,
+						"bucket": true,
+						"server_side_encryption_configuration": true,
+					},
+				},
+			},
+		},
+		"configuration": map[string]any{
+			"root_module": map[string]any{
+				"resources": []any{
+					map[string]any{
+						"address": "aws_s3_bucket.uploads", "type": "aws_s3_bucket", "name": "uploads", "mode": "managed",
+						"expressions": map[string]any{
+							"bucket":        map[string]any{"constant_value": "uploads"},
+							"force_destroy": map[string]any{"constant_value": true},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "fray.yaml", Source{
+		Repo: "example/coverage", Commit: "abc1234", Tool: "terraform", Fidelity: "plan",
+	}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bucket *Element
+	for i := range doc.Elements {
+		el := &doc.Elements[i]
+		if el.Kind != "object_storage" {
+			continue
+		}
+		for _, addr := range el.Evidence.Addresses {
+			if addr == "aws_s3_bucket.uploads" {
+				bucket = el
+			}
+		}
+	}
+	if bucket == nil {
+		t.Fatal("uploads bucket element missing")
+	}
+	got, ok := bucket.Attributes["customer_managed_key"].(bool)
+	if !ok || got {
+		t.Fatalf("customer_managed_key=%#v want false", bucket.Attributes["customer_managed_key"])
 	}
 }
 

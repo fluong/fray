@@ -56,7 +56,7 @@ func resolveBucketSSE(bucket planResource, resources []planResource, idx configI
 		// Sibling exists but algorithm unreadable — do not fall through.
 		return "", "", keyKnownAbsent, nil, false, true
 	}
-	if hasInlineSSE(bucket) {
+	if hasInlineSSE(bucket, idx) {
 		algo, keyID, keyState, ok = sseDefaultFromResource(bucket)
 		if ok {
 			refs = sseKeyRefs(bucket.address, idx)
@@ -70,26 +70,33 @@ func resolveBucketSSE(bucket planResource, resources []planResource, idx configI
 	return "", "", keyKnownAbsent, nil, false, false
 }
 
-// hasInlineSSE reports a legacy server_side_encryption_configuration block on
-// the bucket: non-empty in after, or present in after_unknown (bool true or a
-// nested structure). Absent / empty list with no after_unknown → false.
-func hasInlineSSE(r planResource) bool {
-	if r.afterUnknown != nil {
-		if v, ok := r.afterUnknown["server_side_encryption_configuration"]; ok {
-			if b, isBool := v.(bool); isBool {
-				if b {
-					return true
-				}
-			} else if v != nil {
-				return true
-			}
-		}
-	}
+// hasInlineSSE reports a user-written legacy server_side_encryption_configuration
+// block on the bucket. Presence is:
+//   - (a) the attribute appears in configuration expressions (raw or refs), or
+//   - (b) after holds a non-empty list.
+// after_unknown alone is ignored: since AWS provider v4 the attribute is
+// Optional+Computed, so new buckets mark it unknown even when the user never
+// wrote the block (the computed default is SSE-S3).
+func hasInlineSSE(r planResource, idx configIndex) bool {
 	cfg, has := r.values["server_side_encryption_configuration"]
-	if !has {
+	if has && len(asList(cfg)) > 0 {
+		return true
+	}
+	key, ok := resourceKey(r.address)
+	if !ok {
 		return false
 	}
-	return len(asList(cfg)) > 0
+	set, found := idx.resources[key]
+	if !found {
+		return false
+	}
+	if _, ok := set.raw["server_side_encryption_configuration"]; ok {
+		return true
+	}
+	if len(set.refs["server_side_encryption_configuration"]) > 0 {
+		return true
+	}
+	return false
 }
 
 // sseDefaultFromResource reads apply_server_side_encryption_by_default from a
