@@ -2,10 +2,19 @@
 
 ## [Unreleased]
 
+## [0.28.1] — 2026-10-15
+
 ### Added
 - Client: documented `tls_enforced` engine defaults for Aurora PostgreSQL /
   MySQL, MariaDB, and MySQL when the effective parameter group is the engine
-  default (B-03).
+  default (B-03). Databases on RDS MySQL, RDS MariaDB 11.4 and earlier, and
+  Aurora PostgreSQL 16 and earlier that use the engine's default parameter
+  group now report TLS as not enforced (previously unverified); expect these
+  as new open findings after upgrading.
+
+### Docs
+- FR-014: note that Cloudflare R2 has no object versioning, so the rule is
+  always unverified for R2 buckets.
 
 ## [0.28.0] — 2026-10-15
 
@@ -476,7 +485,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.28.1...HEAD
+[0.28.1]: https://github.com/fluong/fray/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/fluong/fray/compare/v0.27.2...v0.28.0
 [0.27.2]: https://github.com/fluong/fray/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/fluong/fray/compare/v0.27.0...v0.27.1
