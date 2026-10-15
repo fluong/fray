@@ -35,6 +35,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-007](FR-007.md) | Secret use is scoped to one resource | medium | Elevation of privilege | AWS, Google Cloud |  |
 | [FR-009](FR-009.md) | Secrets are rotated | low | Information disclosure | AWS, Google Cloud |  |
 | [FR-024](FR-024.md) | Object storage does not use ACLs | medium | Elevation of privilege | AWS, Google Cloud, Cloudflare |  |
+| [FR-028](FR-028.md) | Database access is scoped to one instance | medium | Elevation of privilege | AWS, Google Cloud | 2026-10-15 |
 | [FR-032](FR-032.md) | Object storage access is scoped to one resource | medium | Elevation of privilege | AWS, Google Cloud, Cloudflare | 2026-10-11 |
 
 ## Logging
