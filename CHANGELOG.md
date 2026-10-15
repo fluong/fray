@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.29.1] — 2026-10-15
+
+### Fixed
+- Client: plain S3 buckets without an SSE configuration now report
+  `customer_managed_key=false` instead of omitting it (AWS provider v4+
+  marks the legacy inline attribute Optional+Computed).
+
 ## [0.29.0] — 2026-10-15
 
 ### Added
@@ -500,7 +507,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.29.1...HEAD
+[0.29.1]: https://github.com/fluong/fray/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/fluong/fray/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/fluong/fray/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/fluong/fray/compare/v0.28.0...v0.28.1
