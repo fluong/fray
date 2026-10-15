@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fray:rule:v1",
   "title": "Fray rule",
-  "description": "A rule selects elements or flows, then checks a pass condition. when and pass are conjunctions at the top level: every condition must hold. Nested any (disjunction) and all (conjunction) combine child conditions via conds. Operators are equals, in, exists, not, any, all, lte, gte, and contains. A when condition that reads an absent attribute does not match, so the rule emits nothing. Once when matches, pass true is mitigated and pass false is open. equals, in, lte, and gte yield unverified when the attribute is absent; not of an unverified read is unverified. any is true if any child is true, else unverified if any child is unverified, else false. all is false if any child is false, else unverified if any child is unverified, else true. exists is true or false, including when the attribute is absent. A false condition wins over an unverified sibling. Unverified does not gate CI. boundary equals kind/direction and matches one crossing of the flow. The evaluator rejects a field that does not apply to target.",
+  "description": "A rule selects elements or flows, then checks a pass condition. when and pass are conjunctions at the top level: every condition must hold. Nested any (disjunction), all (conjunction), and any_prefer_false combine child conditions via conds (same depth limit). Operators are equals, in, exists, not, any, all, any_prefer_false, lte, gte, and contains. A when condition that reads an absent attribute does not match, so the rule emits nothing. Once when matches, pass true is mitigated and pass false is open. equals, in, lte, and gte yield unverified when the attribute is absent; not of an unverified read is unverified. any is true if any child is true, else unverified if any child is unverified, else false. any_prefer_false is true if any child is true; else false if any child is false; else unverified. all is false if any child is false, else unverified if any child is unverified, else true. exists is true or false, including when the attribute is absent. A false condition wins over an unverified sibling. Unverified does not gate CI. boundary equals kind/direction and matches one crossing of the flow. The evaluator rejects a field that does not apply to target.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "title", "threat", "explanation", "stride", "severity", "platforms", "target", "when", "pass", "rationale", "mitigation", "evaluation"],
@@ -168,7 +168,7 @@
       "additionalProperties": false,
       "required": ["op"],
       "properties": {
-        "op": { "enum": ["equals", "in", "exists", "not", "any", "all", "lte", "gte", "contains"] },
+        "op": { "enum": ["equals", "in", "exists", "not", "any", "all", "any_prefer_false", "lte", "gte", "contains"] },
         "field": { "$ref": "#/$defs/field" },
         "value": {
           "anyOf": [
@@ -208,7 +208,7 @@
         },
         {
           "if": {
-            "properties": { "op": { "enum": ["any", "all"] } },
+            "properties": { "op": { "enum": ["any", "all", "any_prefer_false"] } },
             "required": ["op"]
           },
           "then": {
@@ -337,6 +337,7 @@
         "attributes.object_lock",
         "attributes.network_restricted",
         "attributes.tls_enforced",
+        "attributes.customer_managed_key",
         "data_class",
         "transport",
         "authz_scope",
@@ -346,14 +347,17 @@
         "from.kind",
         "from.provider",
         "from.purpose",
+        "from.internet_reachable",
         "to.type",
         "to.kind",
         "to.provider",
         "to.purpose",
+        "to.internet_reachable",
         "to.attributes.object_lock",
         "to.attributes.versioning",
         "to.attributes.public_access_blocked",
         "to.attributes.acls_disabled",
+        "to.attributes.tls_enforced",
         "boundary",
         "internet_reachable",
         "inbound_writer"

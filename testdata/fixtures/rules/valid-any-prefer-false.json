@@ -1,0 +1,36 @@
+{
+  "id": "FR-035",
+  "title": "Traffic from internet-reachable compute to a datastore is encrypted",
+  "threat": "Internet-reachable process talks to a datastore without TLS on the path or at the datastore",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["information_disclosure"],
+  "severity": "high",
+  "platforms": ["aws", "gcp"],
+  "category": "encryption",
+  "target": "flow",
+  "when": [
+    { "op": "equals", "field": "from.internet_reachable", "value": true },
+    { "op": "equals", "field": "to.internet_reachable", "value": false },
+    { "op": "in", "field": "from.kind", "value": ["container_service", "virtual_machine"] },
+    { "op": "in", "field": "to.kind", "value": ["relational_db", "object_storage"] }
+  ],
+  "pass": [
+    {
+      "op": "any_prefer_false",
+      "conds": [
+        { "op": "equals", "field": "transport", "value": "tls" },
+        { "op": "equals", "field": "to.attributes.tls_enforced", "value": true },
+        { "op": "equals", "field": "attributes.customer_managed_key", "value": true }
+      ]
+    }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  },
+  "introduced": "2026-10-15",
+  "min_action": "v0.29.0"
+}

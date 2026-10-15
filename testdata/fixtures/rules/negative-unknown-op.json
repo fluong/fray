@@ -1,0 +1,24 @@
+{
+  "id": "FR-998",
+  "title": "Synthetic rule with unknown operator",
+  "threat": "Synthetic threat for schema fixtures",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["spoofing"],
+  "severity": "low",
+  "platforms": ["aws"],
+  "category": "exposure",
+  "target": "element",
+  "when": [
+    { "op": "equals", "field": "kind", "value": "process" }
+  ],
+  "pass": [
+    { "op": "totally_fake_op", "field": "kind", "value": "process" }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  }
+}

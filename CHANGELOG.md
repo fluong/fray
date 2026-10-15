@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- Schema: rule fields `from.`/`to.internet_reachable`,
+  `to.attributes.tls_enforced`, `attributes.customer_managed_key`; rule
+  operator `any_prefer_false`; DFD attribute `customer_managed_key`
+  (emitted from a later release).
+  Docs: FR-035, FR-036 rule pages.
+
 ## [0.28.1] — 2026-10-15
 
 ### Added

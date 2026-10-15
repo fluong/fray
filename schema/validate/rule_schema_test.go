@@ -31,15 +31,20 @@ func TestRuleSchemaFixtures(t *testing.T) {
 	}
 	dir := filepath.Join("..", "..", "testdata", "fixtures", "rules")
 
-	t.Run("valid-min-action-catalog", func(t *testing.T) {
-		raw, err := os.ReadFile(filepath.Join(dir, "valid-min-action-catalog.json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := validate.Schema(schema, raw); err != nil {
-			t.Fatalf("want accept: %v", err)
-		}
-	})
+	for _, name := range []string{
+		"valid-min-action-catalog.json",
+		"valid-any-prefer-false.json",
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validate.Schema(schema, raw); err != nil {
+				t.Fatalf("want accept: %v", err)
+			}
+		})
+	}
 
 	negatives := []struct {
 		file string
@@ -49,6 +54,7 @@ func TestRuleSchemaFixtures(t *testing.T) {
 		{"negative-min-action-short.json", "min_action"},
 		{"negative-empty-catalog-text.json", "catalog_text"},
 		{"negative-unknown-remediation-key.json", "additional properties"},
+		{"negative-unknown-op.json", "op"},
 	}
 	for _, tc := range negatives {
 		t.Run(tc.file, func(t *testing.T) {
