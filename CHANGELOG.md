@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-10-15
+
+### Added
+- Client: public ALBs built from plain `aws_lb` / `aws_lb_listener` /
+  `aws_lb_target_group` resources now link to the ECS services attached via
+  `load_balancer`, so those services become internet-reachable (FR-035 and
+  other reachability-based rules may report new findings).
+
 ## [0.29.1] — 2026-10-15
 
 ### Fixed
@@ -507,7 +515,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.29.1...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/fluong/fray/compare/v0.29.1...v0.30.0
 [0.29.1]: https://github.com/fluong/fray/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/fluong/fray/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/fluong/fray/compare/v0.28.1...v0.28.2
