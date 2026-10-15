@@ -71,7 +71,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@4a968ef9d606135c105b6847342d9af687b3d440 # v0.29.1
+      - uses: fluong/fray@35a295cf84cb6c5a841ff8c73b53714bec61e835 # v0.30.0
         with:
           api-url: https://api.getfray.dev
           working-directory: .   # Terraform root (directory with .tf files)
@@ -111,7 +111,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: fluong/fray@4a968ef9d606135c105b6847342d9af687b3d440 # v0.29.1
+      - uses: fluong/fray@35a295cf84cb6c5a841ff8c73b53714bec61e835 # v0.30.0
         with:
           mode: check
           api-url: https://api.getfray.dev

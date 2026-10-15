@@ -10,7 +10,7 @@ ships rules.
 **New here?** → [Getting started](docs/getting-started.md) (shortest path to a
 first green scan). Stuck? → [Troubleshooting](#troubleshooting).
 
-Latest release: **v0.29.1**. `v0.1.0` is retracted (non-public fixtures leaked
+Latest release: **v0.30.0**. `v0.1.0` is retracted (non-public fixtures leaked
 into the module zip; see `go.mod`).
 
 Related:
@@ -79,7 +79,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: fluong/fray@4a968ef9d606135c105b6847342d9af687b3d440 # v0.29.1
+      - uses: fluong/fray@35a295cf84cb6c5a841ff8c73b53714bec61e835 # v0.30.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra   # Terraform root; omit if plans live at repo root
@@ -111,7 +111,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: fluong/fray@4a968ef9d606135c105b6847342d9af687b3d440 # v0.29.1
+      - uses: fluong/fray@35a295cf84cb6c5a841ff8c73b53714bec61e835 # v0.30.0
         with:
           api-url: https://api.getfray.dev
           working-directory: ${{ matrix.dir }}
@@ -271,7 +271,7 @@ jobs:
       # Use the commit SHA of the release tag
       # (git ls-remote https://github.com/fluong/fray refs/tags/vX.Y.Z^{});
       # tags are immutable but SHAs are what Actions guarantees.
-      - uses: fluong/fray@4a968ef9d606135c105b6847342d9af687b3d440 # v0.29.1
+      - uses: fluong/fray@35a295cf84cb6c5a841ff8c73b53714bec61e835 # v0.30.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra
@@ -402,7 +402,7 @@ jobs:
         with:
           name: fray-plan
           path: infra
-      - uses: fluong/fray@4a968ef9d606135c105b6847342d9af687b3d440 # v0.29.1
+      - uses: fluong/fray@35a295cf84cb6c5a841ff8c73b53714bec61e835 # v0.30.0
         with:
           api-url: https://api.getfray.dev
           working-directory: infra
@@ -418,7 +418,7 @@ JSON plan API) and pass that file as `plan-file`. Nested-module
 ## CLI
 
 ```bash
-go install github.com/fluong/fray/cmd/fray@v0.29.1
+go install github.com/fluong/fray/cmd/fray@v0.30.0
 
 export FRAY_REDACTION_KEY="$(openssl rand -hex 32)"
 export FRAY_API_URL=https://api.getfray.dev
