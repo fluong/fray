@@ -25,6 +25,11 @@ func cloudSQLElement(r planResource, prevent bool) *Element {
 	if dp, ok := cloudSQLDeletionProtection(r, prevent); ok {
 		attrs["deletion_protection"] = dp
 	}
+	// Provider console/API flag only (FR-038). Never from Terraform
+	// deletion_protection or prevent_destroy.
+	if pdp, ok := cloudSQLProviderDeletionProtection(r); ok {
+		attrs["provider_deletion_protection"] = pdp
+	}
 	return &Element{
 		Name: DisplayName(r.address, name, "relational_db"), Type: "datastore", Kind: "relational_db", Provider: "gcp",
 		Provenance: "iac",
@@ -127,6 +132,23 @@ func cloudSQLTLSEnforced(r planResource) (enforced bool, known bool) {
 		return false, false
 	}
 	return false, false
+}
+
+// cloudSQLProviderDeletionProtection reads only
+// settings.deletion_protection_enabled (bool). Omit when unknown or absent.
+func cloudSQLProviderDeletionProtection(r planResource) (protected bool, known bool) {
+	if cloudSQLSettingsUnknown(r, "deletion_protection_enabled") {
+		return false, false
+	}
+	settings := cloudSQLSettings(r)
+	if settings == nil {
+		return false, false
+	}
+	v, ok := settings["deletion_protection_enabled"].(bool)
+	if !ok {
+		return false, false
+	}
+	return v, true
 }
 
 // cloudSQLDeletionProtection: true if Terraform deletion_protection,

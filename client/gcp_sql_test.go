@@ -21,9 +21,9 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 				"ipv4_enabled": true,
 			}, nil, true, false),
 			want: map[string]any{
-				"public":             true,
-				"network_restricted": true,
-				"encrypted_at_rest":  true,
+				"public":              true,
+				"network_restricted":  true,
+				"encrypted_at_rest":   true,
 				"deletion_protection": true,
 			},
 			absent: []string{"tls_enforced"},
@@ -123,10 +123,10 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 			r: planResource{
 				typ: "google_sql_database_instance", address: "google_sql_database_instance.db",
 				values: map[string]any{
-					"name":             "db",
-					"database_version": "POSTGRES_15",
-					"region":           "europe-west1",
-					"project":          "demo",
+					"name":                "db",
+					"database_version":    "POSTGRES_15",
+					"region":              "europe-west1",
+					"project":             "demo",
 					"deletion_protection": true,
 					"settings": []any{map[string]any{
 						"ip_configuration": []any{map[string]any{}},
@@ -243,9 +243,9 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 func TestCloudSQLFROutcomes(t *testing.T) {
 	// Per-fixture FR-029 / FR-030 / FR-031 / FR-033 from modelled attributes.
 	type row struct {
-		name                         string
-		r                            planResource
-		prevent                      bool
+		name                       string
+		r                          planResource
+		prevent                    bool
 		fr029, fr030, fr031, fr033 string
 	}
 	rows := []row{
@@ -257,7 +257,7 @@ func TestCloudSQLFROutcomes(t *testing.T) {
 		{
 			name: "public IP, world authorized network",
 			r: cloudSQLRes("db", map[string]any{
-				"ipv4_enabled": true,
+				"ipv4_enabled":        true,
 				"authorized_networks": []any{map[string]any{"value": "0.0.0.0/0"}},
 			}, nil, true, false),
 			fr029: "open", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
@@ -343,19 +343,19 @@ func TestCloudSQLFROutcomes(t *testing.T) {
 			fr029: "unverified", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
-			name:    "deletion: tf true × settings false × no prevent",
-			r:       cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), true, false),
-			fr029:   "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
+			name:  "deletion: tf true × settings false × no prevent",
+			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), true, false),
+			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
-			name:    "deletion: tf false × settings true × no prevent",
-			r:       cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(true), false, false),
-			fr029:   "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
+			name:  "deletion: tf false × settings true × no prevent",
+			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(true), false, false),
+			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
-			name:    "deletion: tf false × settings false × no prevent",
-			r:       cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
-			fr029:   "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "open",
+			name:  "deletion: tf false × settings false × no prevent",
+			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
+			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "open",
 		},
 		{
 			name:    "deletion: tf false × settings false × prevent_destroy",
@@ -423,7 +423,7 @@ func TestCloudSQLFlowsAndDATABASEURL(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertRelational(t, doc, 2, "") // iac + inferred
+		assertRelational(t, doc, 2, "")                             // iac + inferred
 		assertFlowTo(t, doc, "google_cloud_run_v2_service.api", "") // inferred target
 		var inferred, iac int
 		for _, el := range doc.Elements {
@@ -498,6 +498,87 @@ func TestCloudSQLFlowsAndDATABASEURL(t *testing.T) {
 		}
 		assertFlowTo(t, doc, "google_cloud_run_service.api", "google_sql_database_instance.db")
 	})
+}
+
+func TestCloudSQLProviderDeletionProtection(t *testing.T) {
+	cases := []struct {
+		name    string
+		r       planResource
+		prevent bool
+		want    any // bool, or nil to assert omitted
+		fr033   any // expected deletion_protection (bool or nil omitted)
+	}{
+		{
+			name:  "settings true",
+			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(true), false, false),
+			want:  true,
+			fr033: true,
+		},
+		{
+			name:  "settings false",
+			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
+			want:  false,
+			fr033: false,
+		},
+		{
+			name:  "settings absent",
+			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, nil, true, false),
+			want:  nil,
+			fr033: true, // Terraform deletion_protection alone
+		},
+		{
+			name: "settings unknown",
+			r: planResource{
+				typ: "google_sql_database_instance", address: "google_sql_database_instance.db",
+				values: map[string]any{
+					"name": "db", "database_version": "POSTGRES_15",
+					"deletion_protection": true,
+					"settings": []any{map[string]any{
+						"ip_configuration": []any{map[string]any{"ipv4_enabled": false}},
+					}},
+				},
+				afterUnknown: map[string]any{
+					"settings": []any{map[string]any{"deletion_protection_enabled": true}},
+				},
+			},
+			want:  nil,
+			fr033: true, // Terraform flag known true → FR-033 mitigated despite settings unknown
+		},
+		{
+			name:  "top-level true settings false",
+			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), true, false),
+			want:  false,
+			fr033: true,
+		},
+		{
+			name:    "prevent_destroy flag false",
+			r:       cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
+			prevent: true,
+			want:    false,
+			fr033:   true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			el := cloudSQLElement(tc.r, tc.prevent)
+			got, ok := el.Attributes["provider_deletion_protection"]
+			if tc.want == nil {
+				if ok {
+					t.Fatalf("provider_deletion_protection present (%#v), want omitted", got)
+				}
+			} else if !ok || got != tc.want {
+				t.Fatalf("provider_deletion_protection: got %#v (ok=%v) want %#v", got, ok, tc.want)
+			}
+			got033, ok033 := el.Attributes["deletion_protection"]
+			if tc.fr033 == nil {
+				if ok033 {
+					t.Fatalf("deletion_protection present (%#v), want omitted", got033)
+				}
+			} else if !ok033 || got033 != tc.fr033 {
+				t.Fatalf("deletion_protection: got %#v (ok=%v) want %#v", got033, ok033, tc.fr033)
+			}
+		})
+	}
 }
 
 func boolPtr(v bool) *bool { return &v }

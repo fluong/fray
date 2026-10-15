@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const demoDFDSHA = "7a668e7b2563e40a9f025c1d1aecf62b59875499902b00536ea37ab401f0a0d3"
+const demoDFDSHA = "0445a0fae7db111c28918be57bb53124d4df048c1ebd4a039865dcc445ecf14b"
 
 // Distinctive values for no-leak checks (must never appear on the wire DFD).
 const (
@@ -917,7 +917,7 @@ func inlineIAMNoLeakPlan(t *testing.T) string {
 		{
 			"address": "aws_ecs_task_definition.app", "mode": "managed", "type": "aws_ecs_task_definition", "name": "app",
 			"change": map[string]any{"after": map[string]any{
-				"family": "app",
+				"family":                "app",
 				"container_definitions": `[{"name":"app","image":"app:1","secrets":[{"name":"DB","valueFrom":"arn:aws:secretsmanager:eu-west-1:111122223333:secret:B35-LEAK-SECRET"}]}]`,
 			}},
 		},
@@ -928,7 +928,7 @@ func inlineIAMNoLeakPlan(t *testing.T) string {
 		{
 			"address": "aws_iam_role.task", "mode": "managed", "type": "aws_iam_role", "name": "task",
 			"change": map[string]any{"after": map[string]any{
-				"name": "task",
+				"name":          "task",
 				"inline_policy": []any{map[string]any{"name": leakPolicyName, "policy": policy}},
 			}},
 		},
@@ -1004,10 +1004,10 @@ func inlineIAMNoLeakPlan(t *testing.T) string {
 		},
 	}
 	plan := map[string]any{
-		"format_version":    "1.2",
-		"resource_changes":  resources,
-		"configuration":     map[string]any{"root_module": root},
-		"planned_values":    map[string]any{"root_module": map[string]any{"resources": []any{}}},
+		"format_version":   "1.2",
+		"resource_changes": resources,
+		"configuration":    map[string]any{"root_module": root},
+		"planned_values":   map[string]any{"root_module": map[string]any{"resources": []any{}}},
 	}
 	b, err := json.Marshal(plan)
 	if err != nil {

@@ -169,6 +169,12 @@ func awsDBElement(r planResource, resources, data []planResource, idx configInde
 	} else if v, ok := r.values["deletion_protection"].(bool); ok {
 		attrs["deletion_protection"] = v
 	}
+	// Provider console/API flag only (FR-038). Never from prevent_destroy.
+	if !attrUnknownMap(r.afterUnknown, "deletion_protection") {
+		if v, ok := r.values["deletion_protection"].(bool); ok {
+			attrs["provider_deletion_protection"] = v
+		}
+	}
 	if restricted, ok := dbNetworkRestricted(r, resources, data, idx); ok {
 		attrs["network_restricted"] = restricted
 	}

@@ -78,6 +78,7 @@
         "deletion_protection": true,
         "encrypted_at_rest": true,
         "network_restricted": true,
+        "provider_deletion_protection": true,
         "public": false,
         "tls_enforced": true
       }

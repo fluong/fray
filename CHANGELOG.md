@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Client: emit `provider_deletion_protection` for RDS/Aurora and Cloud SQL
+  (enables FR-038).
+
 ## [0.27.2] — 2026-10-15
 
 ### Added

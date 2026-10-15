@@ -64,3 +64,59 @@ func TestAWSDBElementDeletionProtection(t *testing.T) {
 		t.Fatalf("prevent_destroy wins over false: got %#v", el.Attributes["deletion_protection"])
 	}
 }
+
+func TestAWSDBElementProviderDeletionProtection(t *testing.T) {
+	idx := configIndex{}
+	for _, typ := range []string{"aws_db_instance", "aws_rds_cluster"} {
+		addr := typ + ".a"
+		t.Run(typ+"/true", func(t *testing.T) {
+			el := awsDBElement(planResource{
+				typ: typ, address: addr,
+				values: map[string]any{"identifier": "app", "deletion_protection": true},
+			}, nil, nil, idx, false)
+			if el.Attributes["provider_deletion_protection"] != true {
+				t.Fatalf("got %#v", el.Attributes["provider_deletion_protection"])
+			}
+		})
+		t.Run(typ+"/false", func(t *testing.T) {
+			el := awsDBElement(planResource{
+				typ: typ, address: addr,
+				values: map[string]any{"identifier": "app", "deletion_protection": false},
+			}, nil, nil, idx, false)
+			if el.Attributes["provider_deletion_protection"] != false {
+				t.Fatalf("got %#v", el.Attributes["provider_deletion_protection"])
+			}
+		})
+		t.Run(typ+"/unknown", func(t *testing.T) {
+			el := awsDBElement(planResource{
+				typ: typ, address: addr,
+				values:       map[string]any{"identifier": "app"},
+				afterUnknown: map[string]any{"deletion_protection": true},
+			}, nil, nil, idx, false)
+			if _, ok := el.Attributes["provider_deletion_protection"]; ok {
+				t.Fatalf("got %#v want omitted", el.Attributes["provider_deletion_protection"])
+			}
+		})
+		t.Run(typ+"/absent", func(t *testing.T) {
+			el := awsDBElement(planResource{
+				typ: typ, address: addr,
+				values: map[string]any{"identifier": "app"},
+			}, nil, nil, idx, false)
+			if _, ok := el.Attributes["provider_deletion_protection"]; ok {
+				t.Fatalf("got %#v want omitted", el.Attributes["provider_deletion_protection"])
+			}
+		})
+		t.Run(typ+"/prevent_destroy_flag_false", func(t *testing.T) {
+			el := awsDBElement(planResource{
+				typ: typ, address: addr,
+				values: map[string]any{"identifier": "app", "deletion_protection": false},
+			}, nil, nil, idx, true)
+			if el.Attributes["deletion_protection"] != true {
+				t.Fatalf("FR-033 deletion_protection: got %#v", el.Attributes["deletion_protection"])
+			}
+			if el.Attributes["provider_deletion_protection"] != false {
+				t.Fatalf("provider_deletion_protection must stay false: got %#v", el.Attributes["provider_deletion_protection"])
+			}
+		})
+	}
+}
