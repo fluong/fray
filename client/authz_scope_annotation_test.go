@@ -329,8 +329,10 @@ func secretUnknownDocsPlan(t *testing.T) string {
 			},
 			map[string]any{
 				"address": "aws_iam_role.exec", "mode": "managed", "type": "aws_iam_role", "name": "exec",
-				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "exec"},
-					"after_unknown": map[string]any{"managed_policy_arns": true}},
+				"change": map[string]any{
+					"actions": []any{"create"}, "after": map[string]any{"name": "exec"},
+					"after_unknown": map[string]any{"managed_policy_arns": true},
+				},
 			},
 			map[string]any{
 				"address": "aws_secretsmanager_secret.db", "mode": "managed", "type": "aws_secretsmanager_secret", "name": "db",
@@ -371,8 +373,10 @@ func bucketUnknownDocsPlan(t *testing.T) string {
 			},
 			map[string]any{
 				"address": "aws_iam_role.task", "mode": "managed", "type": "aws_iam_role", "name": "task",
-				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "task"},
-					"after_unknown": map[string]any{"managed_policy_arns": true}},
+				"change": map[string]any{
+					"actions": []any{"create"}, "after": map[string]any{"name": "task"},
+					"after_unknown": map[string]any{"managed_policy_arns": true},
+				},
 			},
 			map[string]any{
 				"address": "aws_iam_role_policy.s3", "mode": "managed", "type": "aws_iam_role_policy", "name": "s3",

@@ -24,9 +24,9 @@ func writeCheckFixture(t *testing.T, dir string) options {
 	}
 	t.Setenv("FRAY_REDACTION_KEY", strings.Repeat("ab", 32))
 	return options{
-		Source: infra,
-		Config: cfg,
-		Remote: "https://api.getfray.dev",
+		Source:  infra,
+		Config:  cfg,
+		Remote:  "https://api.getfray.dev",
 		Waivers: filepath.Join(dir, ".fray", "waivers.yml"),
 	}
 }

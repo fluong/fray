@@ -139,8 +139,10 @@ func TestGCPAuditParseRecognition(t *testing.T) {
 		{name: "allServices DATA_READ", auditType: "google_project_iam_audit_config", service: "allServices", logType: "DATA_READ", want: true},
 		{name: "folder-level DATA_READ", auditType: "google_folder_iam_audit_config", service: "secretmanager.googleapis.com", logType: "DATA_READ", want: true},
 		{name: "org-level DATA_READ", auditType: "google_organization_iam_audit_config", service: "secretmanager.googleapis.com", logType: "DATA_READ", want: true},
-		{name: "exempted_members still true", auditType: "google_project_iam_audit_config", service: "secretmanager.googleapis.com", logType: "DATA_READ",
-			extra: map[string]any{"exempted_members": []any{"user:a@example.com"}}, want: true},
+		{
+			name: "exempted_members still true", auditType: "google_project_iam_audit_config", service: "secretmanager.googleapis.com", logType: "DATA_READ",
+			extra: map[string]any{"exempted_members": []any{"user:a@example.com"}}, want: true,
+		},
 		{name: "ADMIN_READ only false", auditType: "google_project_iam_audit_config", service: "secretmanager.googleapis.com", logType: "ADMIN_READ", want: false},
 	}
 	for _, tc := range cases {

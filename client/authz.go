@@ -50,8 +50,8 @@ func effectiveAuthzScope(scopes []string) string {
 }
 
 const (
-	cfR2BucketResourcePrefix  = "com.cloudflare.edge.r2.bucket."
-	cfAccountResourcePrefix   = "com.cloudflare.api.account."
+	cfR2BucketResourcePrefix = "com.cloudflare.edge.r2.bucket."
+	cfAccountResourcePrefix  = "com.cloudflare.api.account."
 )
 
 // r2TokenAuthz derives service→R2 authz from cloudflare_api_token (or

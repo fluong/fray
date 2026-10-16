@@ -22,8 +22,10 @@ const (
 
 const enrollmentMarkerFile = "enrollment.json"
 
-const maxEnrollmentBody = 64 << 10 // 64 KiB
-const maxServerMessageChars = 300
+const (
+	maxEnrollmentBody     = 64 << 10 // 64 KiB
+	maxServerMessageChars = 300
+)
 
 // Fixed Action messages (server message is untrusted and never used alone).
 var enrollmentMessages = map[string]string{

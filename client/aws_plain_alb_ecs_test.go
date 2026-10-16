@@ -58,7 +58,7 @@ func plainALBECSPlan(t *testing.T, o plainALBOpts) string {
 			},
 		}
 		fwdExpr := map[string]any{
-			"type": map[string]any{"constant_value": "forward"},
+			"type":  map[string]any{"constant_value": "forward"},
 			"order": map[string]any{"constant_value": float64(2)},
 		}
 		if o.tgViaVar {
@@ -190,7 +190,7 @@ func plainALBECSPlan(t *testing.T, o plainALBOpts) string {
 
 	if o.ruleForward {
 		ruleActions := []any{map[string]any{
-			"type": "forward",
+			"type":             "forward",
 			"target_group_arn": "arn:aws:elasticloadbalancing:us-east-1:1:targetgroup/app/x",
 		}}
 		ruleExprActions := []any{map[string]any{
@@ -407,7 +407,7 @@ func TestPlainALBTwoServicesPerTGTransport(t *testing.T) {
 			"change": map[string]any{"after": map[string]any{
 				"port": float64(443), "protocol": "HTTPS",
 				"default_action": []any{map[string]any{
-					"type": "fixed-response",
+					"type":           "fixed-response",
 					"fixed_response": []any{map[string]any{"content_type": "text/plain", "status_code": "404"}},
 				}},
 			}},

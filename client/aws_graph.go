@@ -544,11 +544,8 @@ func advancedARNIncludesBucket(equals, starts, notStarts, notEquals []string, bu
 	}
 	prefix := "arn:aws:s3:::" + name + "/"
 	arn := "arn:aws:s3:::" + name
-	included := false
-	if len(equals) == 0 && len(starts) == 0 {
-		// Exclusion-only filter: start included, then apply not_*.
-		included = true
-	}
+	// Exclusion-only filter: start included, then apply not_*.
+	included := len(equals) == 0 && len(starts) == 0
 	for _, v := range equals {
 		if v == prefix || v == arn || s3ObjectARNCoversBucket([]string{v}, bucket) {
 			included = true

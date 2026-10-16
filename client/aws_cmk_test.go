@@ -288,9 +288,9 @@ func TestCustomerManagedKeyAWSTable(t *testing.T) {
 					values: map[string]any{"bucket_prefix": "uploads-"},
 				}
 				sib := planResource{
-					typ:     "aws_s3_bucket_server_side_encryption_configuration",
-					address: "module.uploads.aws_s3_bucket_server_side_encryption_configuration.this[0]",
-					values:  sseVals("aws:kms", nil),
+					typ:          "aws_s3_bucket_server_side_encryption_configuration",
+					address:      "module.uploads.aws_s3_bucket_server_side_encryption_configuration.this[0]",
+					values:       sseVals("aws:kms", nil),
 					afterUnknown: keyUnknownAU,
 				}
 				idx := configIndex{
@@ -514,9 +514,9 @@ func TestCustomerManagedKeyPlainBucketParse(t *testing.T) {
 						"force_destroy": true,
 					},
 					"after_unknown": map[string]any{
-						"id":     true,
-						"arn":    true,
-						"bucket": true,
+						"id":                                   true,
+						"arn":                                  true,
+						"bucket":                               true,
 						"server_side_encryption_configuration": true,
 					},
 				},

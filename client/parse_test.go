@@ -169,10 +169,10 @@ func TestCloudRunSecretDelivery(t *testing.T) {
 	    {"address":"google_secret_manager_secret.app","mode":"managed","type":"google_secret_manager_secret","change":{"after":{"secret_id":"app-secret","rotation":[]}}},
 	    {"address":"google_secret_manager_secret_iam_member.app","mode":"managed","type":"google_secret_manager_secret_iam_member","change":{"after":{"secret_id":"app-secret","role":"roles/secretmanager.secretAccessor","member":"serviceAccount:api@example.iam.gserviceaccount.com"}}}`
 	cases := []struct {
-		name       string
-		template   string
-		wantDeliv  string // "" = no credentials flow for app-secret
-		wantFR003  string // mitigated | open | (none)
+		name      string
+		template  string
+		wantDeliv string // "" = no credentials flow for app-secret
+		wantFR003 string // mitigated | open | (none)
 	}{
 		{
 			name: "volume-only → volume (FR-003 mitigated)",
@@ -545,4 +545,3 @@ func TestR2AuthzFromAPIToken(t *testing.T) {
 		}
 	})
 }
-

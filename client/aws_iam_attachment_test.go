@@ -273,8 +273,10 @@ func TestLiteralRoleName_RolePolicyAttachment(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_role_policy_attachment.lit", typ: "aws_iam_role_policy_attachment",
-				values: map[string]any{"role": "app-task"}},
+			{
+				address: "aws_iam_role_policy_attachment.lit", typ: "aws_iam_role_policy_attachment",
+				values: map[string]any{"role": "app-task"},
+			},
 		}
 		resources = append(resources, bucketRes...)
 		idx := configIndex{resources: map[string]exprSet{
@@ -300,8 +302,10 @@ func TestLiteralRoleName_RolePolicyAttachment(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_role_policy_attachment.ext", typ: "aws_iam_role_policy_attachment",
-				values: map[string]any{"role": "someone-else"}},
+			{
+				address: "aws_iam_role_policy_attachment.ext", typ: "aws_iam_role_policy_attachment",
+				values: map[string]any{"role": "someone-else"},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {},
@@ -320,11 +324,15 @@ func TestLiteralRoleName_RolePolicyAttachment(t *testing.T) {
 	})
 	t.Run("unkname", func(t *testing.T) {
 		resources := []planResource{
-			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{},
-				afterUnknown: map[string]any{"name": true}},
+			{
+				address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{},
+				afterUnknown: map[string]any{"name": true},
+			},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_role_policy_attachment.lit", typ: "aws_iam_role_policy_attachment",
-				values: map[string]any{"role": "maybe-task"}},
+			{
+				address: "aws_iam_role_policy_attachment.lit", typ: "aws_iam_role_policy_attachment",
+				values: map[string]any{"role": "maybe-task"},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {raw: map[string]any{"name_prefix": map[string]any{"constant_value": "task-"}}},
@@ -349,8 +357,10 @@ func TestLiteralRoleName_PolicyAttachment(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_policy_attachment.lit", typ: "aws_iam_policy_attachment",
-				values: map[string]any{"roles": []any{"app-task"}}},
+			{
+				address: "aws_iam_policy_attachment.lit", typ: "aws_iam_policy_attachment",
+				values: map[string]any{"roles": []any{"app-task"}},
+			},
 		}
 		resources = append(resources, bucketRes...)
 		idx := configIndex{resources: map[string]exprSet{
@@ -373,8 +383,10 @@ func TestLiteralRoleName_PolicyAttachment(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_policy_attachment.ext", typ: "aws_iam_policy_attachment",
-				values: map[string]any{"roles": []any{"external-role"}}},
+			{
+				address: "aws_iam_policy_attachment.ext", typ: "aws_iam_policy_attachment",
+				values: map[string]any{"roles": []any{"external-role"}},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {},
@@ -392,8 +404,10 @@ func TestLiteralRoleName_PolicyAttachment(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_policy_attachment.lit", typ: "aws_iam_policy_attachment",
-				values: map[string]any{"roles": []any{"maybe-task"}}},
+			{
+				address: "aws_iam_policy_attachment.lit", typ: "aws_iam_policy_attachment",
+				values: map[string]any{"roles": []any{"maybe-task"}},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {raw: map[string]any{"name_prefix": map[string]any{"constant_value": "task-"}}},
@@ -414,8 +428,10 @@ func TestLiteralRoleName_RolePolicy(t *testing.T) {
 		bucketRes, elements := attachmentS3BucketFixture()
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
-			{address: "aws_iam_role_policy.lit", typ: "aws_iam_role_policy",
-				values: map[string]any{"role": "app-task", "policy": s3PutJSON}},
+			{
+				address: "aws_iam_role_policy.lit", typ: "aws_iam_role_policy",
+				values: map[string]any{"role": "app-task", "policy": s3PutJSON},
+			},
 		}
 		resources = append(resources, bucketRes...)
 		idx := configIndex{resources: map[string]exprSet{
@@ -434,8 +450,10 @@ func TestLiteralRoleName_RolePolicy(t *testing.T) {
 	t.Run("nomatch", func(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
-			{address: "aws_iam_role_policy.ext", typ: "aws_iam_role_policy",
-				values: map[string]any{"role": "other-role", "policy": s3PutJSON}},
+			{
+				address: "aws_iam_role_policy.ext", typ: "aws_iam_role_policy",
+				values: map[string]any{"role": "other-role", "policy": s3PutJSON},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task":       {},
@@ -449,8 +467,10 @@ func TestLiteralRoleName_RolePolicy(t *testing.T) {
 	t.Run("unkname", func(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{}},
-			{address: "aws_iam_role_policy.lit", typ: "aws_iam_role_policy",
-				values: map[string]any{"role": "maybe-task", "policy": s3PutJSON}},
+			{
+				address: "aws_iam_role_policy.lit", typ: "aws_iam_role_policy",
+				values: map[string]any{"role": "maybe-task", "policy": s3PutJSON},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task":       {raw: map[string]any{"name_prefix": map[string]any{"constant_value": "task-"}}},
@@ -469,8 +489,10 @@ func TestLiteralRoleName_AttachmentsExclusive(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_role_policy_attachments_exclusive.lit", typ: "aws_iam_role_policy_attachments_exclusive",
-				values: map[string]any{"role_name": "app-task"}},
+			{
+				address: "aws_iam_role_policy_attachments_exclusive.lit", typ: "aws_iam_role_policy_attachments_exclusive",
+				values: map[string]any{"role_name": "app-task"},
+			},
 		}
 		resources = append(resources, bucketRes...)
 		idx := configIndex{resources: map[string]exprSet{
@@ -494,8 +516,10 @@ func TestLiteralRoleName_AttachmentsExclusive(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_role_policy_attachments_exclusive.ext", typ: "aws_iam_role_policy_attachments_exclusive",
-				values: map[string]any{"role_name": "external"}},
+			{
+				address: "aws_iam_role_policy_attachments_exclusive.ext", typ: "aws_iam_role_policy_attachments_exclusive",
+				values: map[string]any{"role_name": "external"},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {},
@@ -514,8 +538,10 @@ func TestLiteralRoleName_AttachmentsExclusive(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{}},
 			{address: "aws_iam_policy.s3", typ: "aws_iam_policy", values: map[string]any{"policy": s3PutJSON}},
-			{address: "aws_iam_role_policy_attachments_exclusive.lit", typ: "aws_iam_role_policy_attachments_exclusive",
-				values: map[string]any{"role_name": "maybe"}},
+			{
+				address: "aws_iam_role_policy_attachments_exclusive.lit", typ: "aws_iam_role_policy_attachments_exclusive",
+				values: map[string]any{"role_name": "maybe"},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {raw: map[string]any{"name_prefix": map[string]any{"constant_value": "t-"}}},
@@ -537,10 +563,14 @@ func TestLiteralRoleName_PoliciesExclusive(t *testing.T) {
 		bucketRes, elements := attachmentS3BucketFixture()
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
-			{address: "aws_iam_role_policy.extra", typ: "aws_iam_role_policy",
-				values: map[string]any{"name": "extra", "role": "app-task", "policy": s3PutJSON}},
-			{address: "aws_iam_role_policies_exclusive.lit", typ: "aws_iam_role_policies_exclusive",
-				values: map[string]any{"role_name": "app-task", "policy_names": []any{"extra"}}},
+			{
+				address: "aws_iam_role_policy.extra", typ: "aws_iam_role_policy",
+				values: map[string]any{"name": "extra", "role": "app-task", "policy": s3PutJSON},
+			},
+			{
+				address: "aws_iam_role_policies_exclusive.lit", typ: "aws_iam_role_policies_exclusive",
+				values: map[string]any{"role_name": "app-task", "policy_names": []any{"extra"}},
+			},
 		}
 		resources = append(resources, bucketRes...)
 		idx := configIndex{resources: map[string]exprSet{
@@ -562,8 +592,10 @@ func TestLiteralRoleName_PoliciesExclusive(t *testing.T) {
 	t.Run("nomatch", func(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "app-task"}},
-			{address: "aws_iam_role_policies_exclusive.ext", typ: "aws_iam_role_policies_exclusive",
-				values: map[string]any{"role_name": "external", "policy_names": []any{"extra"}}},
+			{
+				address: "aws_iam_role_policies_exclusive.ext", typ: "aws_iam_role_policies_exclusive",
+				values: map[string]any{"role_name": "external", "policy_names": []any{"extra"}},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {},
@@ -579,8 +611,10 @@ func TestLiteralRoleName_PoliciesExclusive(t *testing.T) {
 	t.Run("unkname", func(t *testing.T) {
 		resources := []planResource{
 			{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{}},
-			{address: "aws_iam_role_policies_exclusive.lit", typ: "aws_iam_role_policies_exclusive",
-				values: map[string]any{"role_name": "maybe", "policy_names": []any{"extra"}}},
+			{
+				address: "aws_iam_role_policies_exclusive.lit", typ: "aws_iam_role_policies_exclusive",
+				values: map[string]any{"role_name": "maybe", "policy_names": []any{"extra"}},
+			},
 		}
 		idx := configIndex{resources: map[string]exprSet{
 			"aws_iam_role.task": {raw: map[string]any{"name_prefix": map[string]any{"constant_value": "t-"}}},

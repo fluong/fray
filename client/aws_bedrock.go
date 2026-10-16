@@ -10,8 +10,10 @@ import (
 // the first colon after "signal:"). Existing signal types are iam_role,
 // iam_member, env_var, secret_name, network_ingress — iam_service fits the
 // iam_* family without embedding ARNs or model ids.
-const bedrockSignalType = "iam_service"
-const bedrockSignalName = "bedrock"
+const (
+	bedrockSignalType = "iam_service"
+	bedrockSignalName = "bedrock"
+)
 
 type bedrockCallerGrant struct {
 	el          *Element

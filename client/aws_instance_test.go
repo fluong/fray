@@ -733,7 +733,7 @@ func instanceNoLeakPlanJSON(t *testing.T) []byte {
 				"change": map[string]any{"after": map[string]any{
 					"ingress": []any{map[string]any{
 						"from_port": float64(22), "to_port": float64(22), "protocol": "tcp",
-						"cidr_blocks": []any{"198.51.100.0/24", "0.0.0.0/0"},
+						"cidr_blocks":      []any{"198.51.100.0/24", "0.0.0.0/0"},
 						"ipv6_cidr_blocks": []any{}, "prefix_list_ids": []any{},
 						"security_groups": []any{}, "self": false,
 					}},

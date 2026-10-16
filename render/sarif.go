@@ -66,8 +66,8 @@ func SARIF(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleT
 		sev := sarifSecuritySeverity(f.Severity)
 		cause := CauseAddress(f, rule, byID, flows)
 		r := sarifResult{
-			RuleID: f.RuleID,
-			Level:  sarifLevel(f.Severity),
+			RuleID:  f.RuleID,
+			Level:   sarifLevel(f.Severity),
 			Message: sarifMessage{Text: msg},
 			Properties: &sarifProperties{
 				SecuritySeverity: sev,

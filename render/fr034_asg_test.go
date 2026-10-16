@@ -31,10 +31,10 @@ func TestPRCommentFR034ASGOpen(t *testing.T) {
 	}}}
 	texts := map[string]apiv1.RuleText{
 		"FR-034": {
-			ID:       "FR-034",
-			Title:    "Admin ports are not open to the internet",
-			Threat:   "SSH or RDP is reachable from the internet on this instance",
-			GroupTitle: "SSH or RDP is reachable from the internet on {element}",
+			ID:          "FR-034",
+			Title:       "Admin ports are not open to the internet",
+			Threat:      "SSH or RDP is reachable from the internet on this instance",
+			GroupTitle:  "SSH or RDP is reachable from the internet on {element}",
 			Explanation: "{element} has a public IP and its security groups allow SSH or RDP from the internet.",
 			Mitigation:  "Remove the public IP, or restrict security group ingress so SSH and RDP are not open to the internet.",
 			Severity:    "high",

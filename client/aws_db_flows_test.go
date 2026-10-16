@@ -86,13 +86,17 @@ func rootFlatDBPlan(t *testing.T, sharedSG bool, useVPCIngressRule bool) string 
 		},
 		map[string]any{
 			"address": "aws_iam_role_policy.app_rds", "mode": "managed", "type": "aws_iam_role_policy", "name": "app_rds",
-			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app-rds"},
-				"after_unknown": map[string]any{"policy": true}},
+			"change": map[string]any{
+				"actions": []any{"create"}, "after": map[string]any{"name": "app-rds"},
+				"after_unknown": map[string]any{"policy": true},
+			},
 		},
 		map[string]any{
 			"address": "aws_iam_role_policy.worker_rds", "mode": "managed", "type": "aws_iam_role_policy", "name": "worker_rds",
-			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "worker-rds"},
-				"after_unknown": map[string]any{"policy": true}},
+			"change": map[string]any{
+				"actions": []any{"create"}, "after": map[string]any{"name": "worker-rds"},
+				"after_unknown": map[string]any{"policy": true},
+			},
 		},
 	)
 
@@ -138,12 +142,16 @@ func rootFlatDBPlan(t *testing.T, sharedSG bool, useVPCIngressRule bool) string 
 				"aws_security_group." + workerSGName + ".id", "aws_security_group." + workerSGName,
 			}},
 		}},
-		map[string]any{"address": "data.aws_iam_policy_document.app_rds", "type": "aws_iam_policy_document", "name": "app_rds", "mode": "data",
+		map[string]any{
+			"address": "data.aws_iam_policy_document.app_rds", "type": "aws_iam_policy_document", "name": "app_rds", "mode": "data",
 			"expressions": map[string]any{
 				"statement": map[string]any{"references": []any{"aws_db_instance.main.resource_id", "aws_db_instance.main"}},
-			}},
-		map[string]any{"address": "data.aws_iam_policy_document.worker_rds", "type": "aws_iam_policy_document", "name": "worker_rds", "mode": "data",
-			"expressions": map[string]any{}},
+			},
+		},
+		map[string]any{
+			"address": "data.aws_iam_policy_document.worker_rds", "type": "aws_iam_policy_document", "name": "worker_rds", "mode": "data",
+			"expressions": map[string]any{},
+		},
 		map[string]any{"address": "aws_iam_role_policy.app_rds", "type": "aws_iam_role_policy", "name": "app_rds", "expressions": map[string]any{
 			"role":   map[string]any{"references": []any{"aws_iam_role.ecs_task.id", "aws_iam_role.ecs_task"}},
 			"policy": map[string]any{"references": []any{"data.aws_iam_policy_document.app_rds.json", "data.aws_iam_policy_document.app_rds"}},

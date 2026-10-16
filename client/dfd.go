@@ -69,14 +69,14 @@ type Boundary struct {
 }
 
 type Flow struct {
-	ID             string   `json:"id"`
-	From           string   `json:"from"`
-	To             string   `json:"to"`
-	DataClass      string   `json:"data_class"`
-	Transport      string   `json:"transport"`
-	Boundaries     []string `json:"boundaries"`
-	AuthzScope     string   `json:"authz_scope,omitempty"`
-	AuthzGrants    []string `json:"authz_grants,omitempty"`
+	ID          string   `json:"id"`
+	From        string   `json:"from"`
+	To          string   `json:"to"`
+	DataClass   string   `json:"data_class"`
+	Transport   string   `json:"transport"`
+	Boundaries  []string `json:"boundaries"`
+	AuthzScope  string   `json:"authz_scope,omitempty"`
+	AuthzGrants []string `json:"authz_grants,omitempty"`
 	// AuthzActions lists S3 write/policy actions granted on this flow when known
 	// (closed enum including DeleteObject, PutObject, BypassGovernanceRetention, …).
 	AuthzActions   []string `json:"authz_actions,omitempty"`

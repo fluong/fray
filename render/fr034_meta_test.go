@@ -83,7 +83,7 @@ func TestPRCommentFR034MetaLineNoDuplicateAddress(t *testing.T) {
 	asgDoc := client.DFD{Elements: []client.Element{{
 		ID: "e-asg", Name: "web Auto Scaling group", Type: "process",
 		Kind: "virtual_machine", Provider: "aws", Provenance: "iac",
-		Evidence: client.Evidence{Addresses: []string{"aws_autoscaling_group.web"}},
+		Evidence:   client.Evidence{Addresses: []string{"aws_autoscaling_group.web"}},
 		Attributes: map[string]any{"public_ip": true, "admin_ports_open": true},
 	}}}
 	asgCur := apiv1.Findings{Findings: []apiv1.Finding{{
@@ -93,7 +93,7 @@ func TestPRCommentFR034MetaLineNoDuplicateAddress(t *testing.T) {
 	instDoc := client.DFD{Elements: []client.Element{{
 		ID: "e-inst", Name: "bastion", Type: "process",
 		Kind: "virtual_machine", Provider: "aws", Provenance: "iac",
-		Evidence: client.Evidence{Addresses: []string{"aws_instance.bastion"}},
+		Evidence:   client.Evidence{Addresses: []string{"aws_instance.bastion"}},
 		Attributes: map[string]any{"public_ip": true, "admin_ports_open": true},
 	}}}
 	instCur := apiv1.Findings{Findings: []apiv1.Finding{{

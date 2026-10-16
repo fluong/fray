@@ -61,9 +61,9 @@ func TestClassifyRDSdbARN(t *testing.T) {
 	resources := []planResource{db, other, cluster}
 
 	cases := []struct {
-		name            string
-		arn             string
-		dest            *Element
+		name             string
+		arn              string
+		dest             *Element
 		wantAcc, wantCov bool
 	}{
 		{name: "star", arn: "*", dest: dbEl, wantAcc: true},
@@ -187,30 +187,30 @@ func TestAwsDBScopeTable(t *testing.T) {
 
 func TestParseDBAuthzScopeAWS(t *testing.T) {
 	cases := []struct {
-		name      string
-		policy    string // IAM policy JSON on task role; empty = password-only
+		name       string
+		policy     string // IAM policy JSON on task role; empty = password-only
 		managedARN bool
-		wantScope string
+		wantScope  string
 		wantGrants string
 	}{
 		{
-			name: "wildcard_connect",
-			policy: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds-db:connect"],"Resource":["*"]}]}`,
+			name:      "wildcard_connect",
+			policy:    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds-db:connect"],"Resource":["*"]}]}`,
 			wantScope: "account", wantGrants: "account",
 		},
 		{
-			name: "scoped_dbuser",
-			policy: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds-db:connect"],"Resource":["arn:aws:rds-db:us-east-1:111122223333:dbuser:db-ABCDEF/app"]}]}`,
+			name:      "scoped_dbuser",
+			policy:    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds-db:connect"],"Resource":["arn:aws:rds-db:us-east-1:111122223333:dbuser:db-ABCDEF/app"]}]}`,
 			wantScope: "resource", wantGrants: "resource",
 		},
 		{
-			name: "password_only",
+			name:      "password_only",
 			wantScope: "",
 		},
 		{
-			name: "managed_policy_arn_only",
+			name:       "managed_policy_arn_only",
 			managedARN: true,
-			wantScope: "",
+			wantScope:  "",
 		},
 	}
 	for _, tc := range cases {
@@ -268,7 +268,7 @@ func dbAuthzECSPlan(t *testing.T, policyJSON string, managedARNOnly bool) string
 		{
 			"address": "module.ecs.aws_ecs_service.this", "mode": "managed", "type": "aws_ecs_service", "name": "this",
 			"module_address": "module.ecs",
-			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app"}},
+			"change":         map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "app"}},
 		},
 		{
 			"address": "module.ecs.aws_ecs_task_definition.this", "mode": "managed", "type": "aws_ecs_task_definition", "name": "this",
@@ -281,8 +281,10 @@ func dbAuthzECSPlan(t *testing.T, policyJSON string, managedARNOnly bool) string
 		{
 			"address": "module.ecs.aws_iam_role.task", "mode": "managed", "type": "aws_iam_role", "name": "task",
 			"module_address": "module.ecs",
-			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "task"},
-				"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true}},
+			"change": map[string]any{
+				"actions": []any{"create"}, "after": map[string]any{"name": "task"},
+				"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true},
+			},
 		},
 		{
 			"address": "module.db.aws_db_instance.this", "mode": "managed", "type": "aws_db_instance", "name": "this",
@@ -339,7 +341,7 @@ func dbAuthzECSPlan(t *testing.T, policyJSON string, managedARNOnly bool) string
 	}
 
 	plan := map[string]any{
-		"format_version": "1.2",
+		"format_version":   "1.2",
 		"resource_changes": resources,
 		"configuration": map[string]any{
 			"root_module": map[string]any{

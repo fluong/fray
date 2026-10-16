@@ -26,8 +26,8 @@ func TestEKSNodeGroupPublicIPAndAdmin(t *testing.T) {
 			name: "(a) remote_access key + empty source SGs → admin true",
 			build: func() (planResource, []planResource, configIndex) {
 				return ngRAFixture(t, ngRAOpts{
-					ec2SSHKey:   "fray-ng-key",
-					sourceSGs:   nil,
+					ec2SSHKey:    "fray-ng-key",
+					sourceSGs:    nil,
 					subnetPublic: []bool{true},
 				})
 			},

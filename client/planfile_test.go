@@ -112,7 +112,7 @@ func TestLoadPlanFileSizeCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = LoadPlanFile(path)
-	if err != ErrPlanTooLarge {
+	if !errors.Is(err, ErrPlanTooLarge) {
 		t.Fatalf("got %v, want ErrPlanTooLarge", err)
 	}
 }

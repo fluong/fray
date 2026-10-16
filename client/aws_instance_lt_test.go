@@ -14,24 +14,24 @@ import (
 
 func TestInstanceLaunchTemplateMerge(t *testing.T) {
 	cases := []struct {
-		name          string
-		build         func() (planResource, []planResource, configIndex)
-		wantPublic    bool
-		wantPublicOK  bool
-		wantAdmin     bool
-		wantAdminOK   bool
-		checkPublic   bool
-		checkAdmin    bool
+		name         string
+		build        func() (planResource, []planResource, configIndex)
+		wantPublic   bool
+		wantPublicOK bool
+		wantAdmin    bool
+		wantAdminOK  bool
+		checkPublic  bool
+		checkAdmin   bool
 	}{
 		{
 			name: "template public IP + world SSH on private subnet → both true",
 			build: func() (planResource, []planResource, configIndex) {
 				return ltFixture(t, ltOpts{
-					version:               "$Latest",
-					tmplAssociatePublic:   boolPtr(true),
-					subnetMapPublic:       false,
-					tmplWorldSSH:          true,
-					tmplActions:           []string{"no-op"},
+					version:             "$Latest",
+					tmplAssociatePublic: boolPtr(true),
+					subnetMapPublic:     false,
+					tmplWorldSSH:        true,
+					tmplActions:         []string{"no-op"},
 				})
 			},
 			checkPublic: true, wantPublic: true, wantPublicOK: true,
@@ -86,12 +86,12 @@ func TestInstanceLaunchTemplateMerge(t *testing.T) {
 			name: "$Default with update_default_version=true used",
 			build: func() (planResource, []planResource, configIndex) {
 				return ltFixture(t, ltOpts{
-					version:               "$Default",
-					updateDefaultVersion:  boolPtr(true),
-					tmplAssociatePublic:   boolPtr(true),
-					subnetMapPublic:       false,
-					tmplWorldSSH:          true,
-					tmplActions:           []string{"update"},
+					version:              "$Default",
+					updateDefaultVersion: boolPtr(true),
+					tmplAssociatePublic:  boolPtr(true),
+					subnetMapPublic:      false,
+					tmplWorldSSH:         true,
+					tmplActions:          []string{"update"},
 				})
 			},
 			checkPublic: true, wantPublic: true, wantPublicOK: true,
@@ -391,8 +391,8 @@ func ltFixture(t *testing.T, o ltOpts) (planResource, []planResource, configInde
 	} else if o.tmplAssociatePublic != nil {
 		nis = []any{map[string]any{
 			"associate_public_ip_address": *o.tmplAssociatePublic,
-			"subnet_id":                  "subnet-0privatedist0011",
-			"security_groups":            []any{"sg-0ltworldssh0011"},
+			"subnet_id":                   "subnet-0privatedist0011",
+			"security_groups":             []any{"sg-0ltworldssh0011"},
 		}}
 	}
 
@@ -579,7 +579,7 @@ func instanceLTNoLeakPlanJSON(t *testing.T) []byte {
 						"name": "fray-lt-leak-name-zz9",
 						"network_interfaces": []any{map[string]any{
 							"associate_public_ip_address": true,
-							"security_groups":            []any{"sg-0leakysg0011"},
+							"security_groups":             []any{"sg-0leakysg0011"},
 						}},
 					},
 				},
@@ -596,11 +596,11 @@ func instanceLTNoLeakPlanJSON(t *testing.T) []byte {
 				"change": map[string]any{"after": map[string]any{
 					"ingress": []any{map[string]any{
 						"from_port": float64(22), "to_port": float64(22), "protocol": "tcp",
-						"cidr_blocks":       []any{"203.0.113.0/24", "0.0.0.0/0"},
-						"ipv6_cidr_blocks":  []any{},
-						"prefix_list_ids":   []any{},
-						"security_groups":   []any{},
-						"self":              false,
+						"cidr_blocks":      []any{"203.0.113.0/24", "0.0.0.0/0"},
+						"ipv6_cidr_blocks": []any{},
+						"prefix_list_ids":  []any{},
+						"security_groups":  []any{},
+						"self":             false,
 					}},
 					"id": "sg-0leakysg0011",
 				}},

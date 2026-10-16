@@ -614,9 +614,11 @@ func TestNoChangeSummary(t *testing.T) {
 		t.Fatalf("empty: %q", got)
 	}
 	got := noChangeSummary([]apiv1.Finding{
-		{Status: "open"}, {Status: "open"},
+		{Status: "open"},
+		{Status: "open"},
 		{Status: "mitigated"},
-		{Status: "waived"}, {Status: "accepted"},
+		{Status: "waived"},
+		{Status: "accepted"},
 	})
 	want := "No change in open findings · 2 open · 1 mitigated · 2 waived\n"
 	if got != want {

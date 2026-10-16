@@ -64,8 +64,10 @@ func ecsMultiTaskPlan(t *testing.T, opts ecsMultiOpts) string {
 			emittedRole[ts.role] = true
 			resources = append(resources, map[string]any{
 				"address": "aws_iam_role." + ts.role, "mode": "managed", "type": "aws_iam_role", "name": ts.role,
-				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": ts.role},
-					"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true}},
+				"change": map[string]any{
+					"actions": []any{"create"}, "after": map[string]any{"name": ts.role},
+					"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true},
+				},
 			})
 			cfg = append(cfg, map[string]any{"address": "aws_iam_role." + ts.role, "type": "aws_iam_role", "name": ts.role, "expressions": map[string]any{}})
 			if !ts.roleUnknown {
@@ -338,8 +340,10 @@ func ecsAppAndAppWorkerPlan(t *testing.T) string {
 			},
 			map[string]any{
 				"address": "aws_iam_role." + p.role, "mode": "managed", "type": "aws_iam_role", "name": p.role,
-				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": p.role},
-					"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true}},
+				"change": map[string]any{
+					"actions": []any{"create"}, "after": map[string]any{"name": p.role},
+					"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true},
+				},
 			},
 			map[string]any{
 				"address": "aws_iam_role_policy." + p.role + "_s3", "mode": "managed", "type": "aws_iam_role_policy", "name": p.role + "_s3",

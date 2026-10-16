@@ -444,10 +444,8 @@ type mixedOpts struct {
 func asgMixedFixture(t *testing.T, o mixedOpts) (planResource, []planResource, configIndex) {
 	t.Helper()
 	assocA := true
-	assocB := true
-	if o.disagreePublic {
-		assocB = false
-	}
+	assocB := !o.disagreePublic
+
 	verB := "$Latest"
 	actionsB := []string{"no-op"}
 	if o.secondUnknown {
@@ -727,7 +725,7 @@ func asgNoLeakPlanJSON(t *testing.T) []byte {
 								"references": []any{"aws_subnet.private.id", "aws_subnet.private"},
 							},
 							"launch_template": []any{map[string]any{
-								"id": map[string]any{"references": []any{"aws_launch_template.app.id", "aws_launch_template.app"}},
+								"id":      map[string]any{"references": []any{"aws_launch_template.app.id", "aws_launch_template.app"}},
 								"version": map[string]any{"constant_value": "$Latest"},
 							}},
 						},

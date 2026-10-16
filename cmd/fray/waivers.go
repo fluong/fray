@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	maxWaiversFileBytes = 64 * 1024
+	maxWaiversFileBytes  = 64 * 1024
 	maxWaiverHorizonDays = 365
-	waiverMigrationMsg  = "mitigations.yaml is no longer supported; migrate to .fray/waivers.yml — copy each entry, add id/owner/expires, drop status: accepted (see README#waivers)"
+	waiverMigrationMsg   = "mitigations.yaml is no longer supported; migrate to .fray/waivers.yml — copy each entry, add id/owner/expires, drop status: accepted (see README#waivers)"
 )
 
 type waiverFile struct {

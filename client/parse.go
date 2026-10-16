@@ -778,7 +778,8 @@ func databaseElement(secrets, services []planResource) *Element {
 func vertexElement(members, services []planResource) (out struct {
 	el   *Element
 	warn string
-}) {
+},
+) {
 	var role bool
 	for _, m := range members {
 		if m.values["role"] == "roles/aiplatform.user" {
@@ -1266,8 +1267,10 @@ func fillAuthzScope(flows []*Flow, ann frayFlowAnnotation, fromKey, toKey, decla
 	return nil
 }
 
-const omittedScopeWarnPrefix = "authz_scope omitted for "
-const omittedScopeDeclareHint = "; declare it with fray.yaml annotations.flows authz_scope"
+const (
+	omittedScopeWarnPrefix  = "authz_scope omitted for "
+	omittedScopeDeclareHint = "; declare it with fray.yaml annotations.flows authz_scope"
+)
 
 // reconcileOmittedScopeWarnings drops an "authz_scope omitted for <role>"
 // warning when every flow stamped with that role was filled from fray.yaml.

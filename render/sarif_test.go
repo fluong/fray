@@ -44,8 +44,8 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 				} `json:"driver"`
 			} `json:"tool"`
 			Results []struct {
-				RuleID    string `json:"ruleId"`
-				Level     string `json:"level"`
+				RuleID     string `json:"ruleId"`
+				Level      string `json:"level"`
 				Properties *struct {
 					SecuritySeverity string `json:"security-severity"`
 				} `json:"properties"`
@@ -83,8 +83,8 @@ func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 	}
 
 	var fr010 *struct {
-		RuleID    string `json:"ruleId"`
-		Level     string `json:"level"`
+		RuleID     string `json:"ruleId"`
+		Level      string `json:"level"`
 		Properties *struct {
 			SecuritySeverity string `json:"security-severity"`
 		} `json:"properties"`
@@ -266,7 +266,7 @@ func TestSARIFFR025AttributeRegion(t *testing.T) {
 				} `json:"driver"`
 			} `json:"tool"`
 			Results []struct {
-				RuleID string `json:"ruleId"`
+				RuleID    string `json:"ruleId"`
 				Locations []struct {
 					PhysicalLocation struct {
 						Region *struct {
@@ -290,7 +290,7 @@ func TestSARIFFR025AttributeRegion(t *testing.T) {
 		}
 	}
 	var fr025 *struct {
-		RuleID string `json:"ruleId"`
+		RuleID    string `json:"ruleId"`
 		Locations []struct {
 			PhysicalLocation struct {
 				Region *struct {
@@ -569,4 +569,3 @@ func TestSARIFFingerprintFallbackToDFDID(t *testing.T) {
 		t.Fatalf("got %s want %s", got, want)
 	}
 }
-

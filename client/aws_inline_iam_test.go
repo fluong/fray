@@ -781,8 +781,10 @@ func flatCoverageS3Plan(t *testing.T, dataInResourceChanges bool) string {
 		},
 		{
 			"address": "aws_iam_role.ecs_task", "mode": "managed", "type": "aws_iam_role", "name": "ecs_task",
-			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "ecs-task"},
-				"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true}},
+			"change": map[string]any{
+				"actions": []any{"create"}, "after": map[string]any{"name": "ecs-task"},
+				"after_unknown": map[string]any{"inline_policy": true, "managed_policy_arns": true},
+			},
 		},
 		{
 			"address": "aws_iam_role_policy.known", "mode": "managed", "type": "aws_iam_role_policy", "name": "known",
@@ -790,8 +792,10 @@ func flatCoverageS3Plan(t *testing.T, dataInResourceChanges bool) string {
 		},
 		{
 			"address": "aws_iam_role_policy.datadoc", "mode": "managed", "type": "aws_iam_role_policy", "name": "datadoc",
-			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "datadoc-from-data"},
-				"after_unknown": map[string]any{"policy": true}},
+			"change": map[string]any{
+				"actions": []any{"create"}, "after": map[string]any{"name": "datadoc-from-data"},
+				"after_unknown": map[string]any{"policy": true},
+			},
 		},
 		{
 			"address": "aws_s3_bucket.uploads", "mode": "managed", "type": "aws_s3_bucket", "name": "uploads",

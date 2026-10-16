@@ -208,8 +208,8 @@ func dataSubnetPlan(t *testing.T, inRC, inPrior bool) []byte {
 func dataLTPlan(t *testing.T, inRC, inPrior bool) []byte {
 	t.Helper()
 	dataValues := map[string]any{
-		"id":             "lt-0datatemplate0011",
-		"latest_version": float64(1),
+		"id":              "lt-0datatemplate0011",
+		"latest_version":  float64(1),
 		"default_version": float64(1),
 		"network_interfaces": []any{map[string]any{
 			"associate_public_ip_address": false,

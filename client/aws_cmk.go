@@ -74,6 +74,7 @@ func resolveBucketSSE(bucket planResource, resources []planResource, idx configI
 // block on the bucket. Presence is:
 //   - (a) the attribute appears in configuration expressions (raw or refs), or
 //   - (b) after holds a non-empty list.
+//
 // after_unknown alone is ignored: since AWS provider v4 the attribute is
 // Optional+Computed, so new buckets mark it unknown even when the user never
 // wrote the block (the computed default is SSE-S3).

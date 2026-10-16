@@ -27,14 +27,14 @@ type signal struct {
 }
 
 type element struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Kind       string   `json:"kind"`
-	Subtype    string   `json:"subtype"`
-	Provider   string   `json:"provider"`
-	ProviderSubtype string `json:"provider_subtype"`
-	Provenance string   `json:"provenance"`
-	Evidence   evidence `json:"evidence"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Kind            string   `json:"kind"`
+	Subtype         string   `json:"subtype"`
+	Provider        string   `json:"provider"`
+	ProviderSubtype string   `json:"provider_subtype"`
+	Provenance      string   `json:"provenance"`
+	Evidence        evidence `json:"evidence"`
 }
 
 type boundary struct {
