@@ -718,6 +718,7 @@ func anyNewRule(items []apiv1.Finding) bool {
 func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLocation, mod client.ModuleCause, hasMod bool) string {
 	sev := g.severity()
 	stride := strideText(rule.Stride)
+	var line string
 	if hasMod {
 		where := mod.Location.String()
 		if len(mod.Inputs) > 0 {
@@ -725,18 +726,34 @@ func metaLine(g causeGroup, rule apiv1.RuleText, locs map[string]client.SourceLo
 			if region, ok := client.ModuleInputRegion(locs, mod.Call, mod.Inputs); ok {
 				where = region.String()
 			}
-			return joinMeta("`"+mod.Call+"`", formatInputs(mod.Inputs), where, sev, stride)
+			line = joinMeta("`"+mod.Call+"`", formatInputs(mod.Inputs), where, sev, stride)
+		} else {
+			line = joinMeta("`"+mod.Call+"`", where, sev, stride)
 		}
-		return joinMeta("`"+mod.Call+"`", where, sev, stride)
+	} else {
+		// Second slot is file:line when known. Never fall back to repeating the
+		// cause address (that produced "`addr` · addr · high · …" with no config).
+		where := ""
+		field := primaryPassField(rule)
+		if loc, ok := client.LookupCauseLocation(locs, g.cause, field); ok {
+			where = loc.String()
+		}
+		line = joinMeta("`"+g.cause+"`", where, sev, stride)
 	}
-	// Second slot is file:line when known. Never fall back to repeating the
-	// cause address (that produced "`addr` · addr · high · …" with no config).
-	where := ""
-	field := primaryPassField(rule)
-	if loc, ok := client.LookupCauseLocation(locs, g.cause, field); ok {
-		where = loc.String()
+	if path, ok := declaredScopeConfig(g.cause); ok {
+		line += " (scope declared in " + client.ReportConfigPath(path) + ")"
 	}
-	return joinMeta("`"+g.cause+"`", where, sev, stride)
+	return line
+}
+
+// declaredScopeConfig reports the fray.yaml path when cause is a fill-only
+// authz_scope token: "<config path>#<from> -> <to> <data_class>".
+func declaredScopeConfig(cause string) (string, bool) {
+	path, rest, ok := strings.Cut(cause, "#")
+	if !ok || path == "" || strings.Contains(path, " ") || !strings.Contains(rest, " -> ") {
+		return "", false
+	}
+	return path, true
 }
 
 // joinMeta joins non-empty meta-line parts with " · ".

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- `annotations.flows` can fill an `authz_scope` the parser couldn't derive
+  (reason required). An annotation on a derived scope, or one that matches no
+  parser flow or more than one, is ignored with a warning; use a waiver to
+  accept a wider grant.
+- `annotations.flows` `authz_scope` / `reason` require Action v0.32.0 or later;
+  older Actions reject the fields.
+
 ## [0.31.0] — 2026-10-15
 
 ### Added

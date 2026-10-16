@@ -506,11 +506,11 @@ func TestPRCommentNewRuleSuffix(t *testing.T) {
 	texts := map[string]apiv1.RuleText{
 		"FR-AWS-0001": {
 			ID: "FR-AWS-0001", Title: "Object storage is encrypted",
-			Threat: "Bucket is not encrypted at rest",
-			GroupTitle: "{label} is not encrypted at rest",
+			Threat:      "Bucket is not encrypted at rest",
+			GroupTitle:  "{label} is not encrypted at rest",
 			Explanation: "{element} is not encrypted at rest.",
-			Mitigation: "Enable encryption at rest.",
-			Severity: "high", Stride: []string{"information_disclosure"},
+			Mitigation:  "Enable encryption at rest.",
+			Severity:    "high", Stride: []string{"information_disclosure"},
 			Pass: []apiv1.Condition{{Op: "equals", Field: "attributes.encrypted_at_rest", Value: true}},
 		},
 	}
@@ -524,6 +524,44 @@ func TestPRCommentNewRuleSuffix(t *testing.T) {
 	got = PRComment(doc, cur, base, texts, nil, nil, "", nil, nil, nil, true, nil)
 	if strings.Contains(got, "new rule; not blocking") {
 		t.Fatalf("suffix must be omitted when new_rule is false:\n%s", got)
+	}
+}
+
+func TestPRCommentDeclaredScope(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GITHUB_WORKSPACE", ws)
+	cause := filepath.Join(ws, "infra", "fray.yaml") + "#aws_ecs_service.app -> aws_db_instance.main unknown"
+	doc := client.DFD{
+		Elements: []client.Element{
+			{ID: "svc", Name: "app", Kind: "container_service", Type: "process", Provenance: "iac", Evidence: client.Evidence{Addresses: []string{"aws_ecs_service.app"}}},
+			{ID: "db", Name: "main", Kind: "relational_db", Type: "datastore", Provenance: "iac", Evidence: client.Evidence{Addresses: []string{"aws_db_instance.main"}}},
+		},
+		Flows: []client.Flow{{
+			ID: "flow1", From: "svc", To: "db", DataClass: "unknown",
+			AuthzScope: "account", AuthzGrants: []string{"account"},
+			Causes: map[string]string{"authz_scope": cause},
+		}},
+	}
+	cur := apiv1.Findings{SchemaVersion: "finding/v1", Findings: []apiv1.Finding{{
+		RuleID: "FR-028", Target: "flow1", Status: "open", Severity: "medium",
+		Stride: []string{"elevation_of_privilege"},
+	}}}
+	texts := map[string]apiv1.RuleText{
+		"FR-028": {
+			ID: "FR-028", Title: "Database access is scoped to one resource",
+			Explanation: "The caller can reach every database in the account.",
+			Mitigation:  "Grant access on this database only.",
+			Severity:    "medium", Stride: []string{"elevation_of_privilege"},
+			Pass: []apiv1.Condition{{Op: "equals", Field: "authz_scope", Value: "resource"}},
+		},
+	}
+	got := PRComment(doc, cur, apiv1.Findings{SchemaVersion: "finding/v1"}, texts, nil, nil, "", nil, nil, nil, true, nil)
+	if !strings.Contains(got, "(scope declared in infra/fray.yaml)") {
+		t.Fatalf("missing relative declared-scope note:\n%s", got)
+	}
+	// An inline-policy cause is not a declared-scope token.
+	if path, ok := declaredScopeConfig("aws_iam_role.task#inline_policy.db"); ok {
+		t.Fatalf("inline policy path %q", path)
 	}
 }
 

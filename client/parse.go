@@ -144,11 +144,15 @@ type frayAnnotations struct {
 		Provider string `yaml:"provider"`
 		Purpose  string `yaml:"purpose"`
 	} `yaml:"elements"`
-	Flows []struct {
-		From      string `yaml:"from"`
-		To        string `yaml:"to"`
-		DataClass string `yaml:"data_class"`
-	} `yaml:"flows"`
+	Flows []frayFlowAnnotation `yaml:"flows"`
+}
+
+type frayFlowAnnotation struct {
+	From       string `yaml:"from"`
+	To         string `yaml:"to"`
+	DataClass  string `yaml:"data_class"`
+	AuthzScope string `yaml:"authz_scope"`
+	Reason     string `yaml:"reason"`
 }
 
 // Parse builds a DFD from a terraform show -json plan and fray.yaml.
@@ -354,7 +358,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 	for _, f := range flows {
 		f.identityClass = f.DataClass
 	}
-	if err := applyFlowAnnotations(flows, elements, cfg); err != nil {
+	if err := applyFlowAnnotations(flows, elements, cfg, declaredSource, &warnings); err != nil {
 		return DFD{}, warnings, err
 	}
 
@@ -581,7 +585,7 @@ func gcsElement(r planResource, audit *bool, prevent bool, idx configIndex) *Ele
 func r2Element(r planResource, resources []planResource, idx configIndex, prevent bool) *Element {
 	name, _ := r.values["name"].(string)
 	attrs := map[string]any{
-		"acls_disabled":     true,
+		"acls_disabled": true,
 		// R2 Data Access Logs are enabled per bucket in the dashboard and have
 		// no Terraform resource in the Cloudflare v5 provider, so the plan
 		// cannot show them — omit (FR-023 unverified) rather than false.
@@ -1190,7 +1194,7 @@ func applyElementAnnotations(elements []*Element, cfg frayConfig) error {
 	return nil
 }
 
-func applyFlowAnnotations(flows []*Flow, elements []*Element, cfg frayConfig) error {
+func applyFlowAnnotations(flows []*Flow, elements []*Element, cfg frayConfig, declaredSource string, warnings *[]string) error {
 	for _, ann := range cfg.Annotations.Flows {
 		from, err := resolve(ann.From, elements)
 		if err != nil {
@@ -1201,6 +1205,12 @@ func applyFlowAnnotations(flows []*Flow, elements []*Element, cfg frayConfig) er
 			return err
 		}
 		fk, tk := from.canonicalKey(), to.canonicalKey()
+		if ann.AuthzScope != "" {
+			if err := fillAuthzScope(flows, ann, fk, tk, declaredSource, warnings); err != nil {
+				return err
+			}
+			continue
+		}
 		n := 0
 		for _, f := range flows {
 			if f.From == fk && f.To == tk {
@@ -1216,6 +1226,57 @@ func applyFlowAnnotations(flows []*Flow, elements []*Element, cfg frayConfig) er
 		}
 	}
 	return nil
+}
+
+// fillAuthzScope sets authz_scope only when the parser omitted it. data_class,
+// when set, selects the parser flow and must already equal that flow's class.
+// A derived scope, or a match count other than one, is skipped with a warning.
+func fillAuthzScope(flows []*Flow, ann frayFlowAnnotation, fromKey, toKey, declaredSource string, warnings *[]string) error {
+	switch ann.AuthzScope {
+	case "resource", "project", "account", "organization":
+	default:
+		return fmt.Errorf("fray.yaml annotation authz_scope %q on %s -> %s", ann.AuthzScope, ann.From, ann.To)
+	}
+	if len(strings.TrimSpace(ann.Reason)) < 10 {
+		return fmt.Errorf("fray.yaml annotation authz_scope on %s -> %s requires reason of at least 10 characters", ann.From, ann.To)
+	}
+	var hits []*Flow
+	for _, f := range flows {
+		if f.From != fromKey || f.To != toKey {
+			continue
+		}
+		if ann.DataClass != "" && f.DataClass != ann.DataClass {
+			continue
+		}
+		hits = append(hits, f)
+	}
+	if len(hits) != 1 {
+		*warnings = append(*warnings, scopeAnnotationIgnored(ann, len(hits)))
+		return nil
+	}
+	f := hits[0]
+	if f.AuthzScope != "" {
+		*warnings = append(*warnings, fmt.Sprintf("fray.yaml annotation ignored: %s -> %s already has derived authz_scope %s; remove the annotation, or use .fray/waivers.yml to accept a wider grant", ann.From, ann.To, f.AuthzScope))
+		return nil
+	}
+	f.AuthzScope = ann.AuthzScope
+	f.AuthzGrants = normalizeAuthzGrants(ann.AuthzScope)
+	if f.Causes == nil {
+		f.Causes = map[string]string{}
+	}
+	f.Causes["authz_scope"] = ReportConfigPath(declaredSource) + "#" + ann.From + " -> " + ann.To + " " + f.DataClass
+	return nil
+}
+
+func scopeAnnotationIgnored(ann frayFlowAnnotation, n int) string {
+	label := ann.From + " -> " + ann.To
+	if ann.DataClass != "" {
+		label += " " + ann.DataClass
+	}
+	if n == 0 {
+		return fmt.Sprintf("fray.yaml annotation ignored: %s matched no parser flow; set data_class to disambiguate, or declare a new flow under flows", label)
+	}
+	return fmt.Sprintf("fray.yaml annotation ignored: %s matched %d flows; set data_class to disambiguate, or declare a new flow under flows", label, n)
 }
 
 func mechanicalBoundaries(flows []*Flow, elements []*Element, warnings *[]string) []*Boundary {

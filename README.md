@@ -491,6 +491,29 @@ annotations:
       purpose: customer_uploads
 ```
 
+`annotations.flows` can also **fill** an `authz_scope` the parser omitted
+(a managed policy referenced only by ARN, a module output, an unreadable
+expression). If that flow already has a derived scope, or the annotation
+matches no parser flow or more than one, it is ignored with a warning and the
+scan continues. `reason` is required (at least 10 characters) and stays in the
+repo; a missing or short reason, or a scope outside the enum, is a config
+error. When `data_class` is set it must already match that parser flow. A
+scope of `resource` is what FR-007, FR-028, and FR-032 treat as mitigated; any
+wider filled scope stays open. To accept a finding the parser derived as
+account- or project-wide, use a [waiver](#waivers) instead of narrowing it
+here. `authz_scope` and `reason` on `annotations.flows` require Action v0.32.0
+or later; older Actions reject the fields.
+
+```yaml
+schema_version: fray-config/v1
+annotations:
+  flows:
+    - from: aws_ecs_service.app
+      to: aws_db_instance.main
+      authz_scope: resource
+      reason: "rds-db:connect scoped via managed policy arn:aws:iam::123:policy/app-db"
+```
+
 Schemas live under `schema/` (`fray-config.schema.json`, `waivers.schema.json`,
 `dfd.schema.json`, `finding.schema.json`). Use `fray.yaml` to declare extra
 elements/flows/boundaries and annotate inferred ones; use
@@ -531,8 +554,9 @@ existing `accepted_mitigations` field (address is resolved to a DFD id, then
 redacted like today). The PR comment and job summary list applied / new-in-PR /
 expiring-soon / expired / stale outcomes from the response.
 
-Recommend protecting `.fray/` with **CODEOWNERS** so waiver changes get review
-(Fray cannot enforce GitHub review rules).
+Recommend protecting `.fray/` and `fray.yaml` with **CODEOWNERS** so waiver
+changes and declared `authz_scope` fills get review (Fray cannot enforce
+GitHub review rules).
 
 ### Migrating from `mitigations.yaml`
 

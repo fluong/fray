@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fray:fray-config:v1",
   "title": "fray.yaml",
-  "description": "Human augmentation of a plan. Declared elements, flows, and boundary membership, plus annotations on inferred elements and on flow data class. Addresses are a Terraform address, declared:<key>, or signal:<type>:<name>.",
+  "description": "Human augmentation of a plan. Declared elements, flows, and boundary membership, plus annotations on inferred elements, on flow data class, and to fill an authz_scope the parser omitted. Addresses are a Terraform address, declared:<key>, or signal:<type>:<name>.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -272,11 +272,7 @@
     "flow_annotation": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "from",
-        "to",
-        "data_class"
-      ],
+      "description": "Patches one parser-emitted flow. data_class rewrites the class. authz_scope fills a scope the parser omitted and requires reason. A derived scope, or a match count other than one, is ignored with a warning.",
       "properties": {
         "from": {
           "$ref": "#/$defs/address"
@@ -292,8 +288,53 @@
             "config",
             "unknown"
           ]
+        },
+        "authz_scope": {
+          "description": "Fill an omitted authz_scope. Must match the parser flow when data_class is also set.",
+          "enum": [
+            "resource",
+            "project",
+            "account",
+            "organization"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Why this scope is known. Required when authz_scope is set. Stays in the repository."
         }
-      }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "data_class"
+          ]
+        },
+        {
+          "required": [
+            "authz_scope",
+            "reason"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "authz_scope"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
+        }
+      ]
     },
     "purpose": {
       "enum": [
