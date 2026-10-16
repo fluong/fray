@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-10-16
+
 ### Added
 - EC2 instances, Auto Scaling groups and EKS node groups now get IAM-derived
   flows to S3, RDS (`authz_scope`) and Bedrock, so FR-028/FR-032/FR-004
@@ -558,7 +560,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/fluong/fray/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/fluong/fray/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/fluong/fray/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/fluong/fray/compare/v0.29.1...v0.30.0
