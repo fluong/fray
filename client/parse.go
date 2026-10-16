@@ -361,6 +361,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 	if err := applyFlowAnnotations(flows, elements, cfg, declaredSource, &warnings); err != nil {
 		return DFD{}, warnings, err
 	}
+	reconcileOmittedScopeWarnings(flows, &warnings)
 
 	boundaries := mechanicalBoundaries(flows, elements, &warnings)
 	boundaries = append(boundaries, awsBounds...)
@@ -1266,6 +1267,53 @@ func fillAuthzScope(flows []*Flow, ann frayFlowAnnotation, fromKey, toKey, decla
 	}
 	f.Causes["authz_scope"] = ReportConfigPath(declaredSource) + "#" + ann.From + " -> " + ann.To + " " + f.DataClass
 	return nil
+}
+
+const omittedScopeWarnPrefix = "authz_scope omitted for "
+const omittedScopeDeclareHint = "; declare it with fray.yaml annotations.flows authz_scope"
+
+// reconcileOmittedScopeWarnings drops an "authz_scope omitted for <role>"
+// warning when every flow stamped with that role was filled from fray.yaml.
+// If any of that role's flows are still unfilled, the warning stays and names
+// the annotation that would fill it.
+func reconcileOmittedScopeWarnings(flows []*Flow, warnings *[]string) {
+	if warnings == nil || len(*warnings) == 0 {
+		return
+	}
+	var kept []string
+	for _, w := range *warnings {
+		if !strings.HasPrefix(w, omittedScopeWarnPrefix) {
+			kept = append(kept, w)
+			continue
+		}
+		rest := strings.TrimPrefix(w, omittedScopeWarnPrefix)
+		role, _, _ := strings.Cut(rest, ": ")
+		var mine []*Flow
+		for _, f := range flows {
+			if f.Causes["authz_scope_omitted_for"] == role {
+				mine = append(mine, f)
+			}
+		}
+		if len(mine) == 0 {
+			kept = append(kept, w)
+			continue
+		}
+		allFilled := true
+		for _, f := range mine {
+			if f.AuthzScope == "" {
+				allFilled = false
+				break
+			}
+		}
+		if allFilled {
+			continue
+		}
+		if !strings.Contains(w, omittedScopeDeclareHint) {
+			w += omittedScopeDeclareHint
+		}
+		kept = append(kept, w)
+	}
+	*warnings = kept
 }
 
 func scopeAnnotationIgnored(ann frayFlowAnnotation, n int) string {

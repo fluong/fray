@@ -311,7 +311,7 @@ func TestRoleDocumentsInlineSources(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			mod, refs, resources, data, idx := tc.build()
-			docs, unknown := roleDocuments(mod, refs, resources, data, idx)
+			docs, unknown, _ := roleDocuments(mod, refs, resources, data, idx)
 			if unknown != tc.wantUnknown {
 				t.Fatalf("unknown=%v want %v docs=%d", unknown, tc.wantUnknown, len(docs))
 			}
@@ -393,7 +393,7 @@ func TestUnknownSourceOmitsConsumerScope(t *testing.T) {
 	resources[4].address = "module.db.aws_secretsmanager_secret.db"
 	resources[5].address = "module.uploads.aws_s3_bucket.uploads"
 
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, data, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, data, idx)
 	if !unknown {
 		t.Fatal("expected unknown identity-policy source")
 	}
@@ -436,7 +436,7 @@ func TestUnknownSourceOmitsConsumerScope(t *testing.T) {
 		t.Fatalf("S3 must omit scope/actions when unknown; grants=%v actions=%v", grants, actions)
 	}
 
-	g, ok := bedrockGrantForRole("", []string{"aws_iam_role.task"}, resources, data, idx)
+	g, ok, _ := bedrockGrantForRole("", []string{"aws_iam_role.task"}, resources, data, idx)
 	if !ok {
 		t.Fatal("Bedrock flow should exist when known Allow is present")
 	}
@@ -471,7 +471,7 @@ func TestDenyInlineJSONBedrockOmitsSecretsS3NotGranted(t *testing.T) {
 		"role": {"aws_iam_role.task.name", "aws_iam_role.task"},
 	}}
 
-	g, ok := bedrockGrantForRole("", []string{"aws_iam_role.task"}, resources, data, idx)
+	g, ok, _ := bedrockGrantForRole("", []string{"aws_iam_role.task"}, resources, data, idx)
 	if !ok {
 		t.Fatal("expected bedrock flow")
 	}
@@ -479,7 +479,7 @@ func TestDenyInlineJSONBedrockOmitsSecretsS3NotGranted(t *testing.T) {
 		t.Fatalf("Deny must omit bedrock scope, got %q", g.scope)
 	}
 
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, data, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, data, idx)
 	if unknown {
 		t.Fatal("unexpected unknown")
 	}
@@ -1081,7 +1081,7 @@ func TestAttachmentUnknownPolicyOmitsScope(t *testing.T) {
 			"policy": {"data.aws_iam_policy_document.known.json", "data.aws_iam_policy_document.known"},
 		}},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, data, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, data, idx)
 	if !unknown {
 		t.Fatal("attachment-backed unknown policy must set unknown")
 	}

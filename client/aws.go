@@ -358,7 +358,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 	}
 	flows = append(flows, dbFlows(resources, data, idx, elements, &warnings)...)
 
-	bedrockFlows, bedrockEl := bedrockConnections(resources, data, idx, byAddr, &extra)
+	bedrockFlows, bedrockEl := bedrockConnections(resources, data, idx, byAddr, &extra, &warnings)
 	flows = append(flows, bedrockFlows...)
 	if bedrockEl != nil {
 		extra = append(extra, bedrockEl)
@@ -395,7 +395,10 @@ func resolveContainerSpecs(mod string, task planResource, containers, rootTaskCo
 func secretFlowsFrom(svc planResource, svcEl *Element, module, taskAddr string, specs []containerSpec, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
 	seen := map[string]bool{}
 	var flows []*Flow
-	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddr, "execution_role_arn"), resources, data, idx)
+	roleRefs := idx.attrRefs(taskAddr, "execution_role_arn")
+	docs, unknownDocs, iamWarns := roleDocuments(module, roleRefs, resources, data, idx)
+	*warnings = append(*warnings, iamWarns...)
+	wideCause, wideSecrets := roleKnownWideGrant(module, roleRefs, resources, idx, iamServiceSecretsManager)
 	taskMod, _, _, _ := splitResourceAddress(taskAddr)
 	for _, spec := range specs {
 		for _, ref := range spec.secrets {
@@ -414,15 +417,23 @@ func secretFlowsFrom(svc planResource, svcEl *Element, module, taskAddr string, 
 				DataClass: "credentials", Transport: "local", SecretDelivery: "env",
 				Causes: map[string]string{"secret_delivery": svc.address},
 			}
-			// Unknown identity-policy source on the role → omit authz_scope even
-			// when other docs look narrow (an unread policy could grant *).
-			if !unknownDocs {
-				if scope, grants, cause := awsSecretScope(sec, docs, idx.callRefs(module), resources, elements); scope != "" {
-					flow.AuthzScope = scope
-					flow.AuthzGrants = grants
-					if cause != "" {
-						flow.Causes["authz_scope"] = cause
-					}
+			var scope, cause string
+			var grants []string
+			if !unknownDocs || wideSecrets {
+				scope, grants, cause = awsSecretScope(sec, docs, idx.callRefs(module), resources, elements)
+				if wideSecrets {
+					scope, grants, cause = widenScopeWithKnownWide(scope, cause, wideCause)
+				}
+			}
+			if scope != "" {
+				flow.AuthzScope = scope
+				flow.AuthzGrants = grants
+				if cause != "" {
+					flow.Causes["authz_scope"] = cause
+				}
+			} else if unknownDocs {
+				if role := omittedScopeRole(module, roleRefs); role != "" {
+					flow.Causes["authz_scope_omitted_for"] = role
 				}
 			}
 			flows = append(flows, flow)
@@ -435,7 +446,10 @@ func bucketFlows(svc planResource, svcEl *Element, module, taskAddr string, reso
 	if taskAddr == "" {
 		return nil
 	}
-	docs, unknownDocs := roleDocuments(module, idx.attrRefs(taskAddr, "task_role_arn"), resources, data, idx)
+	roleRefs := idx.attrRefs(taskAddr, "task_role_arn")
+	docs, unknownDocs, iamWarns := roleDocuments(module, roleRefs, resources, data, idx)
+	*warnings = append(*warnings, iamWarns...)
+	wideCause, wideS3 := roleKnownWideGrant(module, roleRefs, resources, idx, iamServiceS3)
 	hits, grants, actions, cause, ambiguous, actionWarn := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
 	if ambiguous {
 		*warnings = append(*warnings, "ambiguous bucket for "+svc.address)
@@ -455,9 +469,23 @@ func bucketFlows(svc planResource, svcEl *Element, module, taskAddr string, reso
 		From: svcEl.canonicalKey(), To: hits[0].canonicalKey(),
 		DataClass: "unknown", Transport: "tls",
 	}
+	if wideS3 {
+		flow.AuthzScope, flow.AuthzGrants, cause = widenScopeWithKnownWide(scope, cause, wideCause)
+		flow.AuthzActions = actions
+		if cause != "" {
+			flow.Causes = map[string]string{"authz_scope": cause}
+		}
+		return []*Flow{flow}
+	}
 	// Unknown identity-policy source: keep the flow when known docs grant the
 	// bucket, but omit authz_scope and authz_actions.
 	if unknownDocs {
+		if role := omittedScopeRole(module, roleRefs); role != "" {
+			if flow.Causes == nil {
+				flow.Causes = map[string]string{}
+			}
+			flow.Causes["authz_scope_omitted_for"] = role
+		}
 		return []*Flow{flow}
 	}
 	flow.AuthzScope = scope
@@ -495,12 +523,17 @@ func dbFlows(resources, data []planResource, idx configIndex, elements []*Elemen
 				From: src.canonicalKey(), To: dest[0].canonicalKey(),
 				DataClass: "unknown", Transport: "unknown",
 			}
-			if scope, grants, cause := dbAuthzForFlow(src, dest[0], resources, data, idx, elements); scope != "" {
+			if scope, grants, cause, omittedRole := dbAuthzForFlow(src, dest[0], resources, data, idx, elements, warnings); scope != "" {
 				flow.AuthzScope = scope
 				flow.AuthzGrants = grants
 				if cause != "" {
 					flow.Causes = map[string]string{"authz_scope": cause}
 				}
+			} else if omittedRole != "" {
+				if flow.Causes == nil {
+					flow.Causes = map[string]string{}
+				}
+				flow.Causes["authz_scope_omitted_for"] = omittedRole
 			}
 			flows = append(flows, flow)
 		}
@@ -511,21 +544,33 @@ func dbFlows(resources, data []planResource, idx configIndex, elements []*Elemen
 // dbAuthzForFlow attaches IAM DB-access scope from the source ECS task role.
 // SG topology is unchanged; password-only paths (no matching DB actions) omit
 // authz_scope. Unknown identity-policy sources omit scope (same as secrets).
-func dbAuthzForFlow(src, dest *Element, resources, data []planResource, idx configIndex, elements []*Element) (scope string, grants []string, cause string) {
+func dbAuthzForFlow(src, dest *Element, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) (scope string, grants []string, cause, omittedRole string) {
 	svc, ok := planResourceByElement(src, resources)
 	if !ok || svc.typ != "aws_ecs_service" {
-		return "", nil, ""
+		return "", nil, "", ""
 	}
 	task, ok := serviceTaskDefinition(svc, resources, idx)
 	if !ok {
-		return "", nil, ""
+		return "", nil, "", ""
 	}
 	mod, _, _, _ := splitResourceAddress(svc.address)
-	docs, unknownDocs := roleDocuments(mod, idx.attrRefs(task.address, "task_role_arn"), resources, data, idx)
-	if unknownDocs {
-		return "", nil, ""
+	roleRefs := idx.attrRefs(task.address, "task_role_arn")
+	docs, unknownDocs, iamWarns := roleDocuments(mod, roleRefs, resources, data, idx)
+	if warnings != nil {
+		*warnings = append(*warnings, iamWarns...)
 	}
-	return awsDBScope(dest, docs, idx, resources, elements)
+	wideCause, wideDB := roleKnownWideGrant(mod, roleRefs, resources, idx, iamServiceRDS)
+	if !wideDB {
+		wideCause, wideDB = roleKnownWideGrant(mod, roleRefs, resources, idx, iamServiceRDSDB)
+	}
+	if unknownDocs && !wideDB {
+		return "", nil, "", omittedScopeRole(mod, roleRefs)
+	}
+	scope, grants, cause = awsDBScope(dest, docs, idx, resources, elements)
+	if wideDB {
+		scope, grants, cause = widenScopeWithKnownWide(scope, cause, wideCause)
+	}
+	return scope, grants, cause, ""
 }
 
 // awsObjectLock reports object_lock for an S3 bucket.

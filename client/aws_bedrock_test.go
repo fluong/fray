@@ -394,7 +394,7 @@ func bedrockECSPlan(t *testing.T, o bedrockIAMOpts) string {
 		{
 			"address": "aws_ecs_task_definition.app", "mode": "managed", "type": "aws_ecs_task_definition",
 			"name": "app", "change": map[string]any{"after": map[string]any{
-				"family": "app",
+				"family":                "app",
 				"container_definitions": `[{"name":"app","image":"example:1"}]`,
 			}},
 		},

@@ -10,6 +10,14 @@
 - `annotations.flows` `authz_scope` / `reason` require Action v0.32.0 or later;
   older Actions reject the fields.
 
+### Fixed
+- An unresolvable managed policy ARN omits `authz_scope` only on that role
+  and warns. It no longer drops IAM scopes for every role in the plan.
+  Unrecognised AWS-managed policies omit scope; known full-access managed
+  policies (Bedrock, S3, Secrets Manager read/write, Administrator) still
+  report `account` on matching flows. ECS task execution, CloudWatch Logs,
+  and X-Ray daemon write attachments stay silent.
+
 ## [0.31.0] — 2026-10-15
 
 ### Added

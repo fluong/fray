@@ -1691,10 +1691,10 @@ type iamStatement struct {
 // JSON string is parsed into a synthetic doc; else the source is unknown.
 // Bare after_unknown.inline_policy / managed_policy_arns with no config entries
 // are ignored (provider-computed noise on empty roles).
-func roleDocuments(module string, roleRefs []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+func roleDocuments(module string, roleRefs []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool, warnings []string) {
 	roles := namedResources(roleRefs, "aws_iam_role")
 	if len(roles) == 0 {
-		return nil, false
+		return nil, false, nil
 	}
 	var out []planResource
 	for _, att := range resources {
@@ -1712,15 +1712,18 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		out = append(out, got...)
 		if unk {
 			unknown = true
+			warnings = append(warnings, unresolvedPolicyWarnings(module, matched, att, "policy_arn")...)
 		}
 	}
-	got, unk := policyAttachmentDocs(module, roles, resources, data, idx)
+	got, unk, w := policyAttachmentDocs(module, roles, resources, data, idx)
 	out = append(out, got...)
+	warnings = append(warnings, w...)
 	if unk {
 		unknown = true
 	}
-	got, unk = rolePolicyAttachmentsExclusiveDocs(module, roles, resources, data, idx)
+	got, unk, w = rolePolicyAttachmentsExclusiveDocs(module, roles, resources, data, idx)
 	out = append(out, got...)
+	warnings = append(warnings, w...)
 	if unk {
 		unknown = true
 	}
@@ -1758,13 +1761,14 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		if unk {
 			unknown = true
 		}
-		got, unk = roleManagedPolicyDocs(role, module, resources, data, idx)
+		got, unk, w = roleManagedPolicyDocs(role, module, resources, data, idx)
 		out = append(out, got...)
+		warnings = append(warnings, w...)
 		if unk {
 			unknown = true
 		}
 	}
-	return uniqueResources(out), unknown
+	return uniqueResources(out), unknown, warnings
 }
 
 // resolveAttachedPolicyARN resolves one attachment-like policy_arn / list
@@ -1772,9 +1776,12 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 func resolveAttachedPolicyARN(holder planResource, arnAttr, module string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
 	polNames := namedResources(idx.attrRefs(holder.address, arnAttr), "aws_iam_policy")
 	if len(polNames) == 0 {
-		// AWS-managed ARN constants are ignored here (Bedrock FullAccess is
-		// handled separately). An unknown ARN with no in-plan policy ref and
-		// no constant is an unknown identity-policy source.
+		// Customer-managed and unrecognised AWS-managed ARNs are unknown.
+		// Allowlisted and known-wide AWS-managed ARNs are recognised without
+		// an in-plan document. An unknown ARN with no constant matches unread.
+		if unreadableManagedPolicyARN(holder, arnAttr, idx) {
+			return nil, true
+		}
 		if attrAfterUnknown(holder, arnAttr) && idx.attrConstant(holder.address, arnAttr) == nil {
 			return nil, true
 		}
@@ -1802,7 +1809,7 @@ func resolveAttachedPolicyARN(holder planResource, arnAttr, module string, resou
 // name the roles the attachment could apply to — each overlapping role gets an
 // unknown identity-policy source (scope omitted). If those references cannot
 // be determined, every queried role in this module is marked unknown.
-func policyAttachmentDocs(module string, roles []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+func policyAttachmentDocs(module string, roles []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool, warnings []string) {
 	for _, att := range resources {
 		if att.typ != "aws_iam_policy_attachment" || !sameModule(att.address, module) {
 			continue
@@ -1829,12 +1836,13 @@ func policyAttachmentDocs(module string, roles []string, resources, data []planR
 		docs = append(docs, got...)
 		if unk {
 			unknown = true
+			warnings = append(warnings, unresolvedPolicyWarnings(module, matched, att, "policy_arn")...)
 		}
 	}
-	return docs, unknown
+	return docs, unknown, warnings
 }
 
-func rolePolicyAttachmentsExclusiveDocs(module string, roles []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+func rolePolicyAttachmentsExclusiveDocs(module string, roles []string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool, warnings []string) {
 	for _, ex := range resources {
 		if ex.typ != "aws_iam_role_policy_attachments_exclusive" || !sameModule(ex.address, module) {
 			continue
@@ -1850,9 +1858,10 @@ func rolePolicyAttachmentsExclusiveDocs(module string, roles []string, resources
 		docs = append(docs, got...)
 		if unk {
 			unknown = true
+			warnings = append(warnings, unresolvedPolicyWarnings(module, matched, ex, "policy_arns")...)
 		}
 	}
-	return docs, unknown
+	return docs, unknown, warnings
 }
 
 // rolePoliciesExclusiveDocs reads aws_iam_role_policies_exclusive: each
@@ -1926,6 +1935,13 @@ func matchRoleAttr(module string, holder planResource, roleAttr string, queried 
 		if knownHit {
 			continue
 		}
+		// Refs that name some other role: this literal is that role's name,
+		// not an unknown name for the roles being queried. Applying it here
+		// dropped authz_scope for every role in the plan when one attachment
+		// used a known .name string and name_prefix was after_unknown.
+		if len(refNames) > 0 && !overlaps(refNames, queried) {
+			continue
+		}
 		// Literal matches no known role name in the plan.
 		for _, q := range queried {
 			role, ok := findModuleResource(resources, module, "aws_iam_role", q)
@@ -1964,21 +1980,206 @@ func roleAttrLiterals(holder planResource, roleAttr string, idx configIndex) []s
 }
 
 // roleKnownIAMName returns the role's AWS name when known at plan time.
-// name_prefix, after_unknown name, or a missing name → not ok.
+// A known name string wins over after_unknown name_prefix (the AWS provider
+// leaves name_prefix unknown when name is set). name_prefix or an unknown
+// name with no name string → not ok.
 func roleKnownIAMName(role planResource, idx configIndex) (string, bool) {
-	if attrAfterUnknown(role, "name") || attrAfterUnknown(role, "name_prefix") {
-		return "", false
-	}
-	if hasConfigAttr(idx, role.address, "name_prefix") {
-		return "", false
-	}
-	if s, ok := role.values["name"].(string); ok && strings.TrimSpace(s) != "" {
-		return s, true
-	}
-	if s, ok := idx.attrConstant(role.address, "name").(string); ok && strings.TrimSpace(s) != "" {
-		return s, true
+	if !attrAfterUnknown(role, "name") {
+		if s, ok := role.values["name"].(string); ok && strings.TrimSpace(s) != "" {
+			return s, true
+		}
+		if s, ok := idx.attrConstant(role.address, "name").(string); ok && strings.TrimSpace(s) != "" {
+			return s, true
+		}
 	}
 	return "", false
+}
+
+func qualifiedRole(module, local string) string {
+	if module == "" {
+		return "aws_iam_role." + local
+	}
+	return module + ".aws_iam_role." + local
+}
+
+func unresolvedPolicyWarnings(module string, roles []string, holder planResource, attr string) []string {
+	var out []string
+	for _, role := range roles {
+		out = append(out, "authz_scope omitted for "+qualifiedRole(module, role)+": "+holder.address+" "+attr+" is not an in-plan policy")
+	}
+	return out
+}
+
+// awsManagedPolicyAllowlist is the only AWS-managed policy ARNs that do not
+// make a role's authz_scope unknown. Each grants no s3, secretsmanager, ssm,
+// kms, rds, rds-db, dynamodb, or bedrock data-plane action:
+//
+//   - service-role/AmazonECSTaskExecutionRolePolicy: ECR image pull
+//     (ecr:GetAuthorizationToken, BatchGetImage, …) and logs:CreateLogStream /
+//     logs:PutLogEvents. Task-definition secrets need a separate policy.
+//   - CloudWatchLogsFullAccess: logs:* plus cloudwatch:GenerateQuery. Log
+//     administration, not object, secret, or database access.
+//   - AWSXRayDaemonWriteAccess: xray:PutTraceSegments, PutTelemetryRecords,
+//     and GetSampling*. Trace upload only.
+//
+// Every other arn:aws:iam::aws:policy/ ARN (AmazonS3FullAccess,
+// AmazonBedrockFullAccess, AmazonRDSFullAccess, …) is unreadable here and
+// omits scope on that role.
+var awsManagedPolicyAllowlist = map[string]struct{}{
+	"arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy": {},
+	"arn:aws:iam::aws:policy/CloudWatchLogsFullAccess":                      {},
+	"arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess":                      {},
+}
+
+// iamWideAll marks a known-wide AWS managed policy that grants Resource "*"
+// on every Fray data-plane service we derive authz_scope for.
+const iamWideAll = "*"
+
+const (
+	iamServiceS3             = "s3"
+	iamServiceSecretsManager = "secretsmanager"
+	iamServiceSSM            = "ssm"
+	iamServiceKMS            = "kms"
+	iamServiceRDS            = "rds"
+	iamServiceRDSDB          = "rds-db"
+	iamServiceDynamoDB       = "dynamodb"
+	iamServiceBedrock        = "bedrock"
+)
+
+// knownWideAWSManagedPolicies maps AWS-managed ARNs we recognise to the
+// data-plane services they grant on Resource "*". These are not in-plan
+// documents but still widen IAM-derived authz_scope to account on matching
+// flows (account is the broadest IAM scope; inline narrow grants never narrow
+// below a known-wide attachment on the same role).
+//
+//   - AmazonBedrockFullAccess: bedrock:* and bedrock-agent* on "*".
+//   - AmazonS3FullAccess: s3:* on bucket and object ARNs (account-wide S3).
+//   - SecretsManagerReadWrite: secretsmanager:* on "*".
+//   - AdministratorAccess: Action "*" on Resource "*" (all services below).
+var knownWideAWSManagedPolicies = map[string][]string{
+	"arn:aws:iam::aws:policy/AmazonBedrockFullAccess": {iamServiceBedrock},
+	"arn:aws:iam::aws:policy/AmazonS3FullAccess":      {iamServiceS3},
+	"arn:aws:iam::aws:policy/SecretsManagerReadWrite": {iamServiceSecretsManager},
+	"arn:aws:iam::aws:policy/AdministratorAccess":     {iamWideAll},
+}
+
+func awsManagedPolicyAllowed(arn string) bool {
+	_, ok := awsManagedPolicyAllowlist[strings.TrimSpace(arn)]
+	return ok
+}
+
+func awsManagedPolicyKnownWide(arn string) ([]string, bool) {
+	svcs, ok := knownWideAWSManagedPolicies[strings.TrimSpace(arn)]
+	return svcs, ok
+}
+
+func knownWideCovers(services []string, service string) bool {
+	for _, s := range services {
+		if s == iamWideAll || s == service {
+			return true
+		}
+	}
+	return false
+}
+
+// unreadableManagedPolicyARN reports a constant policy ARN whose document is
+// not in the plan and is neither allowlisted nor a known-wide AWS managed policy.
+func unreadableManagedPolicyARN(holder planResource, arnAttr string, idx configIndex) bool {
+	vals := append(policyARNStrings(holder.values[arnAttr]), policyARNStrings(idx.attrConstant(holder.address, arnAttr))...)
+	for _, s := range vals {
+		if awsManagedPolicyAllowed(s) {
+			continue
+		}
+		if _, wide := awsManagedPolicyKnownWide(s); wide {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// roleKnownWideGrant reports whether a matched role carries a known-wide
+// AWS-managed policy ARN for service (attachments or managed_policy_arns).
+func roleKnownWideGrant(module string, roleRefs []string, resources []planResource, idx configIndex, service string) (cause string, ok bool) {
+	roles := namedResources(roleRefs, "aws_iam_role")
+	if len(roles) == 0 {
+		return "", false
+	}
+	for _, att := range resources {
+		if att.typ != "aws_iam_role_policy_attachment" || !sameModule(att.address, module) {
+			continue
+		}
+		matched, _ := matchRoleAttr(module, att, "role", roles, resources, idx)
+		if len(matched) == 0 {
+			continue
+		}
+		for _, arn := range policyARNStringsOnHolder(att, "policy_arn", idx) {
+			if svcs, wide := awsManagedPolicyKnownWide(arn); wide && knownWideCovers(svcs, service) {
+				return att.address, true
+			}
+		}
+	}
+	for _, role := range resources {
+		if role.typ != "aws_iam_role" || !sameModule(role.address, module) {
+			continue
+		}
+		if !overlaps([]string{localTypeName(role.address)}, roles) {
+			continue
+		}
+		for _, arn := range policyARNStringsOnHolder(role, "managed_policy_arns", idx) {
+			if svcs, wide := awsManagedPolicyKnownWide(arn); wide && knownWideCovers(svcs, service) {
+				return role.address + " managed_policy_arns", true
+			}
+		}
+	}
+	return "", false
+}
+
+func policyARNStringsOnHolder(holder planResource, arnAttr string, idx configIndex) []string {
+	return append(policyARNStrings(holder.values[arnAttr]), policyARNStrings(idx.attrConstant(holder.address, arnAttr))...)
+}
+
+// widenScopeWithKnownWide returns account scope when wideCause is set and
+// account is broader than the derived scope (or derived scope is empty).
+func widenScopeWithKnownWide(scope, cause, wideCause string) (outScope string, grants []string, outCause string) {
+	if wideCause == "" {
+		if scope == "" {
+			return "", nil, ""
+		}
+		return scope, normalizeAuthzGrants(scope), cause
+	}
+	if scope == "" || authzRank["account"] > authzRank[scope] {
+		return "account", normalizeAuthzGrants("account"), wideCause
+	}
+	return scope, normalizeAuthzGrants(scope), cause
+}
+
+func omittedScopeRole(module string, roleRefs []string) string {
+	roles := namedResources(roleRefs, "aws_iam_role")
+	if len(roles) != 1 {
+		return ""
+	}
+	return qualifiedRole(module, roles[0])
+}
+
+func policyARNStrings(v any) []string {
+	switch t := v.(type) {
+	case string:
+		if s := strings.TrimSpace(t); s != "" {
+			return []string{s}
+		}
+	case []any:
+		var out []string
+		for _, item := range t {
+			if s, ok := item.(string); ok {
+				if s = strings.TrimSpace(s); s != "" {
+					out = append(out, s)
+				}
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func exclusivePolicyNames(ex planResource, idx configIndex) []string {
@@ -2125,10 +2326,10 @@ func roleInlinePolicyDocs(role planResource, module string, data []planResource,
 	return docs, unknown
 }
 
-func roleManagedPolicyDocs(role planResource, module string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+func roleManagedPolicyDocs(role planResource, module string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool, warnings []string) {
 	if !hasConfigAttr(idx, role.address, "managed_policy_arns") {
 		// Bare after_unknown.managed_policy_arns with no config: ignore.
-		return nil, false
+		return nil, false, nil
 	}
 	polNames := namedResources(idx.attrRefs(role.address, "managed_policy_arns"), "aws_iam_policy")
 	for _, polName := range polNames {
@@ -2143,16 +2344,21 @@ func roleManagedPolicyDocs(role planResource, module string, resources, data []p
 			unknown = true
 		}
 	}
-	// AWS-managed ARN constants are not read as documents (AmazonBedrockFullAccess
-	// is handled by roleAmazonBedrockFullAccess). If config has managed_policy_arns
-	// but nothing resolved to an in-plan policy or a readable document, and the
-	// attribute is after_unknown without only-constant AWS ARNs, mark unknown.
+	// Allowlisted AWS-managed ARNs are not documents. Any other constant ARN
+	// (customer-managed, or a wide AWS-managed policy) omits scope on this role.
+	if unreadableManagedPolicyARN(role, "managed_policy_arns", idx) {
+		unknown = true
+		warnings = append(warnings, unresolvedPolicyWarnings(module, []string{localTypeName(role.address)}, role, "managed_policy_arns")...)
+	}
+	// If config has managed_policy_arns but nothing resolved to an in-plan
+	// policy, and the attribute is after_unknown without only-constant ARNs,
+	// mark unknown.
 	if len(polNames) == 0 && len(docs) == 0 && attrAfterUnknown(role, "managed_policy_arns") {
 		if !managedPolicyArnsOnlyConstants(idx, role.address) {
 			unknown = true
 		}
 	}
-	return docs, unknown
+	return docs, unknown, warnings
 }
 
 func hasConfigAttr(idx configIndex, address, attr string) bool {

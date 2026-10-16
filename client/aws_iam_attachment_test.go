@@ -36,7 +36,7 @@ func TestPolicyAttachmentRolesGrantBoth(t *testing.T) {
 		"aws_iam_policy.s3": {},
 	}}
 	for _, role := range []string{"aws_iam_role.a", "aws_iam_role.b"} {
-		docs, unknown := roleDocuments("", []string{role}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{role}, resources, nil, idx)
 		if unknown {
 			t.Fatalf("%s: unexpected unknown", role)
 		}
@@ -68,7 +68,7 @@ func TestPolicyAttachmentRolesUnknownOmitsScope(t *testing.T) {
 		}},
 		"aws_iam_policy.s3": {},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if !unknown {
 		t.Fatal("unknown roles on policy_attachment must set unknown")
 	}
@@ -96,7 +96,7 @@ func TestPolicyAttachmentRolesUnknownNoRefsMarksEveryRole(t *testing.T) {
 		}},
 		"aws_iam_policy.s3": {},
 	}}
-	_, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	_, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if !unknown {
 		t.Fatal("policy_attachment with unknown roles and no role refs must mark unknown")
 	}
@@ -117,7 +117,7 @@ func TestRolePolicyAttachmentsExclusiveInPlanScope(t *testing.T) {
 		}},
 		"aws_iam_policy.narrow": {},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if unknown {
 		t.Fatal("unexpected unknown")
 	}
@@ -141,7 +141,7 @@ func TestRolePolicyAttachmentsExclusiveUnknownExternalARNOmits(t *testing.T) {
 			"policy_arns": {"aws_iam_policy.missing.arn", "aws_iam_policy.missing"},
 		}},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if !unknown {
 		t.Fatal("missing in-plan policy ARN must set unknown")
 	}
@@ -164,7 +164,7 @@ func TestRolePolicyAttachmentsExclusiveAfterUnknownARNOmits(t *testing.T) {
 			"role_name": {"aws_iam_role.task.name", "aws_iam_role.task"},
 		}},
 	}}
-	_, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	_, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if !unknown {
 		t.Fatal("after_unknown policy_arns with no constant must set unknown")
 	}
@@ -185,7 +185,7 @@ func TestRolePoliciesExclusiveMissingInlineOmits(t *testing.T) {
 			"policy_names": []any{"missing-inline"},
 		}},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if !unknown {
 		t.Fatal("exclusive name with no matching inline policy must set unknown")
 	}
@@ -216,7 +216,7 @@ func TestRolePoliciesExclusiveMatchingInlineCounts(t *testing.T) {
 			"policy_names": []any{"extra"},
 		}},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if unknown {
 		t.Fatal("unexpected unknown")
 	}
@@ -251,7 +251,7 @@ func TestPolicyAttachmentIgnoresUsersAndGroups(t *testing.T) {
 		}},
 		"aws_iam_policy.s3": {},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 	if unknown {
 		t.Fatal("users/groups-only attachment must not mark role unknown")
 	}
@@ -284,7 +284,7 @@ func TestLiteralRoleName_RolePolicyAttachment(t *testing.T) {
 			}},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown {
 			t.Fatal("unexpected unknown")
 		}
@@ -310,7 +310,7 @@ func TestLiteralRoleName_RolePolicyAttachment(t *testing.T) {
 			}},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown {
 			t.Fatal("external literal must not mark unknown")
 		}
@@ -333,7 +333,7 @@ func TestLiteralRoleName_RolePolicyAttachment(t *testing.T) {
 			}},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if !unknown {
 			t.Fatal("literal with unknown role name must set unknown")
 		}
@@ -360,7 +360,7 @@ func TestLiteralRoleName_PolicyAttachment(t *testing.T) {
 			}},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) != 1 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -383,7 +383,7 @@ func TestLiteralRoleName_PolicyAttachment(t *testing.T) {
 			}},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d want ignore", unknown, len(docs))
 		}
@@ -402,7 +402,7 @@ func TestLiteralRoleName_PolicyAttachment(t *testing.T) {
 			}},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if !unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d want unknown omit", unknown, len(docs))
 		}
@@ -419,10 +419,10 @@ func TestLiteralRoleName_RolePolicy(t *testing.T) {
 		}
 		resources = append(resources, bucketRes...)
 		idx := configIndex{resources: map[string]exprSet{
-			"aws_iam_role.task":        {},
+			"aws_iam_role.task":       {},
 			"aws_iam_role_policy.lit": {constants: map[string]any{"role": "app-task"}},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) != 1 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -438,10 +438,10 @@ func TestLiteralRoleName_RolePolicy(t *testing.T) {
 				values: map[string]any{"role": "other-role", "policy": s3PutJSON}},
 		}
 		idx := configIndex{resources: map[string]exprSet{
-			"aws_iam_role.task":        {},
+			"aws_iam_role.task":       {},
 			"aws_iam_role_policy.ext": {constants: map[string]any{"role": "other-role"}},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -453,10 +453,10 @@ func TestLiteralRoleName_RolePolicy(t *testing.T) {
 				values: map[string]any{"role": "maybe-task", "policy": s3PutJSON}},
 		}
 		idx := configIndex{resources: map[string]exprSet{
-			"aws_iam_role.task": {raw: map[string]any{"name_prefix": map[string]any{"constant_value": "task-"}}},
+			"aws_iam_role.task":       {raw: map[string]any{"name_prefix": map[string]any{"constant_value": "task-"}}},
 			"aws_iam_role_policy.lit": {constants: map[string]any{"role": "maybe-task"}},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if !unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -481,7 +481,7 @@ func TestLiteralRoleName_AttachmentsExclusive(t *testing.T) {
 			},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) != 1 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -505,7 +505,7 @@ func TestLiteralRoleName_AttachmentsExclusive(t *testing.T) {
 			},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -525,7 +525,7 @@ func TestLiteralRoleName_AttachmentsExclusive(t *testing.T) {
 			},
 			"aws_iam_policy.s3": {},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if !unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -544,13 +544,13 @@ func TestLiteralRoleName_PoliciesExclusive(t *testing.T) {
 		}
 		resources = append(resources, bucketRes...)
 		idx := configIndex{resources: map[string]exprSet{
-			"aws_iam_role.task": {},
+			"aws_iam_role.task":         {},
 			"aws_iam_role_policy.extra": {constants: map[string]any{"role": "app-task", "name": "extra"}},
 			"aws_iam_role_policies_exclusive.lit": {constants: map[string]any{
 				"role_name": "app-task", "policy_names": []any{"extra"},
 			}},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) == 0 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}
@@ -571,7 +571,7 @@ func TestLiteralRoleName_PoliciesExclusive(t *testing.T) {
 				"role_name": "external", "policy_names": []any{"extra"},
 			}},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d want ignore external", unknown, len(docs))
 		}
@@ -588,7 +588,7 @@ func TestLiteralRoleName_PoliciesExclusive(t *testing.T) {
 				"role_name": "maybe", "policy_names": []any{"extra"},
 			}},
 		}}
-		docs, unknown := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
+		docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task"}, resources, nil, idx)
 		if !unknown || len(docs) != 0 {
 			t.Fatalf("unknown=%v docs=%d", unknown, len(docs))
 		}

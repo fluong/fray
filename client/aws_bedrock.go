@@ -19,11 +19,12 @@ const bedrockSignalName = "bedrock"
 const amazonBedrockFullAccessARN = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
 
 type bedrockCallerGrant struct {
-	el     *Element
-	scope  string // "", "resource", or "account"
-	grants []string
-	cause  string
-	region string // "", "global", or a concrete region
+	el          *Element
+	scope       string // "", "resource", or "account"
+	grants      []string
+	cause       string
+	region      string // "", "global", or a concrete region
+	omittedRole string // set when unknownDocs omitted authz_scope
 }
 
 // bedrockConnections appends compute→Bedrock flows and returns an inferred
@@ -33,6 +34,7 @@ func bedrockConnections(
 	idx configIndex,
 	byAddr map[string]*Element,
 	extra *[]*Element,
+	warnings *[]string,
 ) (flows []*Flow, bedrock *Element) {
 	var callers []bedrockCallerGrant
 
@@ -50,7 +52,10 @@ func bedrockConnections(
 			continue
 		}
 		roleRefs := idx.attrRefs(taskAddr, "task_role_arn")
-		g, ok := bedrockGrantForRole(mod, roleRefs, resources, data, idx)
+		g, ok, iamWarns := bedrockGrantForRole(mod, roleRefs, resources, data, idx)
+		if warnings != nil {
+			*warnings = append(*warnings, iamWarns...)
+		}
 		if !ok {
 			continue
 		}
@@ -64,7 +69,10 @@ func bedrockConnections(
 		}
 		mod, _, _, _ := splitResourceAddress(fn.address)
 		roleRefs := idx.attrRefs(fn.address, "role")
-		g, ok := bedrockGrantForRole(mod, roleRefs, resources, data, idx)
+		g, ok, iamWarns := bedrockGrantForRole(mod, roleRefs, resources, data, idx)
+		if warnings != nil {
+			*warnings = append(*warnings, iamWarns...)
+		}
 		if !ok {
 			continue
 		}
@@ -102,15 +110,17 @@ func bedrockConnections(
 			if c.cause != "" {
 				flow.Causes = map[string]string{"authz_scope": c.cause}
 			}
+		} else if c.omittedRole != "" {
+			flow.Causes = map[string]string{"authz_scope_omitted_for": c.omittedRole}
 		}
 		flows = append(flows, flow)
 	}
 	return flows, bedrock
 }
 
-func bedrockGrantForRole(module string, roleRefs []string, resources, data []planResource, idx configIndex) (bedrockCallerGrant, bool) {
-	docs, unknownDocs := roleDocuments(module, roleRefs, resources, data, idx)
-	managed, managedCause := roleAmazonBedrockFullAccess(module, roleRefs, resources, idx)
+func bedrockGrantForRole(module string, roleRefs []string, resources, data []planResource, idx configIndex) (bedrockCallerGrant, bool, []string) {
+	docs, unknownDocs, iamWarns := roleDocuments(module, roleRefs, resources, data, idx)
+	managedCause, managed := roleKnownWideGrant(module, roleRefs, resources, idx, iamServiceBedrock)
 
 	hasAllow := managed
 	var allowing []iamStatement
@@ -124,21 +134,30 @@ func bedrockGrantForRole(module string, roleRefs []string, resources, data []pla
 		}
 	}
 	if !hasAllow {
-		return bedrockCallerGrant{}, false
+		return bedrockCallerGrant{}, false, iamWarns
 	}
 
 	g := bedrockCallerGrant{}
-	// Unknown identity-policy source: known Allow still emits the flow, but
-	// scope and region are omitted (unread policy could broaden either).
+	// Unknown identity-policy source: known Allow still emits the flow. A known-
+	// wide Bedrock managed policy still reports account; other unread policies
+	// omit scope.
 	if unknownDocs {
-		return g, true
+		if managed {
+			g.scope = "account"
+			g.grants = normalizeAuthzGrants("account")
+			g.cause = managedCause
+			g.region = callerRegionFromAllows(allowing, true)
+			return g, true, iamWarns
+		}
+		g.omittedRole = omittedScopeRole(module, roleRefs)
+		return g, true, iamWarns
 	}
 	// Deny of Bedrock invoke on any role doc → omit scope (still emit the flow).
 	for _, doc := range docs {
 		for _, st := range docDenyStatements(doc) {
 			if grantsAction(st, bedrockInvokeAction) {
 				g.region = callerRegionFromAllows(allowing, managed)
-				return g, true
+				return g, true, iamWarns
 			}
 		}
 	}
@@ -186,7 +205,7 @@ func bedrockGrantForRole(module string, roleRefs []string, resources, data []pla
 		g.cause = ""
 	}
 	g.region = callerRegionFromAllows(allowing, managed)
-	return g, true
+	return g, true, iamWarns
 }
 
 func roleAmazonBedrockFullAccess(module string, roleRefs []string, resources []planResource, idx configIndex) (bool, string) {

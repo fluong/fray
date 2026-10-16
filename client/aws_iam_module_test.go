@@ -70,7 +70,7 @@ func TestRootModuleRoleDocuments(t *testing.T) {
 			},
 		},
 	}}
-	docs, unknown := roleDocuments("", []string{"aws_iam_role.task.arn", "aws_iam_role.task"}, resources, data, idx)
+	docs, unknown, _ := roleDocuments("", []string{"aws_iam_role.task.arn", "aws_iam_role.task"}, resources, data, idx)
 	if unknown {
 		t.Fatal("roleDocuments unexpected unknown")
 	}
@@ -122,7 +122,7 @@ func TestRoleDocumentsNestedModule(t *testing.T) {
 			},
 		},
 	}}
-	docs, unknown := roleDocuments(mod, []string{role + ".arn", role}, resources, data, idx)
+	docs, unknown, _ := roleDocuments(mod, []string{role + ".arn", role}, resources, data, idx)
 	if unknown {
 		t.Fatal("roleDocuments unexpected unknown")
 	}
