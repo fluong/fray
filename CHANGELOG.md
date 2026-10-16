@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-10-16
+
 ### Added
 - `annotations.flows` can fill an `authz_scope` the parser couldn't derive
   (reason required). An annotation on a derived scope, or one that matches no
@@ -548,7 +550,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/fluong/fray/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/fluong/fray/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/fluong/fray/compare/v0.29.1...v0.30.0
 [0.29.1]: https://github.com/fluong/fray/compare/v0.29.0...v0.29.1
