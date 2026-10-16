@@ -1702,7 +1702,7 @@ func cloudSQLScope(sa string, sqlRes planResource, projectIAM []planResource, id
 		if expr == "" {
 			continue // condition present but unreadable → omit
 		}
-		match, ok := cloudSQLConditionMatches(expr, instName, sqlRes, idx)
+		match, ok := cloudSQLConditionMatches(expr, instName, sqlRes)
 		if !ok {
 			continue // unparseable
 		}
@@ -1850,7 +1850,7 @@ var (
 
 // cloudSQLConditionMatches reports whether expr scopes to this instance.
 // ok=false means unparseable (omit). ok=true && match=false means another instance.
-func cloudSQLConditionMatches(expr, instName string, sqlRes planResource, idx configIndex) (match, ok bool) {
+func cloudSQLConditionMatches(expr, instName string, sqlRes planResource) (match, ok bool) {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
 		return false, false

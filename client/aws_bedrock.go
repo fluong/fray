@@ -178,19 +178,20 @@ func bedrockGrantForRole(module string, roleRefs []string, resources, data []pla
 	}
 	if !omitScope && len(allowing) > 0 {
 		scope, cause, ok := bedrockScopeFromAllows(allowing)
-		if !ok {
+		switch {
+		case !ok:
 			omitScope = true
 			g.scope = ""
 			g.grants = nil
 			g.cause = ""
-		} else if managed {
+		case managed:
 			// Managed FullAccess is account-wide; keep account even if docs are narrower.
 			g.scope = "account"
 			g.grants = normalizeAuthzGrants("account")
 			if g.cause == "" {
 				g.cause = managedCause
 			}
-		} else {
+		default:
 			g.scope = scope
 			g.grants = normalizeAuthzGrants(scope)
 			g.cause = cause

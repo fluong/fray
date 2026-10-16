@@ -428,15 +428,16 @@ func ltFixture(t *testing.T, o ltOpts) (planResource, []planResource, configInde
 		}
 		ltRefs = append(ltRefs, "aws_launch_template.app.id", "aws_launch_template.app")
 	}
-	if o.omitVersion {
+	switch {
+	case o.omitVersion:
 		// version key absent
-	} else if o.versionRef != "" {
+	case o.versionRef != "":
 		attr := "aws_launch_template.app." + o.versionRef
 		ltBlock["version"] = map[string]any{
 			"references": []any{attr, "aws_launch_template.app"},
 		}
 		ltRefs = append(ltRefs, attr, "aws_launch_template.app")
-	} else {
+	default:
 		ltBlock["version"] = map[string]any{"constant_value": o.version}
 	}
 

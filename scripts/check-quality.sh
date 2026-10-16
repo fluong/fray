@@ -41,7 +41,10 @@ Nothing is installed on the host except Docker.
 
 Options:
   --fix            go mod tidy, golangci-lint fmt, golangci-lint run --fix,
-                   then the full verification
+                   then the full verification (unless combined with --only)
+  --fix --only fmt Run only golangci-lint fmt (no tidy, no lint --fix)
+  --fix --only tidy Run only go mod tidy per module
+  --fix --only lint Run only golangci-lint run --fix per module
   --fast           Run only fmt and lint
   --new            Lint only: pass --new-from-merge-base=origin/main to golangci-lint
   --only <check>   Run one check: tidy, fmt, lint, vuln, build, test, coverage
@@ -139,6 +142,15 @@ parse_args() {
       exit 2
     fi
     MODE_ONLY="$(canonical_check "$MODE_ONLY")"
+  fi
+  if [[ "$MODE_FIX" -eq 1 && -n "$MODE_ONLY" ]]; then
+    case "$MODE_ONLY" in
+      tidy | fmt | lint) ;;
+      *)
+        echo "error: --fix --only supports tidy, fmt, or lint (not '${MODE_ONLY}')" >&2
+        exit 2
+        ;;
+    esac
   fi
 }
 
@@ -532,29 +544,54 @@ check_coverage() {
   return "$failed"
 }
 
-fix_one() {
-  local failed=0 rc=0 tags
+fix_tidy_one() {
+  docker_go "${WORKDIR:?}" "" go mod tidy
+}
+
+fix_fmt_one() {
+  docker_lint "${WORKDIR:?}" golangci-lint fmt
+}
+
+fix_lint_one() {
+  local rc=0 tags
   tags="$(module_quality_tags "${MODULE:?}")"
-  if ! docker_go "${WORKDIR:?}" "" go mod tidy; then
-    failed=1
-  fi
-  if ! docker_lint "${WORKDIR:?}" golangci-lint fmt; then
-    failed=1
-  fi
   if [[ -n "$tags" ]]; then
     docker_lint "${WORKDIR:?}" golangci-lint run --build-tags="$tags" --fix ./... || rc=$?
   else
     docker_lint "${WORKDIR:?}" golangci-lint run --fix ./... || rc=$?
   fi
   if [[ "$rc" -gt 1 ]]; then
-    failed=1
-  elif [[ "$rc" -eq 1 ]]; then
+    return 1
+  fi
+  if [[ "$rc" -eq 1 ]]; then
     echo "note: golangci-lint run --fix left issues; the lint check reports them"
+  fi
+  return 0
+}
+
+fix_one() {
+  local failed=0
+  if ! fix_tidy_one; then
+    failed=1
+  fi
+  if ! fix_fmt_one; then
+    failed=1
+  fi
+  if ! fix_lint_one; then
+    failed=1
   fi
   return "$failed"
 }
 
 apply_fixes() {
+  if [[ -n "$MODE_ONLY" ]]; then
+    case "$MODE_ONLY" in
+      tidy) each_module_keep_going fix_tidy_one ;;
+      fmt) each_module_keep_going fix_fmt_one ;;
+      lint) each_module_keep_going fix_lint_one ;;
+    esac
+    return
+  fi
   each_module_keep_going fix_one
 }
 
@@ -608,6 +645,10 @@ main() {
 
   if [[ "$MODE_FIX" -eq 1 ]]; then
     run_check fix apply_fixes
+    if [[ -n "$MODE_ONLY" ]]; then
+      print_summary
+      exit "$FAILED"
+    fi
   fi
 
   local name

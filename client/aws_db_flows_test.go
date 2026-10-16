@@ -30,7 +30,7 @@ func rootFlatDBPlan(t *testing.T, sharedSG bool, useVPCIngressRule bool) string 
 		}},
 	})
 
-	resources := append(sgResources,
+	resources := append(append([]map[string]any(nil), sgResources...),
 		map[string]any{
 			"address": "aws_db_instance.main", "mode": "managed", "type": "aws_db_instance", "name": "main",
 			"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{

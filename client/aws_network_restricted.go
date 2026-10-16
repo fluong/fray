@@ -1142,13 +1142,13 @@ func classifyIngressSource(src ingressSource, resources []planResource, idx conf
 		}
 	}
 	for _, id := range src.prefixListIDs {
-		raise(classifyPrefixList(id, "", resources, idx))
+		raise(classifyPrefixList(id, "", resources))
 		if worst == netSrcUnknown {
 			return netSrcUnknown
 		}
 	}
 	for _, ref := range src.prefixListRefs {
-		raise(classifyPrefixList("", ref, resources, idx))
+		raise(classifyPrefixList("", ref, resources))
 		if worst == netSrcUnknown {
 			return netSrcUnknown
 		}
@@ -1258,8 +1258,8 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
-func classifyPrefixList(id, ref string, resources []planResource, idx configIndex) networkSourceClass {
-	pl, ok := findManagedPrefixList(id, ref, resources, idx)
+func classifyPrefixList(id, ref string, resources []planResource) networkSourceClass {
+	pl, ok := findManagedPrefixList(id, ref, resources)
 	if !ok {
 		return netSrcUnknown
 	}
@@ -1279,7 +1279,7 @@ func classifyPrefixList(id, ref string, resources []planResource, idx configInde
 	return netSrcRestricted
 }
 
-func findManagedPrefixList(id, ref string, resources []planResource, idx configIndex) (planResource, bool) {
+func findManagedPrefixList(id, ref string, resources []planResource) (planResource, bool) {
 	var hits []planResource
 	for _, r := range resources {
 		if r.typ != "aws_ec2_managed_prefix_list" {

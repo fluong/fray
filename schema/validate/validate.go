@@ -252,7 +252,7 @@ func Semantic(doc document) error {
 			}
 			fromIn, fromOut := side(b, f.From)
 			toIn, toOut := side(b, f.To)
-			if !((fromIn && toOut) || (fromOut && toIn)) {
+			if (!fromIn || !toOut) && (!fromOut || !toIn) {
 				set(ptr+"/boundaries", "flow "+f.ID+" does not cross "+bid+" with one endpoint on each side")
 			}
 		}

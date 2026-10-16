@@ -639,6 +639,9 @@ as `-tags` to build, test, lint, and vuln for that module. `go test` writes
 ./scripts/check-quality.sh --new --fast    # lint only new issues vs origin/main (for CI)
 ./scripts/check-quality.sh --only lint     # tidy, fmt, lint, vuln, build, test, or coverage
 ./scripts/check-quality.sh --fix           # go mod tidy, fmt, and lint --fix, then verify
+./scripts/check-quality.sh --fix --only fmt   # golangci-lint fmt only (no tidy or lint --fix)
+./scripts/check-quality.sh --fix --only tidy  # go mod tidy only
+./scripts/check-quality.sh --fix --only lint  # golangci-lint run --fix only
 ./scripts/check-quality.sh --clean-cache   # delete the named Docker cache volumes
 COVERAGE_MIN=80 ./scripts/check-quality.sh # fail under 80% (default 0 reports only)
 ```

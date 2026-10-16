@@ -47,7 +47,7 @@ func TestCheckActionPinsRejectsNonSHARefs(t *testing.T) {
 		t.Errorf("want file:line reporting, got:\n%s", text)
 	}
 	if strings.Contains(text, "actions/checkout@"+good) && strings.Count(text, "unpinned uses:") < 4 {
-		// good pin must not be the only reported line; ensure we still have 4 bad reports
+		t.Fatalf("pinned checkout must not suppress unpinned reports:\n%s", text)
 	}
 	if strings.Count(text, "unpinned uses:") < 4 {
 		t.Fatalf("want ≥4 unpinned reports, got:\n%s", text)

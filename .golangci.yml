@@ -39,10 +39,13 @@ linters:
     paths:
       - "(^|/)vendor(/|$)"
     rules:
+      # tests: table-driven tests are long by design; unchecked Close/Write in fixtures is not worth the noise
       - path: _test\.go
         linters:
           - dupl
           - gocognit
+          - errcheck
+          - gocyclo
 
 formatters:
   enable:

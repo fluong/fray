@@ -17,7 +17,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 	}{
 		{
 			name: "public IP, no authorized networks",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": true,
 			}, nil, true, false),
 			want: map[string]any{
@@ -30,7 +30,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "public IP, world authorized network",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": true,
 				"authorized_networks": []any{
 					map[string]any{"value": "0.0.0.0/0"},
@@ -44,7 +44,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "public IP, narrow/private authorized networks only",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": true,
 				"authorized_networks": []any{
 					map[string]any{"value": "10.0.0.0/8"},
@@ -59,7 +59,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "ipv4 disabled + private_network",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled":    false,
 				"private_network": "projects/p/global/networks/default",
 			}, nil, true, false),
@@ -71,7 +71,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "ssl_mode ENCRYPTED_ONLY",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": false,
 				"ssl_mode":     "ENCRYPTED_ONLY",
 			}, nil, true, false),
@@ -79,7 +79,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "ssl_mode TRUSTED_CLIENT_CERTIFICATE_REQUIRED",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": false,
 				"ssl_mode":     "TRUSTED_CLIENT_CERTIFICATE_REQUIRED",
 			}, nil, true, false),
@@ -87,7 +87,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "ssl_mode ALLOW_UNENCRYPTED_AND_ENCRYPTED",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": false,
 				"ssl_mode":     "ALLOW_UNENCRYPTED_AND_ENCRYPTED",
 			}, nil, true, false),
@@ -95,7 +95,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "legacy require_ssl only",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": false,
 				"require_ssl":  true,
 			}, nil, true, false),
@@ -103,7 +103,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "ssl_mode wins over require_ssl",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": false,
 				"ssl_mode":     "ALLOW_UNENCRYPTED_AND_ENCRYPTED",
 				"require_ssl":  true,
@@ -112,7 +112,7 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "ssl unset",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": false,
 			}, nil, true, false),
 			want:   map[string]any{"encrypted_at_rest": true},
@@ -175,25 +175,25 @@ func TestCloudSQLElementAttributes(t *testing.T) {
 		},
 		{
 			name: "deletion_protection tf true, settings false",
-			r: cloudSQLRes("db", map[string]any{"ipv4_enabled": false},
+			r: cloudSQLRes(map[string]any{"ipv4_enabled": false},
 				boolPtr(false), true, false),
 			want: map[string]any{"deletion_protection": true},
 		},
 		{
 			name: "deletion_protection tf false, settings true",
-			r: cloudSQLRes("db", map[string]any{"ipv4_enabled": false},
+			r: cloudSQLRes(map[string]any{"ipv4_enabled": false},
 				boolPtr(true), false, false),
 			want: map[string]any{"deletion_protection": true},
 		},
 		{
 			name: "deletion_protection both false",
-			r: cloudSQLRes("db", map[string]any{"ipv4_enabled": false},
+			r: cloudSQLRes(map[string]any{"ipv4_enabled": false},
 				boolPtr(false), false, false),
 			want: map[string]any{"deletion_protection": false},
 		},
 		{
 			name: "prevent_destroy wins",
-			r: cloudSQLRes("db", map[string]any{"ipv4_enabled": false},
+			r: cloudSQLRes(map[string]any{"ipv4_enabled": false},
 				boolPtr(false), false, false),
 			prevent: true,
 			want:    map[string]any{"deletion_protection": true},
@@ -251,12 +251,12 @@ func TestCloudSQLFROutcomes(t *testing.T) {
 	rows := []row{
 		{
 			name:  "public IP, no authorized networks",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": true}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": true}, nil, true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
 			name: "public IP, world authorized network",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled":        true,
 				"authorized_networks": []any{map[string]any{"value": "0.0.0.0/0"}},
 			}, nil, true, false),
@@ -264,7 +264,7 @@ func TestCloudSQLFROutcomes(t *testing.T) {
 		},
 		{
 			name: "public IP, narrow/private authorized networks only",
-			r: cloudSQLRes("db", map[string]any{
+			r: cloudSQLRes(map[string]any{
 				"ipv4_enabled": true,
 				"authorized_networks": []any{
 					map[string]any{"value": "10.0.0.0/8"},
@@ -275,32 +275,32 @@ func TestCloudSQLFROutcomes(t *testing.T) {
 		},
 		{
 			name:  "ipv4 disabled + private_network",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false, "private_network": "projects/p/global/networks/n"}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false, "private_network": "projects/p/global/networks/n"}, nil, true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
 			name:  "ssl_mode ENCRYPTED_ONLY",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false, "ssl_mode": "ENCRYPTED_ONLY"}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false, "ssl_mode": "ENCRYPTED_ONLY"}, nil, true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "mitigated", fr033: "mitigated",
 		},
 		{
 			name:  "ssl_mode TRUSTED_CLIENT_CERTIFICATE_REQUIRED",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false, "ssl_mode": "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false, "ssl_mode": "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"}, nil, true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "mitigated", fr033: "mitigated",
 		},
 		{
 			name:  "ssl_mode ALLOW_UNENCRYPTED_AND_ENCRYPTED",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false, "ssl_mode": "ALLOW_UNENCRYPTED_AND_ENCRYPTED"}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false, "ssl_mode": "ALLOW_UNENCRYPTED_AND_ENCRYPTED"}, nil, true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "open", fr033: "mitigated",
 		},
 		{
 			name:  "legacy require_ssl only",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false, "require_ssl": true}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false, "require_ssl": true}, nil, true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "mitigated", fr033: "mitigated",
 		},
 		{
 			name:  "ssl unset",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, nil, true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
@@ -344,22 +344,22 @@ func TestCloudSQLFROutcomes(t *testing.T) {
 		},
 		{
 			name:  "deletion: tf true × settings false × no prevent",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(false), true, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
 			name:  "deletion: tf false × settings true × no prevent",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(true), false, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(true), false, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
 		{
 			name:  "deletion: tf false × settings false × no prevent",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
 			fr029: "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "open",
 		},
 		{
 			name:    "deletion: tf false × settings false × prevent_destroy",
-			r:       cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
+			r:       cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
 			prevent: true,
 			fr029:   "mitigated", fr030: "mitigated", fr031: "unverified", fr033: "mitigated",
 		},
@@ -510,19 +510,19 @@ func TestCloudSQLProviderDeletionProtection(t *testing.T) {
 	}{
 		{
 			name:  "settings true",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(true), false, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(true), false, false),
 			want:  true,
 			fr033: true,
 		},
 		{
 			name:  "settings false",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
 			want:  false,
 			fr033: false,
 		},
 		{
 			name:  "settings absent",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, nil, true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, nil, true, false),
 			want:  nil,
 			fr033: true, // Terraform deletion_protection alone
 		},
@@ -546,13 +546,13 @@ func TestCloudSQLProviderDeletionProtection(t *testing.T) {
 		},
 		{
 			name:  "top-level true settings false",
-			r:     cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), true, false),
+			r:     cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(false), true, false),
 			want:  false,
 			fr033: true,
 		},
 		{
 			name:    "prevent_destroy flag false",
-			r:       cloudSQLRes("db", map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
+			r:       cloudSQLRes(map[string]any{"ipv4_enabled": false}, boolPtr(false), false, false),
 			prevent: true,
 			want:    false,
 			fr033:   true,
@@ -583,7 +583,8 @@ func TestCloudSQLProviderDeletionProtection(t *testing.T) {
 
 func boolPtr(v bool) *bool { return &v }
 
-func cloudSQLRes(name string, ip map[string]any, settingsDP *bool, tfDP bool, _ bool) planResource {
+func cloudSQLRes(ip map[string]any, settingsDP *bool, tfDP bool, _ bool) planResource {
+	const instName = "db"
 	settings := map[string]any{
 		"ip_configuration": []any{ip},
 	}
@@ -591,13 +592,13 @@ func cloudSQLRes(name string, ip map[string]any, settingsDP *bool, tfDP bool, _ 
 		settings["deletion_protection_enabled"] = *settingsDP
 	}
 	return planResource{
-		typ: "google_sql_database_instance", address: "google_sql_database_instance." + name,
+		typ: "google_sql_database_instance", address: "google_sql_database_instance.db",
 		values: map[string]any{
-			"name":                name,
+			"name":                instName,
 			"database_version":    "POSTGRES_15",
 			"region":              "europe-west1",
 			"project":             "demo",
-			"connection_name":     "demo:europe-west1:" + name,
+			"connection_name":     "demo:europe-west1:" + instName,
 			"deletion_protection": tfDP,
 			"settings":            []any{settings},
 		},

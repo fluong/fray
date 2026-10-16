@@ -355,7 +355,7 @@ func qualifyResourceInModule(moduleAddr, instanceKey, ref, wantType string) (str
 	idxSuffix := resourceIndexSuffix(ref, wantType, name)
 	addr := resourceAddress(base, wantType, name)
 	if idxSuffix != "" {
-		addr = addr + idxSuffix
+		addr += idxSuffix
 	}
 	return addr, true
 }

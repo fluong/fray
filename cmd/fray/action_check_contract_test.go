@@ -34,14 +34,14 @@ func parseActionStepConditions(t *testing.T) (conds map[string]string, bodies ma
 	return conds, bodies
 }
 
-func actionStepWouldRunMode(ifExpr string, outs map[string]string, mode string, showPayload, isPR, uploadSARIF bool) bool {
+func actionStepWouldRunMode(ifExpr string, outs map[string]string, mode string, uploadSARIF bool) bool {
 	if strings.Contains(ifExpr, "inputs.mode != 'check'") && mode == "check" {
 		return false
 	}
 	if strings.Contains(ifExpr, "inputs.mode == 'check'") && mode != "check" {
 		return false
 	}
-	return actionStepWouldRun(ifExpr, outs, showPayload, isPR, uploadSARIF)
+	return actionStepWouldRun(ifExpr, outs, true, true, uploadSARIF)
 }
 
 func TestModeCheckInputContract(t *testing.T) {
@@ -113,18 +113,18 @@ func TestModeCheckInputContract(t *testing.T) {
 		"has_payload": "true",
 	}
 	for _, name := range []string{"Upload sent payload", "Update PR comment", "Upload SARIF", "Gate", "Fray scan"} {
-		if actionStepWouldRunMode(conds[name], outs, "check", true, true, true) {
+		if actionStepWouldRunMode(conds[name], outs, "check", true) {
 			t.Fatalf("step %q must not run in mode=check", name)
 		}
 	}
-	if !actionStepWouldRunMode(conds["Fray setup check"], outs, "check", true, true, true) {
+	if !actionStepWouldRunMode(conds["Fray setup check"], outs, "check", true) {
 		t.Fatal("Fray setup check should run in mode=check")
 	}
-	if actionStepWouldRunMode(conds["Fray setup check"], outs, "scan", true, true, true) {
+	if actionStepWouldRunMode(conds["Fray setup check"], outs, "scan", true) {
 		t.Fatal("Fray setup check must not run in mode=scan")
 	}
 	// mode=scan: scan runs; setup check does not.
-	if !actionStepWouldRunMode(conds["Fray scan"], outs, "scan", true, true, true) {
+	if !actionStepWouldRunMode(conds["Fray scan"], outs, "scan", true) {
 		t.Fatal("Fray scan should run in mode=scan")
 	}
 }

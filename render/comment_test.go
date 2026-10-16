@@ -14,7 +14,7 @@ import (
 func TestPRCommentAWSAdvisoryFR007(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
-	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	injectFlowCause(doc, "module.ecs_service.data.aws_iam_policy_document.execution[0]")
 	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
@@ -35,7 +35,7 @@ func TestPRCommentAWSAdvisoryFR007IAMStatements(t *testing.T) {
 	// Exact demo PR #1: secret_arns unchanged; task_exec_iam_statements added with Resource "*".
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
-	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	injectFlowCause(doc, "module.ecs_service.data.aws_iam_policy_document.execution[0]")
 	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
@@ -54,7 +54,7 @@ func TestPRCommentAWSAdvisoryFR007IAMStatements(t *testing.T) {
 func TestPRCommentAWSAdvisoryFR007OmitsGuessedInputs(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
-	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	injectFlowCause(doc, "module.ecs_service.data.aws_iam_policy_document.execution[0]")
 	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
@@ -122,7 +122,7 @@ resource "google_project_iam_member" "database_url_accessor" {
 func TestPRCommentAWSBlockingHigh(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking.dfd.json"))
-	injectElementCause(doc, "e269fe54ebe835ad4", "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
+	injectElementCause(doc, "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
 	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-high.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
@@ -148,7 +148,7 @@ func TestPRCommentAWSBlockingHigh(t *testing.T) {
 func TestPRCommentNoBaselineAbsolute(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking.dfd.json"))
-	injectElementCause(doc, "e269fe54ebe835ad4", "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
+	injectElementCause(doc, "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-high.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
 	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))
@@ -210,7 +210,7 @@ func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
 			base:   "aws-baseline.findings.json",
 			golden: "pr-comment-aws-advisory-fr007.md",
 			inject: func(doc client.DFD) {
-				injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+				injectFlowCause(doc, "module.ecs_service.data.aws_iam_policy_document.execution[0]")
 			},
 			changed: map[string][]string{"module.ecs_service": {"task_exec_secret_arns"}},
 		},
@@ -221,7 +221,7 @@ func TestPRCommentByteIdenticalWithRedaction(t *testing.T) {
 			base:   "aws-baseline.findings.json",
 			golden: "pr-comment-aws-blocking-high.md",
 			inject: func(doc client.DFD) {
-				injectElementCause(doc, "e269fe54ebe835ad4", "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
+				injectElementCause(doc, "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
 			},
 			changed: map[string][]string{
 				"module.uploads": {
@@ -278,9 +278,11 @@ func remapFindingsCopy(in apiv1.Findings, m map[string]string) apiv1.Findings {
 	return out
 }
 
-func injectFlowCause(doc client.DFD, id, field, cause string) {
+func injectFlowCause(doc client.DFD, cause string) {
+	const flowID = "f4545fe8f60fa981b"
+	const field = "authz_scope"
 	for i := range doc.Flows {
-		if doc.Flows[i].ID != id {
+		if doc.Flows[i].ID != flowID {
 			continue
 		}
 		if doc.Flows[i].Causes == nil {
@@ -290,9 +292,10 @@ func injectFlowCause(doc client.DFD, id, field, cause string) {
 	}
 }
 
-func injectElementCause(doc client.DFD, id, field, cause string) {
+func injectElementCause(doc client.DFD, field, cause string) {
+	const elementID = "e269fe54ebe835ad4"
 	for i := range doc.Elements {
-		if doc.Elements[i].ID != id {
+		if doc.Elements[i].ID != elementID {
 			continue
 		}
 		if doc.Elements[i].Causes == nil {
@@ -356,7 +359,7 @@ func readGolden(t *testing.T, path string) string {
 func TestPRCommentFR007EnrichmentTarget(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
-	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	injectFlowCause(doc, "module.ecs_service.data.aws_iam_policy_document.execution[0]")
 	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
@@ -393,7 +396,7 @@ func TestPRCommentFR007EnrichmentTarget(t *testing.T) {
 func TestPRCommentFR025EnrichmentTarget(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.dfd.json"))
-	injectElementCause(doc, "e269fe54ebe835ad4", "public_access_blocked", "module.uploads.aws_s3_bucket.this[0]")
+	injectElementCause(doc, "public_access_blocked", "module.uploads.aws_s3_bucket.this[0]")
 	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
@@ -427,7 +430,7 @@ func TestPRCommentFR025EnrichmentTarget(t *testing.T) {
 func TestPRCommentAdvisoryEmptyOmitsSection(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-advisory.dfd.json"))
-	injectFlowCause(doc, "f4545fe8f60fa981b", "authz_scope", "module.ecs_service.data.aws_iam_policy_document.execution[0]")
+	injectFlowCause(doc, "module.ecs_service.data.aws_iam_policy_document.execution[0]")
 	base := loadFindings(t, filepath.Join(root, "fixtures", "aws-baseline.findings.json"))
 	cur := loadFindings(t, filepath.Join(root, "fixtures", "aws-advisory-fr007.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))

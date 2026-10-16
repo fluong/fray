@@ -92,7 +92,7 @@ func awsAPIEntries(
 		}
 		flows = append(flows, flow)
 		addInside(apiEl)
-		for _, f := range restAPIBackendFlows(api, apiEl, resources, idx, byAddr, ensureLambda, &warnings) {
+		for _, f := range restAPIBackendFlows(api, apiEl, resources, idx, ensureLambda, &warnings) {
 			flows = append(flows, f)
 			if to := byAddrElement(byAddr, f.To); to != nil {
 				addInside(to)
@@ -125,7 +125,7 @@ func awsAPIEntries(
 		}
 		flows = append(flows, flow)
 		addInside(apiEl)
-		for _, f := range httpAPIBackendFlows(api, apiEl, resources, idx, byAddr, ensureLambda, &warnings) {
+		for _, f := range httpAPIBackendFlows(api, apiEl, resources, idx, ensureLambda, &warnings) {
 			flows = append(flows, f)
 			if to := byAddrElement(byAddr, f.To); to != nil {
 				addInside(to)
@@ -354,7 +354,7 @@ func aggregateRouteAuth(routes []planResource) (scope, cause string, ok bool) {
 
 func restAPIBackendFlows(
 	api planResource, apiEl *Element, resources []planResource, idx configIndex,
-	byAddr map[string]*Element, ensureLambda func(planResource) *Element, warnings *[]string,
+	ensureLambda func(planResource) *Element, warnings *[]string,
 ) []*Flow {
 	var flows []*Flow
 	seen := map[string]bool{}
@@ -362,7 +362,7 @@ func restAPIBackendFlows(
 		if integ.typ != "aws_api_gateway_integration" || !refsAPI(integ, idx, "rest_api_id", api) {
 			continue
 		}
-		f, ok := integrationBackendFlow(apiEl, integ, resources, idx, byAddr, ensureLambda, warnings)
+		f, ok := integrationBackendFlow(apiEl, integ, resources, idx, ensureLambda, warnings)
 		if !ok {
 			continue
 		}
@@ -378,7 +378,7 @@ func restAPIBackendFlows(
 
 func httpAPIBackendFlows(
 	api planResource, apiEl *Element, resources []planResource, idx configIndex,
-	byAddr map[string]*Element, ensureLambda func(planResource) *Element, warnings *[]string,
+	ensureLambda func(planResource) *Element, warnings *[]string,
 ) []*Flow {
 	var flows []*Flow
 	seen := map[string]bool{}
@@ -386,7 +386,7 @@ func httpAPIBackendFlows(
 		if integ.typ != "aws_apigatewayv2_integration" || !refsAPI(integ, idx, "api_id", api) {
 			continue
 		}
-		f, ok := integrationBackendFlow(apiEl, integ, resources, idx, byAddr, ensureLambda, warnings)
+		f, ok := integrationBackendFlow(apiEl, integ, resources, idx, ensureLambda, warnings)
 		if !ok {
 			continue
 		}
@@ -402,7 +402,7 @@ func httpAPIBackendFlows(
 
 func integrationBackendFlow(
 	apiEl *Element, integ planResource, resources []planResource, idx configIndex,
-	byAddr map[string]*Element, ensureLambda func(planResource) *Element, warnings *[]string,
+	ensureLambda func(planResource) *Element, warnings *[]string,
 ) (*Flow, bool) {
 	transport, kind := integrationTransport(integ)
 	switch kind {

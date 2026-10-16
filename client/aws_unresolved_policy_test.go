@@ -60,8 +60,8 @@ func twoServiceIAMPlanManaged(t *testing.T, withBothOnB bool, roleAManagedARN st
 				"role": "role-b", "policy_arn": unmanagedCustomerPolicyARN,
 			}},
 		},
-		ecsTask("a", "a"),
-		ecsTask("b", "b"),
+		ecsTask("a"),
+		ecsTask("b"),
 		ecsService("a"),
 		ecsService("b"),
 		{
@@ -134,7 +134,7 @@ func twoServiceIAMPlanManaged(t *testing.T, withBothOnB bool, roleAManagedARN st
 	return string(raw)
 }
 
-func ecsTask(local, role string) map[string]any {
+func ecsTask(local string) map[string]any {
 	return map[string]any{
 		"address": "aws_ecs_task_definition." + local, "mode": "managed", "type": "aws_ecs_task_definition", "name": local,
 		"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{
@@ -451,7 +451,7 @@ func roleABedrockFullPlusCustomerPlan(t *testing.T, bedrockFullARN string) strin
 				"role": "role-a", "policy_arn": unmanagedCustomerPolicyARN,
 			}},
 		},
-		ecsTask("a", "a"),
+		ecsTask("a"),
 		ecsService("a"),
 		{
 			"address": "aws_lambda_function.pinned", "mode": "managed", "type": "aws_lambda_function", "name": "pinned",
@@ -515,8 +515,8 @@ func sharedRoleWidePlan(t *testing.T) string {
 				"role": "role-a", "policy_arn": unmanagedCustomerPolicyARN,
 			}},
 		},
-		ecsTask("a", "a"),
-		ecsTask("c", "a"),
+		ecsTask("a"),
+		ecsTask("c"),
 		ecsService("a"),
 		ecsService("c"),
 	}

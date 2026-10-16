@@ -53,7 +53,7 @@ func fr029RuleWithoutCondsOrCovers() apiv1.RuleText {
 	}
 }
 
-func dbElement(attrs map[string]any) (map[string]client.Element, map[string]client.Flow) {
+func dbElement(attrs map[string]any) map[string]client.Element {
 	el := client.Element{
 		ID:         "db1",
 		Name:       "main",
@@ -67,7 +67,7 @@ func dbElement(attrs map[string]any) (map[string]client.Element, map[string]clie
 	}
 	el.Causes["network_restricted"] = "aws_db_instance.main"
 	el.Causes["public"] = "aws_db_instance.main"
-	return map[string]client.Element{"db1": el}, nil
+	return map[string]client.Element{"db1": el}
 }
 
 func TestNestedConditionNaming(t *testing.T) {
@@ -123,7 +123,8 @@ func TestNestedConditionNaming(t *testing.T) {
 	dir := filepath.Join("..", "testdata", "golden", "nested-conds")
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			byID, flows := dbElement(tc.attrs)
+			byID := dbElement(tc.attrs)
+			var flows map[string]client.Flow
 			el, flow := target("db1", byID, flows)
 			state, _, _ := evalCond(tc.rule.Pass[0], el, flow, byID, 0)
 			var passState string
@@ -178,7 +179,7 @@ func TestNestedConditionNaming(t *testing.T) {
 }
 
 func TestSARIFFR029PrimaryAndCause(t *testing.T) {
-	byID, _ := dbElement(map[string]any{"public": true, "network_restricted": false})
+	byID := dbElement(map[string]any{"public": true, "network_restricted": false})
 	doc := client.DFD{Elements: []client.Element{byID["db1"]}}
 	findings := apiv1.Findings{Findings: []apiv1.Finding{
 		{RuleID: "FR-029", Target: "db1", Status: "open", Severity: "high"},

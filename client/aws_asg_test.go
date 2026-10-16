@@ -443,8 +443,7 @@ type mixedOpts struct {
 
 func asgMixedFixture(t *testing.T, o mixedOpts) (planResource, []planResource, configIndex) {
 	t.Helper()
-	assocA := true
-	assocB := !o.disagreePublic
+	assocA, assocB := true, !o.disagreePublic
 
 	verB := "$Latest"
 	actionsB := []string{"no-op"}

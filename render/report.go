@@ -32,7 +32,7 @@ func ThreatModel(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1
 	b.WriteString("These controls were checked against the plan and passed.\n\n")
 	b.WriteString(mitigatedSection(findings, texts, byID, flows))
 	b.WriteString("\n## Unverified\n\n")
-	b.WriteString(unverifiedSection(doc, findings, texts, byID, flows))
+	b.WriteString(unverifiedSection(findings, texts, byID, flows))
 	return b.String()
 }
 
@@ -198,7 +198,7 @@ func mitigatedSection(findings apiv1.Findings, texts map[string]apiv1.RuleText, 
 	return b.String()
 }
 
-func unverifiedSection(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow) string {
+func unverifiedSection(findings apiv1.Findings, texts map[string]apiv1.RuleText, byID map[string]client.Element, flows map[string]client.Flow) string {
 	var lines []string
 	for _, f := range findings.Findings {
 		if f.Status != "unverified" {

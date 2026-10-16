@@ -17,7 +17,7 @@ import (
 func TestSARIFAWSBlockingHighHasRegion(t *testing.T) {
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking.dfd.json"))
-	injectElementCause(doc, "e269fe54ebe835ad4", "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
+	injectElementCause(doc, "public", "module.uploads.aws_s3_bucket_public_access_block.this[0]")
 	findings := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-high.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
 
@@ -223,7 +223,7 @@ func TestSARIFFR025AttributeRegion(t *testing.T) {
 	// primary region must cover those lines (not the module "uploads" header).
 	root := filepath.Join("..", "testdata")
 	doc := loadDFD(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.dfd.json"))
-	injectElementCause(doc, "e269fe54ebe835ad4", "public_access_blocked", "module.uploads.aws_s3_bucket.this[0]")
+	injectElementCause(doc, "public_access_blocked", "module.uploads.aws_s3_bucket.this[0]")
 	findings := loadFindings(t, filepath.Join(root, "fixtures", "aws-blocking-fr025.findings.json"))
 	texts := loadTexts(t, filepath.Join(root, "fixtures", "rule_texts.json"))
 	locs, err := client.ResourceLocations(filepath.Join(root, "aws-web-app"))

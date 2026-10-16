@@ -3179,7 +3179,7 @@ func classifyS3ARN(arn string, resources []planResource, elements []*Element) (a
 	if arn == "*" {
 		return true, nil
 	}
-	bucket, _, ok := parseS3ARN(arn)
+	bucket, ok := parseS3ARN(arn)
 	if !ok {
 		if strings.ContainsAny(arn, "*?") {
 			return true, nil
@@ -3192,16 +3192,16 @@ func classifyS3ARN(arn string, resources []planResource, elements []*Element) (a
 	return false, bucketByName(bucket, resources, elements)
 }
 
-func parseS3ARN(arn string) (bucket, key string, ok bool) {
+func parseS3ARN(arn string) (bucket string, ok bool) {
 	parts := strings.SplitN(arn, ":", 6)
 	if len(parts) < 6 || parts[2] != "s3" {
-		return "", "", false
+		return "", false
 	}
 	rest := parts[5]
 	if i := strings.IndexByte(rest, '/'); i >= 0 {
-		return rest[:i], rest[i+1:], true
+		return rest[:i], true
 	}
-	return rest, "", true
+	return rest, true
 }
 
 func bucketByName(bucketName string, resources []planResource, elements []*Element) *Element {
@@ -3213,7 +3213,7 @@ func bucketByName(bucketName string, resources []planResource, elements []*Eleme
 			continue
 		}
 		if a, ok := r.values["arn"].(string); ok && a != "" {
-			b, _, ok := parseS3ARN(a)
+			b, ok := parseS3ARN(a)
 			if ok && b == bucketName {
 				return elementForAddress(r.address, elements)
 			}

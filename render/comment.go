@@ -407,17 +407,17 @@ func renderIssue(g causeGroup, texts map[string]apiv1.RuleText, byID map[string]
 	}
 	b.WriteByte('\n')
 	fmt.Fprintf(&b, "%s\n\n", metaLine(g, rule, locs, mod, hasMod))
-	fmt.Fprintf(&b, "%s\n\n", wrap(pluralizeCounts(fill(explanation, repl)), 90))
+	fmt.Fprintf(&b, "%s\n\n", wrap(pluralizeCounts(fill(explanation, repl))))
 	if why != "" {
-		fmt.Fprintf(&b, "%s\n\n", wrap(why, 90))
+		fmt.Fprintf(&b, "%s\n\n", wrap(why))
 	}
 	if line := findingEvidenceLine(g.items, names); line != "" {
-		fmt.Fprintf(&b, "%s\n\n", wrap(line, 90))
+		fmt.Fprintf(&b, "%s\n\n", wrap(line))
 	}
 	if affected := affectedNames(g.items, byID, flows); len(affected) > 1 {
 		fmt.Fprintf(&b, "Affected: %s\n\n", strings.Join(affected, ", "))
 	}
-	fmt.Fprintf(&b, "%s\n", wrap("Fix: "+pluralizeCounts(fill(fix, repl)), 90))
+	fmt.Fprintf(&b, "%s\n", wrap("Fix: "+pluralizeCounts(fill(fix, repl))))
 	if accept {
 		b.WriteString("\n<details><summary>Accept this risk instead</summary>\n\n")
 		if hasMod && g.cause != mod.Call {
@@ -540,10 +540,10 @@ func renderAdvisory(advisory *apiv1.Advisory, enrichments []apiv1.FindingEnrichm
 		}
 		b.WriteByte('\n')
 		if text := FillIDPlaceholders(SanitizeAdvisoryText(o.Text), names); text != "" {
-			fmt.Fprintf(&b, "%s\n", wrap(text, 90))
+			fmt.Fprintf(&b, "%s\n", wrap(text))
 		}
 		if sug := FillIDPlaceholders(SanitizeAdvisoryText(o.Suggestion), names); sug != "" {
-			fmt.Fprintf(&b, "%s\n", wrap("Suggestion: "+sug, 90))
+			fmt.Fprintf(&b, "%s\n", wrap("Suggestion: "+sug))
 		}
 	}
 	return b.String()
@@ -841,7 +841,8 @@ func providerKey(typ string) string {
 	}
 }
 
-func wrap(s string, width int) string {
+func wrap(s string) string {
+	const width = 90
 	words := strings.Fields(s)
 	if len(words) == 0 {
 		return ""
