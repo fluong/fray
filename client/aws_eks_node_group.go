@@ -285,55 +285,14 @@ func ngAdminFromClusterSG(ng planResource, resources, data []planResource, idx c
 
 func resolveNGCluster(ng planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := idx.attrRefs(ng.address, "cluster_name")
-	var hit planResource
-	found := false
-	for _, ref := range refs {
-		if isVarRef(ref) || isBareModuleRef(ref) {
-			continue
-		}
-		if isDataTypeRef(ref, "aws_eks_cluster") {
-			name := resourceNameFromRef(ref, "aws_eks_cluster")
-			if name == "" {
-				continue
-			}
-			c, ok := findDataResource(data, "aws_eks_cluster", name, ref)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != c.address {
-				return planResource{}, false
-			}
-			hit, found = c, true
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			c, ok := resolveModuleOutputResource(ref, "aws_eks_cluster", idx, resources, 0)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != c.address {
-				return planResource{}, false
-			}
-			hit, found = c, true
-			continue
-		}
-		name := resourceNameFromRef(ref, "aws_eks_cluster")
-		if name == "" {
-			continue
-		}
-		c, ok := findManagedResource(resources, "aws_eks_cluster", name, ref)
-		if !ok {
-			return planResource{}, false
-		}
-		if found && hit.address != c.address {
-			return planResource{}, false
-		}
-		hit, found = c, true
-	}
-	if !found {
-		return planResource{}, false
-	}
-	return hit, true
+	return resolveSingleByRef(refs, resources, data, idx, resolveSingleByRefOpts{
+		ResourceType:      "aws_eks_cluster",
+		SkipVarRef:        true,
+		BareModule:        bareModuleSkipWithVar,
+		EmptyNameData:     emptyNameContinue,
+		EmptyNameManaged:  emptyNameContinue,
+		ModuleOutputDepth: 0,
+	})
 }
 
 func collectClusterSGIngressSources(cluster planResource, resources []planResource, idx configIndex) []ingressSource {

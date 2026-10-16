@@ -278,58 +278,14 @@ func resolveInstanceSubnet(inst planResource, resources, data []planResource, id
 	if len(refs) == 0 {
 		return planResource{}, false
 	}
-	var hit planResource
-	found := false
-	for _, ref := range refs {
-		if isVarRef(ref) {
-			continue
-		}
-		if isDataTypeRef(ref, "aws_subnet") {
-			name := resourceNameFromRef(ref, "aws_subnet")
-			if name == "" {
-				return planResource{}, false
-			}
-			sn, ok := findDataResource(data, "aws_subnet", name, ref)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != sn.address {
-				return planResource{}, false
-			}
-			hit, found = sn, true
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			sn, ok := resolveModuleOutputResource(ref, "aws_subnet", idx, resources, 0)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != sn.address {
-				return planResource{}, false
-			}
-			hit, found = sn, true
-			continue
-		}
-		if isBareModuleRef(ref) {
-			continue
-		}
-		name := resourceNameFromRef(ref, "aws_subnet")
-		if name == "" {
-			return planResource{}, false
-		}
-		sn, ok := findManagedResource(resources, "aws_subnet", name, ref)
-		if !ok {
-			return planResource{}, false
-		}
-		if found && hit.address != sn.address {
-			return planResource{}, false
-		}
-		hit, found = sn, true
-	}
-	if !found {
-		return planResource{}, false
-	}
-	return hit, true
+	return resolveSingleByRef(refs, resources, data, idx, resolveSingleByRefOpts{
+		ResourceType:      "aws_subnet",
+		SkipVarRef:        true,
+		BareModule:        bareModuleSkipAfterModuleOutput,
+		EmptyNameData:     emptyNameFail,
+		EmptyNameManaged:  emptyNameFail,
+		ModuleOutputDepth: 0,
+	})
 }
 
 func instanceSubnetRefs(inst planResource, idx configIndex) []string {
@@ -634,55 +590,14 @@ func instanceDeclaresLaunchTemplate(inst planResource, idx configIndex) bool {
 
 func findInstanceLaunchTemplate(inst planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := idx.attrRefs(inst.address, "launch_template")
-	var hit planResource
-	found := false
-	for _, ref := range refs {
-		if isVarRef(ref) || isBareModuleRef(ref) {
-			continue
-		}
-		if isDataTypeRef(ref, "aws_launch_template") {
-			name := resourceNameFromRef(ref, "aws_launch_template")
-			if name == "" {
-				continue
-			}
-			lt, ok := findDataResource(data, "aws_launch_template", name, ref)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != lt.address {
-				return planResource{}, false
-			}
-			hit, found = lt, true
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			lt, ok := resolveModuleOutputResource(ref, "aws_launch_template", idx, resources, 0)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != lt.address {
-				return planResource{}, false
-			}
-			hit, found = lt, true
-			continue
-		}
-		name := resourceNameFromRef(ref, "aws_launch_template")
-		if name == "" {
-			continue
-		}
-		lt, ok := findManagedResource(resources, "aws_launch_template", name, ref)
-		if !ok {
-			return planResource{}, false
-		}
-		if found && hit.address != lt.address {
-			return planResource{}, false
-		}
-		hit, found = lt, true
-	}
-	if !found {
-		return planResource{}, false
-	}
-	return hit, true
+	return resolveSingleByRef(refs, resources, data, idx, resolveSingleByRefOpts{
+		ResourceType:      "aws_launch_template",
+		SkipVarRef:        true,
+		BareModule:        bareModuleSkipWithVar,
+		EmptyNameData:     emptyNameContinue,
+		EmptyNameManaged:  emptyNameContinue,
+		ModuleOutputDepth: 0,
+	})
 }
 
 // launchTemplateVersionUsable reports whether the template's planned values
@@ -857,58 +772,14 @@ func resolveLaunchTemplateSubnet(tmpl planResource, resources, data []planResour
 	if len(refs) == 0 {
 		return planResource{}, false
 	}
-	var hit planResource
-	found := false
-	for _, ref := range refs {
-		if isVarRef(ref) {
-			continue
-		}
-		if isDataTypeRef(ref, "aws_subnet") {
-			name := resourceNameFromRef(ref, "aws_subnet")
-			if name == "" {
-				return planResource{}, false
-			}
-			sn, ok := findDataResource(data, "aws_subnet", name, ref)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != sn.address {
-				return planResource{}, false
-			}
-			hit, found = sn, true
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			sn, ok := resolveModuleOutputResource(ref, "aws_subnet", idx, resources, 0)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != sn.address {
-				return planResource{}, false
-			}
-			hit, found = sn, true
-			continue
-		}
-		if isBareModuleRef(ref) {
-			continue
-		}
-		name := resourceNameFromRef(ref, "aws_subnet")
-		if name == "" {
-			return planResource{}, false
-		}
-		sn, ok := findManagedResource(resources, "aws_subnet", name, ref)
-		if !ok {
-			return planResource{}, false
-		}
-		if found && hit.address != sn.address {
-			return planResource{}, false
-		}
-		hit, found = sn, true
-	}
-	if !found {
-		return planResource{}, false
-	}
-	return hit, true
+	return resolveSingleByRef(refs, resources, data, idx, resolveSingleByRefOpts{
+		ResourceType:      "aws_subnet",
+		SkipVarRef:        true,
+		BareModule:        bareModuleSkipAfterModuleOutput,
+		EmptyNameData:     emptyNameFail,
+		EmptyNameManaged:  emptyNameFail,
+		ModuleOutputDepth: 0,
+	})
 }
 
 // asBoolish coerces Terraform bool or AWS-provider string bools ("true"/"false").

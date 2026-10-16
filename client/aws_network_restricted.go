@@ -809,40 +809,7 @@ func resolveUnknownVPCPeer(r planResource, idx configIndex) (ref string, ok bool
 		return "", false, true
 	}
 	ruleMod, _, _, _ := splitResourceAddress(r.address)
-	var addrs []string
-	seen := map[string]bool{}
-	for _, ref := range refs {
-		if isBareModuleRef(ref) {
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			addr, ok := resolveModuleOutputAddress(ref, "aws_security_group", idx, 0)
-			if !ok {
-				return "", false, true
-			}
-			if !seen[addr] {
-				seen[addr] = true
-				addrs = append(addrs, addr)
-			}
-			continue
-		}
-		if isIndirectIngressRef(ref) {
-			return "", false, true
-		}
-		name := securityGroupNameFromRef(ref)
-		if name == "" {
-			continue
-		}
-		addr := resourceAddress(ruleMod, "aws_security_group", name)
-		if !seen[addr] {
-			seen[addr] = true
-			addrs = append(addrs, addr)
-		}
-	}
-	if len(addrs) != 1 {
-		return "", false, true
-	}
-	return addrs[0], true, false
+	return resolveUniqueSecurityGroupPeerAddress(refs, ruleMod, idx)
 }
 
 func resolveUnknownVPCPrefix(r planResource, idx configIndex) (ref string, ok bool, unk bool) {
@@ -1003,40 +970,7 @@ func resolveUnknownSGRulePeer(r planResource, idx configIndex) (ref string, ok b
 		return "", false, true
 	}
 	ruleMod, _, _, _ := splitResourceAddress(r.address)
-	var addrs []string
-	seen := map[string]bool{}
-	for _, ref := range refs {
-		if isBareModuleRef(ref) {
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			addr, ok := resolveModuleOutputAddress(ref, "aws_security_group", idx, 0)
-			if !ok {
-				return "", false, true
-			}
-			if !seen[addr] {
-				seen[addr] = true
-				addrs = append(addrs, addr)
-			}
-			continue
-		}
-		if isIndirectIngressRef(ref) {
-			return "", false, true
-		}
-		name := securityGroupNameFromRef(ref)
-		if name == "" {
-			continue
-		}
-		addr := resourceAddress(ruleMod, "aws_security_group", name)
-		if !seen[addr] {
-			seen[addr] = true
-			addrs = append(addrs, addr)
-		}
-	}
-	if len(addrs) != 1 {
-		return "", false, true
-	}
-	return addrs[0], true, false
+	return resolveUniqueSecurityGroupPeerAddress(refs, ruleMod, idx)
 }
 
 func resolveUnknownSGRulePrefix(r planResource, idx configIndex) (ref string, ok bool, unk bool) {

@@ -207,55 +207,14 @@ func asgDeclaresLaunchConfiguration(asg planResource, idx configIndex) bool {
 
 func findASGLaunchConfiguration(asg planResource, resources, data []planResource, idx configIndex) (planResource, bool) {
 	refs := idx.attrRefs(asg.address, "launch_configuration")
-	var hit planResource
-	found := false
-	for _, ref := range refs {
-		if isVarRef(ref) || isBareModuleRef(ref) {
-			continue
-		}
-		if isDataTypeRef(ref, "aws_launch_configuration") {
-			name := resourceNameFromRef(ref, "aws_launch_configuration")
-			if name == "" {
-				continue
-			}
-			lc, ok := findDataResource(data, "aws_launch_configuration", name, ref)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != lc.address {
-				return planResource{}, false
-			}
-			hit, found = lc, true
-			continue
-		}
-		if isModuleOutputRef(ref) {
-			lc, ok := resolveModuleOutputResource(ref, "aws_launch_configuration", idx, resources, 0)
-			if !ok {
-				return planResource{}, false
-			}
-			if found && hit.address != lc.address {
-				return planResource{}, false
-			}
-			hit, found = lc, true
-			continue
-		}
-		name := resourceNameFromRef(ref, "aws_launch_configuration")
-		if name == "" {
-			continue
-		}
-		lc, ok := findManagedResource(resources, "aws_launch_configuration", name, ref)
-		if !ok {
-			return planResource{}, false
-		}
-		if found && hit.address != lc.address {
-			return planResource{}, false
-		}
-		hit, found = lc, true
-	}
-	if !found {
-		return planResource{}, false
-	}
-	return hit, true
+	return resolveSingleByRef(refs, resources, data, idx, resolveSingleByRefOpts{
+		ResourceType:      "aws_launch_configuration",
+		SkipVarRef:        true,
+		BareModule:        bareModuleSkipWithVar,
+		EmptyNameData:     emptyNameContinue,
+		EmptyNameManaged:  emptyNameContinue,
+		ModuleOutputDepth: 0,
+	})
 }
 
 func resolveASGMixedLaunchTemplates(asg planResource, resources, data []planResource, idx configIndex) ([]planResource, bool) {
