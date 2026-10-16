@@ -37,6 +37,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-024](FR-024.md) | Object storage does not use ACLs | medium | Elevation of privilege | AWS, Google Cloud, Cloudflare |  |
 | [FR-028](FR-028.md) | Database access is scoped to one instance | medium | Elevation of privilege | AWS, Google Cloud | 2026-10-15 |
 | [FR-032](FR-032.md) | Object storage access is scoped to one resource | medium | Elevation of privilege | AWS, Google Cloud, Cloudflare | 2026-10-11 |
+| [FR-039](FR-039.md) | NoSQL table access is scoped to that table | medium | Elevation of privilege | AWS | 2026-10-16 |
 
 ## Logging
 
@@ -56,6 +57,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-014](FR-014.md) | Object storage keeps prior versions | medium | Tampering, Denial of service | AWS, Google Cloud, Cloudflare |  |
 | [FR-033](FR-033.md) | Relational database cannot be destroyed by the tool | medium | Tampering, Denial of service | AWS, Google Cloud | 2026-10-11 |
 | [FR-038](FR-038.md) | Relational database is protected from console and API deletion | medium | Tampering, Denial of service | AWS, Google Cloud | 2026-10-15 |
+| [FR-040](FR-040.md) | NoSQL table is protected from deletion | medium | Tampering, Denial of service | AWS | 2026-10-16 |
 
 ## Supply chain
 
