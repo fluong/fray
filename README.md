@@ -623,6 +623,9 @@ the committed tree; missing list fails closed. See [docs/release.md](docs/releas
 
 ## Code quality
 
+CI runs `./scripts/check-quality.sh --new --fast` on pull requests and `main`
+(new findings only). Run the full script locally before releases.
+
 `./scripts/check-quality.sh` runs tidy, format, lint, vulnerability scan, build,
 tests (`-race`), and statement coverage in throwaway Docker containers. Images
 are pinned (`golang:1.26.9-bookworm@sha256:…`, `golangci/golangci-lint:v2.14.0@sha256:…`,
