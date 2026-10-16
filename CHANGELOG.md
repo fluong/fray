@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.33.2] — Unreleased
+
+### Fixed
+- Launch template `iam_instance_profile` blocks that set the AWS profile `name`
+  in planned values (with config refs to the profile resource) resolve correctly
+  instead of treating the name as a Terraform resource address and failing
+  instance profile lookup.
+
 ## [0.33.1] — 2026-10-16
 
 ### Fixed

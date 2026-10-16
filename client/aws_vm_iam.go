@@ -226,7 +226,12 @@ func resolveIAMInstanceProfile(holder planResource, resources, data []planResour
 func resolveIAMInstanceProfileResource(holder planResource, resources, data []planResource, idx configIndex) (planResource, bool, string) {
 	refs := iamInstanceProfileAttrRefs(holder, idx)
 	if len(refs) > 0 {
-		return resolveIAMInstanceProfileByRefs(refs, resources, data, idx)
+		if prof, ok, reason := resolveIAMInstanceProfileByRefs(refs, resources, data, idx); ok {
+			return prof, true, ""
+		} else if reason != "" {
+			return planResource{}, false, reason
+		}
+		// Config refs unresolved (e.g. stray synthesized ref) — try plan values.
 	}
 	if name, ok := holder.values["iam_instance_profile"].(string); ok && strings.TrimSpace(name) != "" {
 		if prof, found := findIAMInstanceProfileByName(name, resources); found {
@@ -306,18 +311,7 @@ func profileNameMatches(r planResource, name string) bool {
 }
 
 func iamInstanceProfileAttrRefs(holder planResource, idx configIndex) []string {
-	var refs []string
-	refs = append(refs, idx.attrRefs(holder.address, "iam_instance_profile")...)
-	for _, block := range asList(holder.values["iam_instance_profile"]) {
-		m, ok := block.(map[string]any)
-		if !ok {
-			continue
-		}
-		if name, _ := m["name"].(string); name != "" {
-			refs = append(refs, "aws_iam_instance_profile."+name)
-		}
-	}
-	return uniqueStrings(refs)
+	return uniqueStrings(idx.attrRefs(holder.address, "iam_instance_profile"))
 }
 
 func roleRefsFromInstanceProfile(profile planResource, resources, data []planResource, idx configIndex) ([]string, string) {
