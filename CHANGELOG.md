@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.33.2] — Unreleased
+## [0.33.2] — 2026-10-16
 
 ### Fixed
 - Launch template `iam_instance_profile` blocks that set the AWS profile `name`
@@ -579,7 +579,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.33.1...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.33.2...HEAD
+[0.33.2]: https://github.com/fluong/fray/compare/v0.33.1...v0.33.2
 [0.33.1]: https://github.com/fluong/fray/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/fluong/fray/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/fluong/fray/compare/v0.31.0...v0.32.0
