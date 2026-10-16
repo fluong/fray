@@ -603,37 +603,97 @@ func findInstanceLaunchTemplate(inst planResource, resources, data []planResourc
 // launchTemplateVersionUsable reports whether the template's planned values
 // are what this instance (or ASG) will launch with.
 //
-//   - $Latest or a reference to latest_version → use
-//   - version omitted, $Default, or reference to default_version → use only if
-//     update_default_version is true OR the template is being created in this
-//     plan (actions == ["create"]); otherwise unknown
-//   - pinned number / anything else → unknown
+//   - $Latest or a config ref to this template's latest_version → use
+//   - config ref to this template's default_version → use only when
+//     update_default_version is true
+//   - version omitted or $Default → use only if update_default_version is true
+//     OR the template is being created in this plan; otherwise unknown
+//   - refs to another template's latest_version/default_version, or to a
+//     variable/local → unknown
+//   - literal "1" when the template is being created in this plan → use (first version)
+//   - other pinned literals → use only when they match a known latest_version
+//     on an existing template
 func launchTemplateVersionUsable(holder planResource, tmpl planResource, idx configIndex) bool {
 	ver, verRefs, omitted := instanceLaunchTemplateVersion(holder, idx)
 	return launchTemplateVersionDecision(ver, verRefs, omitted, tmpl)
 }
 
 func launchTemplateVersionDecision(ver string, verRefs []string, omitted bool, tmpl planResource) bool {
-	if refsPointAtVersionAttr(verRefs, "latest_version") || ver == "$Latest" {
+	if ver == "$Latest" || refsPointAtSameTemplateVersionAttr(verRefs, tmpl, "latest_version") {
 		return true
 	}
-	if refsPointAtVersionAttr(verRefs, "default_version") || ver == "$Default" || omitted || ver == "" {
+	if refsPointAtSameTemplateVersionAttr(verRefs, tmpl, "default_version") {
 		if v, ok := asBoolish(tmpl.values["update_default_version"]); ok && v {
-			return true
-		}
-		if len(tmpl.actions) == 1 && tmpl.actions[0] == "create" {
 			return true
 		}
 		return false
 	}
+	if refsPointAtOtherTemplateVersionAttr(verRefs, tmpl) {
+		return false
+	}
+	if ver == "$Default" || omitted || ver == "" {
+		if v, ok := asBoolish(tmpl.values["update_default_version"]); ok && v {
+			return true
+		}
+		if launchTemplateBeingCreated(tmpl) {
+			return true
+		}
+		return false
+	}
+	return launchTemplateLiteralVersionPinned(ver, tmpl)
+}
+
+func launchTemplateBeingCreated(tmpl planResource) bool {
+	return len(tmpl.actions) == 1 && tmpl.actions[0] == "create"
+}
+
+func launchTemplateLiteralVersionPinned(ver string, tmpl planResource) bool {
+	if ver == "" || ver == "$Latest" || ver == "$Default" {
+		return false
+	}
+	if launchTemplateBeingCreated(tmpl) && ver == "1" {
+		return true
+	}
+	lv, ok := tmpl.values["latest_version"]
+	if !ok {
+		return false
+	}
+	return versionLiteralsEqual(ver, lv)
+}
+
+func versionLiteralsEqual(ver string, latest any) bool {
+	switch v := latest.(type) {
+	case float64:
+		return ver == fmt.Sprint(int(v)) || ver == fmt.Sprint(v)
+	case int:
+		return ver == fmt.Sprint(v)
+	case string:
+		return ver == v
+	default:
+		return ver == fmt.Sprint(latest)
+	}
+}
+
+func refsPointAtSameTemplateVersionAttr(refs []string, tmpl planResource, attr string) bool {
+	want := tmpl.address + "." + attr
+	for _, ref := range refs {
+		if ref == want {
+			return true
+		}
+	}
 	return false
 }
 
-func refsPointAtVersionAttr(refs []string, attr string) bool {
-	suffix := "." + attr
-	for _, ref := range refs {
-		if strings.HasSuffix(ref, suffix) {
-			return true
+func refsPointAtOtherTemplateVersionAttr(refs []string, tmpl planResource) bool {
+	for _, attr := range []string{"latest_version", "default_version"} {
+		suffix := "." + attr
+		for _, ref := range refs {
+			if !strings.HasSuffix(ref, suffix) {
+				continue
+			}
+			if ref != tmpl.address+"."+attr {
+				return true
+			}
 		}
 	}
 	return false

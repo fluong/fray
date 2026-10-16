@@ -126,7 +126,7 @@ func TestInstanceLaunchTemplateMerge(t *testing.T) {
 			checkAdmin: true, wantAdmin: true, wantAdminOK: true,
 		},
 		{
-			name: "pinned version → omit",
+			name: "pinned version 2 on create → omit",
 			build: func() (planResource, []planResource, configIndex) {
 				return ltFixture(t, ltOpts{
 					version:             "2",
@@ -138,6 +138,20 @@ func TestInstanceLaunchTemplateMerge(t *testing.T) {
 			},
 			checkPublic: true, wantPublic: false, wantPublicOK: false,
 			checkAdmin: true, wantAdmin: false, wantAdminOK: false,
+		},
+		{
+			name: "pinned version 1 on create → used",
+			build: func() (planResource, []planResource, configIndex) {
+				return ltFixture(t, ltOpts{
+					version:             "1",
+					tmplAssociatePublic: boolPtr(true),
+					subnetMapPublic:     false,
+					tmplWorldSSH:        true,
+					tmplActions:         []string{"create"},
+				})
+			},
+			checkPublic: true, wantPublic: true, wantPublicOK: true,
+			checkAdmin: true, wantAdmin: true, wantAdminOK: true,
 		},
 		{
 			name: "template not in plan → omit",
@@ -200,6 +214,20 @@ func TestInstanceLaunchTemplateMerge(t *testing.T) {
 			},
 			checkPublic: true, wantPublic: true, wantPublicOK: true,
 			checkAdmin: true, wantAdmin: true, wantAdminOK: true,
+		},
+		{
+			name: "other template latest_version ref → omit",
+			build: func() (planResource, []planResource, configIndex) {
+				return ltFixture(t, ltOpts{
+					versionRefOtherLT:   true,
+					tmplAssociatePublic: boolPtr(true),
+					subnetMapPublic:     false,
+					tmplWorldSSH:        true,
+					tmplActions:         []string{"no-op"},
+				})
+			},
+			checkPublic: true, wantPublic: false, wantPublicOK: false,
+			checkAdmin: true, wantAdmin: false, wantAdminOK: false,
 		},
 		{
 			name: "default_version ref without update_default_version on update → omit",
@@ -339,6 +367,7 @@ func TestAWSWebAppPlanUnchangedWithLaunchTemplate(t *testing.T) {
 type ltOpts struct {
 	version              string
 	versionRef           string // "latest_version" or "default_version"
+	versionRefOtherLT    bool   // version refs aws_launch_template.other.latest_version
 	omitVersion          bool
 	updateDefaultVersion *bool
 	tmplAssociatePublic  *bool
@@ -431,6 +460,12 @@ func ltFixture(t *testing.T, o ltOpts) (planResource, []planResource, configInde
 	switch {
 	case o.omitVersion:
 		// version key absent
+	case o.versionRefOtherLT:
+		attr := "aws_launch_template.other.latest_version"
+		ltBlock["version"] = map[string]any{
+			"references": []any{attr, "aws_launch_template.other"},
+		}
+		ltRefs = append(ltRefs, attr, "aws_launch_template.other")
 	case o.versionRef != "":
 		attr := "aws_launch_template.app." + o.versionRef
 		ltBlock["version"] = map[string]any{
@@ -474,7 +509,15 @@ func ltFixture(t *testing.T, o ltOpts) (planResource, []planResource, configInde
 	idx.resources[subnet.address] = exprSet{}
 	idx.resources[sg.address] = exprSet{}
 
-	return inst, []planResource{inst, subnet, sg, tmpl}, idx
+	resources := []planResource{inst, subnet, sg, tmpl}
+	if o.versionRefOtherLT {
+		other := planResource{
+			typ: "aws_launch_template", address: "aws_launch_template.other",
+			values: map[string]any{"id": "lt-other", "latest_version": float64(1)},
+		}
+		resources = append(resources, other)
+	}
+	return inst, resources, idx
 }
 
 func ltModuleFixture(t *testing.T) (planResource, []planResource, configIndex) {

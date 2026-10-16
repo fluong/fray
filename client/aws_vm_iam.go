@@ -90,7 +90,7 @@ func declaresAttr(r planResource, idx configIndex, attr string) bool {
 
 func instanceDirectProfileRoleRefs(inst planResource, resources, data []planResource, idx configIndex) (module string, roleRefs []string, omitReason string) {
 	mod, _, _, _ := splitResourceAddress(inst.address)
-	if !declaresAttr(inst, idx, "iam_instance_profile") {
+	if !declaresIAMInstanceProfile(inst, idx) {
 		return "", nil, ""
 	}
 	profile, ok, reason := resolveIAMInstanceProfile(inst, resources, data, idx)
@@ -126,12 +126,12 @@ func instanceProfileRoleRefsASG(asg planResource, resources, data []planResource
 }
 
 func instanceProfileRoleRefsASGFromLC(mod string, lc planResource, resources, data []planResource, idx configIndex) (string, []string, string) {
-	refs, omit := roleRefsFromLaunchHolder(lc, resources, data, idx, true)
+	refs, omit := roleRefsFromLaunchHolder(lc, resources, data, idx)
 	if omit != "" {
 		return mod, nil, omit
 	}
 	if len(refs) == 0 {
-		return mod, nil, iamOmitProfileNotInPlan
+		return "", nil, ""
 	}
 	return mod, refs, ""
 }
@@ -139,7 +139,7 @@ func instanceProfileRoleRefsASGFromLC(mod string, lc planResource, resources, da
 func instanceProfileRoleRefsASGFromTemplates(mod string, templates []planResource, resources, data []planResource, idx configIndex) (string, []string, string) {
 	var acc asgRoleRefsAccumulator
 	for _, tmpl := range templates {
-		refs, omit := roleRefsFromLaunchHolder(tmpl, resources, data, idx, false)
+		refs, omit := roleRefsFromLaunchHolder(tmpl, resources, data, idx)
 		if omit != "" {
 			return mod, nil, omit
 		}
@@ -178,20 +178,45 @@ func (a *asgRoleRefsAccumulator) add(refs []string) (omit string, ok bool) {
 }
 
 // roleRefsFromLaunchHolder resolves iam_instance_profile on a launch template or
-// launch configuration. When requireProfile is true (LC path), a missing profile
-// always omits IAM flows; for templates, omit only when the holder declares a profile.
-func roleRefsFromLaunchHolder(holder planResource, resources, data []planResource, idx configIndex, requireProfile bool) ([]string, string) {
+// launch configuration. Omit IAM flows only when a profile is referenced but
+// cannot be resolved.
+func roleRefsFromLaunchHolder(holder planResource, resources, data []planResource, idx configIndex) ([]string, string) {
 	profile, ok, reason := resolveIAMInstanceProfileResource(holder, resources, data, idx)
 	if reason != "" {
 		return nil, reason
 	}
 	if !ok {
-		if requireProfile || declaresAttr(holder, idx, "iam_instance_profile") {
+		if declaresIAMInstanceProfile(holder, idx) {
 			return nil, iamOmitProfileNotInPlan
 		}
 		return nil, ""
 	}
 	return roleRefsFromInstanceProfile(profile, resources, data, idx)
+}
+
+// declaresIAMInstanceProfile is true when the holder references an instance
+// profile (config ref, plan literal, or block name/arn). Empty optional blocks
+// in configuration alone do not count.
+func declaresIAMInstanceProfile(holder planResource, idx configIndex) bool {
+	if len(iamInstanceProfileAttrRefs(holder, idx)) > 0 {
+		return true
+	}
+	if name, ok := holder.values["iam_instance_profile"].(string); ok && strings.TrimSpace(name) != "" {
+		return true
+	}
+	for _, block := range asList(holder.values["iam_instance_profile"]) {
+		m, ok := block.(map[string]any)
+		if !ok {
+			continue
+		}
+		if name, _ := m["name"].(string); strings.TrimSpace(name) != "" {
+			return true
+		}
+		if arn, _ := m["arn"].(string); strings.TrimSpace(arn) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveIAMInstanceProfile(holder planResource, resources, data []planResource, idx configIndex) (planResource, bool, string) {
@@ -215,7 +240,7 @@ func resolveIAMInstanceProfileResource(holder planResource, resources, data []pl
 	if prof, ok := resolveIAMInstanceProfileFromBlocks(holder, resources); ok {
 		return prof, true, ""
 	}
-	if declaresAttr(holder, idx, "iam_instance_profile") {
+	if declaresIAMInstanceProfile(holder, idx) {
 		return planResource{}, false, ""
 	}
 	return planResource{}, false, ""

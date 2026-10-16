@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.33.1] — Unreleased
+
+### Fixed
+- Literal launch template version `1` on a template being created in the same plan
+  is treated as pinned to that first version (ASG / instance IAM, SG, and FR-034).
+- Workloads with no referenced `iam_instance_profile` no longer emit
+  `IAM flows omitted … instance profile not in plan` (including ASGs whose launch
+  template omits a profile).
+- Launch template `version = aws_launch_template.<same>.latest_version` is treated
+  as pinned to the planned template contents (any template change action).
+
 ## [0.33.0] — 2026-10-16
 
 ### Added

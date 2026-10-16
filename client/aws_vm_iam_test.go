@@ -272,6 +272,105 @@ func TestASGDBFlowWithLTInstanceProfileRole(t *testing.T) {
 	}
 }
 
+func TestLaunchTemplateVersionDecisionTable(t *testing.T) {
+	tmplAddr := "aws_launch_template.app"
+	refsSameLatest := []string{tmplAddr + ".latest_version", tmplAddr}
+	refsSameDefault := []string{tmplAddr + ".default_version", tmplAddr}
+	refsOtherLatest := []string{"aws_launch_template.other.latest_version", "aws_launch_template.other"}
+	tmplCreate := planResource{address: tmplAddr, typ: "aws_launch_template", actions: []string{"create"}, values: map[string]any{}}
+	tmplUpdate := planResource{address: tmplAddr, typ: "aws_launch_template", actions: []string{"update"}, values: map[string]any{}}
+	tmplNoop := planResource{address: tmplAddr, typ: "aws_launch_template", actions: []string{"no-op"}, values: map[string]any{"latest_version": float64(3)}}
+	tmplExisting := tmplNoop
+	updateTrue := true
+	updateFalse := false
+	tests := []struct {
+		name    string
+		ver     string
+		verRefs []string
+		omitted bool
+		tmpl    planResource
+		want    bool
+	}{
+		{name: "create_literal_1", ver: "1", tmpl: tmplCreate, want: true},
+		{name: "existing_literal_1_below_latest", ver: "1", tmpl: tmplExisting, want: false},
+		{name: "existing_literal_matches_latest", ver: "3", tmpl: tmplExisting, want: true},
+		{name: "latest_token", ver: "$Latest", tmpl: tmplExisting, want: true},
+		{name: "create_same_latest_ref", verRefs: refsSameLatest, tmpl: tmplCreate, want: true},
+		{name: "update_same_latest_ref", verRefs: refsSameLatest, tmpl: tmplUpdate, want: true},
+		{name: "noop_same_latest_ref", verRefs: refsSameLatest, tmpl: tmplNoop, want: true},
+		{name: "other_template_latest_ref", verRefs: refsOtherLatest, tmpl: tmplNoop, want: false},
+		{name: "same_default_ref_update_default_true", verRefs: refsSameDefault, tmpl: planResource{
+			address: tmplAddr, typ: "aws_launch_template", actions: []string{"update"},
+			values: map[string]any{"update_default_version": updateTrue},
+		}, want: true},
+		{name: "same_default_ref_update_default_false", verRefs: refsSameDefault, tmpl: planResource{
+			address: tmplAddr, typ: "aws_launch_template", actions: []string{"update"},
+			values: map[string]any{"update_default_version": updateFalse},
+		}, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := launchTemplateVersionDecision(tc.ver, tc.verRefs, tc.omitted, tc.tmpl)
+			if got != tc.want {
+				t.Fatalf("got %v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNoIAMFlowsOmitWithoutProfileReference(t *testing.T) {
+	asg, resources, idx := asgLTFixture(t, asgOpts{
+		version:     "$Latest",
+		tmplActions: []string{"no-op"},
+	})
+	_, _, omit := iamRoleRefsForCompute(vmEl(asg.address), resources, nil, idx)
+	if omit != "" {
+		t.Fatalf("ASG without profile: omit=%q", omit)
+	}
+	inst := planResource{address: "aws_instance.bastion", typ: "aws_instance", values: map[string]any{}}
+	_, _, omit = iamRoleRefsForCompute(vmEl(inst.address), append(resources, inst), nil, idx)
+	if omit != "" {
+		t.Fatalf("instance without profile: omit=%q", omit)
+	}
+}
+
+func TestCoverageShapedDBWorkerCreateLaunchTemplate(t *testing.T) {
+	plan := coverageDBWorkerPlan(t)
+	doc, warnings, err := Parse([]byte(plan), []byte("schema_version: fray-config/v1\n"), "",
+		Source{Repo: "t/coverage-db-worker", Commit: "abcdef5", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.HasPrefix(w, "IAM flows omitted for ") {
+			t.Fatalf("unexpected omit warning: %s", w)
+		}
+	}
+	var dbFlow *Flow
+	byID := map[string]Element{}
+	for _, el := range doc.Elements {
+		byID[el.ID] = el
+	}
+	for i := range doc.Flows {
+		f := &doc.Flows[i]
+		from := byID[f.From]
+		to := byID[f.To]
+		if from.Kind == "virtual_machine" && from.Evidence.Addresses[0] == "aws_autoscaling_group.db_worker" &&
+			to.Kind == "relational_db" {
+			dbFlow = f
+		}
+	}
+	if dbFlow == nil {
+		t.Fatalf("want ASG→RDS flow, got %d flows", len(doc.Flows))
+	}
+	if dbFlow.AuthzScope != "account" {
+		t.Fatalf("authz_scope=%q want account", dbFlow.AuthzScope)
+	}
+	if dbFlow.Causes["authz_scope"] != "aws_iam_role_policy.asg_db_rds" {
+		t.Fatalf("cause=%q", dbFlow.Causes["authz_scope"])
+	}
+}
+
 func TestASGDBFlowLatestUnusableNoEdgeOneWarning(t *testing.T) {
 	plan := asgDBIAMPlan(t, true)
 	doc, warnings, err := Parse([]byte(plan), []byte("schema_version: fray-config/v1\n"), "",
@@ -316,6 +415,98 @@ func elementKind(elements []Element, id string) string {
 		}
 	}
 	return ""
+}
+
+func coverageDBWorkerPlan(t *testing.T) string {
+	t.Helper()
+	plan := map[string]any{
+		"format_version": "1.2",
+		"resource_changes": []any{
+			map[string]any{
+				"address": "aws_autoscaling_group.db_worker", "mode": "managed", "type": "aws_autoscaling_group", "name": "db_worker",
+				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{
+					"launch_template": []any{map[string]any{"id": "lt-new", "version": "1"}},
+				}, "after_unknown": map[string]any{
+					"launch_template": []any{map[string]any{"id": true, "version": true}},
+				}},
+			},
+			map[string]any{
+				"address": "aws_launch_template.db_worker", "mode": "managed", "type": "aws_launch_template", "name": "db_worker",
+				"change": map[string]any{
+					"actions": []any{"create"},
+					"after":   map[string]any{"name_prefix": "db-worker-"},
+					"after_unknown": map[string]any{
+						"id": true, "latest_version": true, "default_version": true,
+					},
+				},
+			},
+			map[string]any{
+				"address": "aws_iam_instance_profile.asg_db", "mode": "managed", "type": "aws_iam_instance_profile", "name": "asg_db",
+				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "asg-db"}},
+			},
+			map[string]any{
+				"address": "aws_iam_role.asg_db", "mode": "managed", "type": "aws_iam_role", "name": "asg_db",
+				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{"name": "asg-db"}},
+			},
+			map[string]any{
+				"address": "aws_iam_role_policy.asg_db_rds", "mode": "managed", "type": "aws_iam_role_policy", "name": "asg_db_rds",
+				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{
+					"name":   "asg-db-rds",
+					"policy": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds-db:connect"],"Resource":["*"]}]}`,
+				}},
+			},
+			map[string]any{
+				"address": "aws_db_instance.main", "mode": "managed", "type": "aws_db_instance", "name": "main",
+				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{
+					"resource_id": "db-ABC", "identifier": "main",
+				}, "after_unknown": map[string]any{"vpc_security_group_ids": true}},
+			},
+			map[string]any{
+				"address": "aws_security_group.db_worker", "mode": "managed", "type": "aws_security_group", "name": "db_worker",
+				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{}},
+			},
+			map[string]any{
+				"address": "aws_security_group.db", "mode": "managed", "type": "aws_security_group", "name": "db",
+				"change": map[string]any{"actions": []any{"create"}, "after": map[string]any{}},
+			},
+		},
+		"configuration": map[string]any{
+			"root_module": map[string]any{
+				"resources": []any{
+					map[string]any{"address": "aws_autoscaling_group.db_worker", "type": "aws_autoscaling_group", "name": "db_worker", "expressions": map[string]any{
+						"launch_template": map[string]any{"references": []any{
+							"aws_launch_template.db_worker.id",
+							"aws_launch_template.db_worker",
+						}},
+					}},
+					map[string]any{"address": "aws_launch_template.db_worker", "type": "aws_launch_template", "name": "db_worker", "expressions": map[string]any{
+						"iam_instance_profile": map[string]any{"references": []any{"aws_iam_instance_profile.asg_db"}},
+						"vpc_security_group_ids": map[string]any{"references": []any{
+							"aws_security_group.db_worker.id",
+							"aws_security_group.db_worker",
+						}},
+					}},
+					map[string]any{"address": "aws_iam_instance_profile.asg_db", "type": "aws_iam_instance_profile", "name": "asg_db", "expressions": map[string]any{
+						"role": map[string]any{"references": []any{"aws_iam_role.asg_db.arn", "aws_iam_role.asg_db"}},
+					}},
+					map[string]any{"address": "aws_iam_role_policy.asg_db_rds", "type": "aws_iam_role_policy", "name": "asg_db_rds", "expressions": map[string]any{
+						"role": map[string]any{"references": []any{"aws_iam_role.asg_db.id", "aws_iam_role.asg_db"}},
+					}},
+					map[string]any{"address": "aws_db_instance.main", "type": "aws_db_instance", "name": "main", "expressions": map[string]any{
+						"vpc_security_group_ids": map[string]any{"references": []any{"aws_security_group.db.id", "aws_security_group.db"}},
+					}},
+					map[string]any{"address": "aws_security_group.db", "type": "aws_security_group", "name": "db", "expressions": map[string]any{
+						"ingress": map[string]any{"references": []any{"aws_security_group.db_worker.id", "aws_security_group.db_worker"}},
+					}},
+				},
+			},
+		},
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
 
 func asgDBIAMPlan(t *testing.T, latestUnusable bool) string {
