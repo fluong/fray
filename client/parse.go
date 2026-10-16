@@ -48,6 +48,7 @@ var ignoredTypes = map[string]bool{
 	"aws_eip_association":                                true,
 	"aws_eks_cluster":                                    true,
 	"aws_network_interface":                              true,
+	"aws_iam_instance_profile":                           true,
 	"aws_iam_policy":                                     true,
 	"aws_iam_policy_attachment":                          true,
 	"aws_iam_policy_document":                            true,

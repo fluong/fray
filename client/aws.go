@@ -356,9 +356,12 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		flows = append(flows, secretFlowsFrom(svc, svcEl, mod, task.address, specs, resources, data, idx, elements, &warnings)...)
 		flows = append(flows, bucketFlows(svc, svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
 	}
-	flows = append(flows, dbFlows(resources, data, idx, elements, &warnings)...)
+	iamOmitWarned := map[string]bool{}
+	flows = append(flows, dbFlows(resources, data, idx, elements, &warnings, iamOmitWarned)...)
 
-	bedrockFlows, bedrockEl := bedrockConnections(resources, data, idx, byAddr, &extra, &warnings)
+	flows = append(flows, virtualMachineIAMFlows(resources, data, idx, elements, &warnings, iamOmitWarned)...)
+
+	bedrockFlows, bedrockEl := bedrockConnections(resources, data, idx, elements, byAddr, &extra, &warnings, iamOmitWarned)
 	flows = append(flows, bedrockFlows...)
 	if bedrockEl != nil {
 		extra = append(extra, bedrockEl)
@@ -446,58 +449,10 @@ func bucketFlows(svc planResource, svcEl *Element, module, taskAddr string, reso
 	if taskAddr == "" {
 		return nil
 	}
-	roleRefs := idx.attrRefs(taskAddr, "task_role_arn")
-	docs, unknownDocs, iamWarns := roleDocuments(module, roleRefs, resources, data, idx)
-	*warnings = append(*warnings, iamWarns...)
-	wideCause, wideS3 := roleKnownWideGrant(module, roleRefs, resources, idx, iamServiceS3)
-	hits, grants, actions, cause, ambiguous, actionWarn := bucketsFromDocs(docs, idx.callRefs(module), resources, elements)
-	if ambiguous {
-		*warnings = append(*warnings, "ambiguous bucket for "+svc.address)
-		return nil
-	}
-	if len(hits) != 1 {
-		return nil
-	}
-	scope := effectiveAuthzScope(grants)
-	if scope == "" {
-		return nil
-	}
-	if actionWarn != "" {
-		*warnings = append(*warnings, actionWarn)
-	}
-	flow := &Flow{
-		From: svcEl.canonicalKey(), To: hits[0].canonicalKey(),
-		DataClass: "unknown", Transport: "tls",
-	}
-	if wideS3 {
-		flow.AuthzScope, flow.AuthzGrants, cause = widenScopeWithKnownWide(scope, cause, wideCause)
-		flow.AuthzActions = actions
-		if cause != "" {
-			flow.Causes = map[string]string{"authz_scope": cause}
-		}
-		return []*Flow{flow}
-	}
-	// Unknown identity-policy source: keep the flow when known docs grant the
-	// bucket, but omit authz_scope and authz_actions.
-	if unknownDocs {
-		if role := omittedScopeRole(module, roleRefs); role != "" {
-			if flow.Causes == nil {
-				flow.Causes = map[string]string{}
-			}
-			flow.Causes["authz_scope_omitted_for"] = role
-		}
-		return []*Flow{flow}
-	}
-	flow.AuthzScope = scope
-	flow.AuthzGrants = grants
-	flow.AuthzActions = actions
-	if cause != "" {
-		flow.Causes = map[string]string{"authz_scope": cause}
-	}
-	return []*Flow{flow}
+	return bucketFlowsForRole(svcEl, module, idx.attrRefs(taskAddr, "task_role_arn"), resources, data, idx, elements, warnings)
 }
 
-func dbFlows(resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) []*Flow {
+func dbFlows(resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string, iamOmitWarned map[string]bool) []*Flow {
 	var flows []*Flow
 	for _, sg := range resources {
 		if sg.typ != "aws_security_group" {
@@ -507,7 +462,7 @@ func dbFlows(resources, data []planResource, idx configIndex, elements []*Elemen
 		if len(peers) == 0 {
 			continue
 		}
-		dest := dbDestinations(sg, resources, elements, idx)
+		dest := dbDestinations(sg, resources, data, elements, idx)
 		if len(dest) == 0 {
 			continue
 		}
@@ -517,44 +472,53 @@ func dbFlows(resources, data []planResource, idx configIndex, elements []*Elemen
 			*warnings = append(*warnings, "ambiguous database path through "+sg.address)
 			continue
 		}
-		// Explicit peer-SG / workload wiring: one flow per source workload.
-		for _, src := range dbSources(sg, peers, resources, elements, idx, warnings) {
-			flow := &Flow{
-				From: src.canonicalKey(), To: dest[0].canonicalKey(),
-				DataClass: "unknown", Transport: "unknown",
-			}
-			if scope, grants, cause, omittedRole := dbAuthzForFlow(src, dest[0], resources, data, idx, elements, warnings); scope != "" {
-				flow.AuthzScope = scope
-				flow.AuthzGrants = grants
-				if cause != "" {
-					flow.Causes = map[string]string{"authz_scope": cause}
-				}
-			} else if omittedRole != "" {
-				if flow.Causes == nil {
-					flow.Causes = map[string]string{}
-				}
-				flow.Causes["authz_scope_omitted_for"] = omittedRole
-			}
-			flows = append(flows, flow)
+		for _, src := range dbSources(sg, peers, resources, data, elements, idx, warnings) {
+			flows = append(flows, dbNetworkFlowWithAuthz(src, dest[0], resources, data, idx, elements, warnings, iamOmitWarned))
 		}
 	}
 	return flows
 }
 
-// dbAuthzForFlow attaches IAM DB-access scope from the source ECS task role.
+func dbNetworkFlowWithAuthz(src, dest *Element, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string, iamOmitWarned map[string]bool) *Flow {
+	flow := &Flow{
+		From: src.canonicalKey(), To: dest.canonicalKey(),
+		DataClass: "unknown", Transport: "unknown",
+	}
+	scope, grants, cause, omittedRole := dbAuthzForFlow(src, dest, resources, data, idx, elements, warnings, iamOmitWarned)
+	if scope != "" {
+		flow.AuthzScope = scope
+		flow.AuthzGrants = grants
+		if cause != "" {
+			flow.Causes = map[string]string{"authz_scope": cause}
+		}
+		return flow
+	}
+	if omittedRole != "" {
+		flow.Causes = map[string]string{"authz_scope_omitted_for": omittedRole}
+	}
+	return flow
+}
+
+// dbAuthzForFlow attaches IAM DB-access scope from the source compute role.
 // SG topology is unchanged; password-only paths (no matching DB actions) omit
 // authz_scope. Unknown identity-policy sources omit scope (same as secrets).
-func dbAuthzForFlow(src, dest *Element, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string) (scope string, grants []string, cause, omittedRole string) {
-	svc, ok := planResourceByElement(src, resources)
-	if !ok || svc.typ != "aws_ecs_service" {
-		return "", nil, "", ""
-	}
-	task, ok := serviceTaskDefinition(svc, resources, idx)
+// EKS node groups do not get DB authz in R1.
+func dbAuthzForFlow(src, dest *Element, resources, data []planResource, idx configIndex, elements []*Element, warnings *[]string, iamOmitWarned map[string]bool) (scope string, grants []string, cause, omittedRole string) {
+	r, ok := planResourceByElement(src, resources)
 	if !ok {
 		return "", nil, "", ""
 	}
-	mod, _, _, _ := splitResourceAddress(svc.address)
-	roleRefs := idx.attrRefs(task.address, "task_role_arn")
+	if r.typ == "aws_eks_node_group" {
+		return "", nil, "", ""
+	}
+	mod, roleRefs, omit := iamRoleRefsForCompute(src, resources, data, idx)
+	if omit != "" {
+		warnIAMFlowsOmitted(warnings, r.address, omit, iamOmitWarned)
+		return "", nil, "", ""
+	}
+	if len(roleRefs) == 0 {
+		return "", nil, "", ""
+	}
 	docs, unknownDocs, iamWarns := roleDocuments(mod, roleRefs, resources, data, idx)
 	if warnings != nil {
 		*warnings = append(*warnings, iamWarns...)

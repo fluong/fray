@@ -1,0 +1,118 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "t/vm-iam",
+    "commit": "abcdef1",
+    "iac_tool": "terraform",
+    "fidelity": "plan"
+  },
+  "elements": [
+    {
+      "id": "e403bdd51be8ef531",
+      "name": "app",
+      "type": "process",
+      "kind": "virtual_machine",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "aws_instance.app"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "admin_ports_open": false
+      }
+    },
+    {
+      "id": "e6e4399e2186efb58",
+      "name": "uploads",
+      "type": "datastore",
+      "kind": "object_storage",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "aws_s3_bucket.uploads"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "customer_managed_key": false,
+        "deletion_protection": true
+      }
+    },
+    {
+      "id": "e86e2a1d001d15268",
+      "name": "Bedrock",
+      "type": "external_entity",
+      "kind": "llm_api",
+      "provenance": "inferred",
+      "evidence": {
+        "signals": [
+          {
+            "type": "iam_service",
+            "name": "bedrock"
+          }
+        ]
+      },
+      "provider": "aws"
+    },
+    {
+      "id": "e9468970500753318",
+      "name": "main",
+      "type": "datastore",
+      "kind": "relational_db",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "aws_db_instance.main"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "network_restricted": true
+      }
+    }
+  ],
+  "trust_boundaries": [],
+  "flows": [
+    {
+      "id": "f01dcd02ffff072c4",
+      "from": "e403bdd51be8ef531",
+      "to": "e6e4399e2186efb58",
+      "data_class": "unknown",
+      "transport": "tls",
+      "boundaries": [],
+      "authz_scope": "resource",
+      "authz_grants": [
+        "resource"
+      ],
+      "authz_actions": [
+        "PutObject"
+      ]
+    },
+    {
+      "id": "f2df50f9d78b8d092",
+      "from": "e403bdd51be8ef531",
+      "to": "e9468970500753318",
+      "data_class": "unknown",
+      "transport": "unknown",
+      "boundaries": [],
+      "authz_scope": "resource",
+      "authz_grants": [
+        "resource"
+      ]
+    },
+    {
+      "id": "fa1e3ed0ff7a57504",
+      "from": "e403bdd51be8ef531",
+      "to": "e86e2a1d001d15268",
+      "data_class": "unknown",
+      "transport": "tls",
+      "boundaries": [],
+      "authz_scope": "account",
+      "authz_grants": [
+        "account"
+      ]
+    }
+  ]
+}

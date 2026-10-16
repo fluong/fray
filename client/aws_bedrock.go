@@ -29,9 +29,11 @@ type bedrockCallerGrant struct {
 func bedrockConnections(
 	resources, data []planResource,
 	idx configIndex,
+	elements []*Element,
 	byAddr map[string]*Element,
 	extra *[]*Element,
 	warnings *[]string,
+	iamOmitWarned map[string]bool,
 ) (flows []*Flow, bedrock *Element) {
 	var callers []bedrockCallerGrant
 
@@ -80,6 +82,33 @@ func bedrockConnections(
 			byAddr[fn.address] = fnEl
 		}
 		g.el = fnEl
+		callers = append(callers, g)
+	}
+
+	for _, el := range elements {
+		if el.Kind != "virtual_machine" {
+			continue
+		}
+		r, ok := planResourceByElement(el, resources)
+		if !ok {
+			continue
+		}
+		mod, roleRefs, omit := iamRoleRefsForCompute(el, resources, data, idx)
+		if omit != "" {
+			warnIAMFlowsOmitted(warnings, r.address, omit, iamOmitWarned)
+			continue
+		}
+		if len(roleRefs) == 0 {
+			continue
+		}
+		g, ok, iamWarns := bedrockGrantForRole(mod, roleRefs, resources, data, idx)
+		if warnings != nil {
+			*warnings = append(*warnings, iamWarns...)
+		}
+		if !ok {
+			continue
+		}
+		g.el = el
 		callers = append(callers, g)
 	}
 

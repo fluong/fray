@@ -5,7 +5,8 @@ Public client, GitHub Action, and scan API wire contract for Fray.
 Parse a Terraform plan into a data-flow diagram (DFD), send it to the hosted
 scan API, and get STRIDE findings plus a merge gate back. Rule evaluation and
 the hosted service live in a private companion repository — this repo never
-ships rules.
+ships rules. EKS node group IAM flows use the node role; per-pod IRSA / Pod
+Identity roles are not modelled.
 
 **New here?** → [Getting started](docs/getting-started.md) (shortest path to a
 first green scan). Stuck? → [Troubleshooting](#troubleshooting).

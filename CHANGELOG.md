@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- EC2 instances, Auto Scaling groups and EKS node groups now get IAM-derived
+  flows to S3, RDS (`authz_scope`) and Bedrock, so FR-028/FR-032/FR-004
+  evaluate them. Secrets for VMs are not modelled yet.
+
+### Fixed
+- `aws_iam_instance_profile` no longer produces a `no mapping` warning.
+
 ## [0.32.0] — 2026-10-16
 
 ### Added

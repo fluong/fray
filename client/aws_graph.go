@@ -3517,7 +3517,7 @@ func resourceRefsSG(r, sg planResource, attr string, idx configIndex) bool {
 
 // plainElementsUsingSG finds root/plain resources that reference sg and already
 // have a DFD element of the expected kind (Lambda only when modeled).
-func plainElementsUsingSG(sg planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
+func plainElementsUsingSG(sg planResource, resources, data []planResource, elements []*Element, idx configIndex) []*Element {
 	var out []*Element
 	for _, r := range resources {
 		var kind string
@@ -3527,6 +3527,8 @@ func plainElementsUsingSG(sg planResource, resources []planResource, elements []
 			kind, attrs = "container_service", []string{"network_configuration"}
 		case "aws_instance":
 			kind, attrs = "virtual_machine", []string{"vpc_security_group_ids", "security_groups"}
+		case "aws_autoscaling_group":
+			kind, attrs = "virtual_machine", nil
 		case "aws_lambda_function":
 			kind, attrs = "serverless_function", []string{"vpc_config"}
 		case "aws_db_instance", "aws_rds_cluster":
@@ -3535,10 +3537,14 @@ func plainElementsUsingSG(sg planResource, resources []planResource, elements []
 			continue
 		}
 		matched := false
-		for _, attr := range attrs {
-			if resourceRefsSG(r, sg, attr, idx) {
-				matched = true
-				break
+		if r.typ == "aws_autoscaling_group" {
+			matched = asgResourceRefsPeerSG(r, sg, resources, data, idx)
+		} else {
+			for _, attr := range attrs {
+				if resourceRefsSG(r, sg, attr, idx) {
+					matched = true
+					break
+				}
 			}
 		}
 		if !matched {
@@ -3553,10 +3559,10 @@ func plainElementsUsingSG(sg planResource, resources []planResource, elements []
 	return out
 }
 
-func dbDestinations(dbSG planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
+func dbDestinations(dbSG planResource, resources, data []planResource, elements []*Element, idx configIndex) []*Element {
 	var out []*Element
 	out = append(out, elementsUsingSG(dbSG.address, "relational_db", elements, idx)...)
-	for _, el := range plainElementsUsingSG(dbSG, resources, elements, idx) {
+	for _, el := range plainElementsUsingSG(dbSG, resources, data, elements, idx) {
 		if el.Kind == "relational_db" {
 			out = append(out, el)
 		}
@@ -3569,7 +3575,7 @@ func dbDestinations(dbSG planResource, resources []planResource, elements []*Ele
 // are kept only when that peer resolves to exactly one workload; several
 // module workloads behind one peer are ambiguous (warn, drop those hits).
 // A workload found by both paths is deduped.
-func dbSources(dbSG planResource, peers []planResource, resources []planResource, elements []*Element, idx configIndex, warnings *[]string) []*Element {
+func dbSources(dbSG planResource, peers []planResource, resources, data []planResource, elements []*Element, idx configIndex, warnings *[]string) []*Element {
 	var out []*Element
 	for _, peer := range peers {
 		var moduleHits []*Element
@@ -3587,7 +3593,7 @@ func dbSources(dbSG planResource, peers []planResource, resources []planResource
 				*warnings = append(*warnings, "ambiguous database path through "+dbSG.address)
 			}
 		}
-		for _, el := range plainElementsUsingSG(peer, resources, elements, idx) {
+		for _, el := range plainElementsUsingSG(peer, resources, data, elements, idx) {
 			switch el.Kind {
 			case "container_service", "virtual_machine", "serverless_function":
 				out = append(out, el)
