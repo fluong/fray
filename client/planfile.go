@@ -14,19 +14,19 @@ import (
 const MaxPlanFileBytes = 32 << 20
 
 // ErrPlanNotJSON is returned for binary or non-JSON plan-file bodies.
-var ErrPlanNotJSON = fmt.Errorf("plan-file must be terraform show -json output (JSON), not a binary plan. Run: terraform show -json tfplan > plan.json. See https://github.com/fluong/fray#troubleshooting.")
+var ErrPlanNotJSON = fmt.Errorf("plan-file must be terraform show -json output (JSON), not a binary plan. Run: terraform show -json tfplan > plan.json. See https://github.com/fluong/fray#troubleshooting")
 
 // ErrPlanNotTerraformJSON is returned when format_version is missing or not a string.
 var ErrPlanNotTerraformJSON = fmt.Errorf("not a Terraform JSON plan")
 
 // ErrPlanLooksLikeState is returned for terraform state JSON passed as a plan-file.
-var ErrPlanLooksLikeState = fmt.Errorf("plan-file looks like a Terraform state file, not a plan. Run: terraform show -json tfplan > plan.json. See https://github.com/fluong/fray#troubleshooting.")
+var ErrPlanLooksLikeState = fmt.Errorf("plan-file looks like a Terraform state file, not a plan. Run: terraform show -json tfplan > plan.json. See https://github.com/fluong/fray#troubleshooting")
 
 // ErrPlanNoResources is returned when the plan has no managed resource_changes.
 var ErrPlanNoResources = fmt.Errorf("plan contains no resources")
 
 // ErrPlanTooLarge is returned when the plan-file exceeds MaxPlanFileBytes.
-var ErrPlanTooLarge = fmt.Errorf("plan-file exceeds the 32 MiB size limit. See https://github.com/fluong/fray#troubleshooting.")
+var ErrPlanTooLarge = fmt.Errorf("plan-file exceeds the 32 MiB size limit. See https://github.com/fluong/fray#troubleshooting")
 
 // ErrPlanEmptyDFD is returned when an external plan parses to zero DFD elements.
 var ErrPlanEmptyDFD = fmt.Errorf("plan contains no resources Fray can analyse")
@@ -45,7 +45,7 @@ func LoadPlanFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, MaxPlanFileBytes+1))
 	if err != nil {
 		return nil, err

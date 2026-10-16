@@ -104,7 +104,6 @@ func isModuleOutputRef(ref string) bool {
 // moduleCallAndInstance splits module.sg["app"] into call address module.sg
 // and instance key "app" (or "0" for count). No instance → key "".
 func moduleCallAndInstance(moduleAddr string) (callAddr, instanceKey string) {
-	callAddr = moduleAddr
 	// Find the last [key] on the final module segment.
 	lb := strings.LastIndexByte(moduleAddr, '[')
 	if lb < 0 || !strings.HasSuffix(moduleAddr, "]") {

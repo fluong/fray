@@ -156,7 +156,6 @@ func reportEnrollment(code, serverMsg string, fail bool) {
 		if err != nil {
 			return
 		}
-		defer f.Close()
 		title := "## Fray — enrollment soft-skip"
 		if fail {
 			title = "## Fray — enrollment (job failed)"
@@ -164,6 +163,9 @@ func reportEnrollment(code, serverMsg string, fail bool) {
 		_, _ = fmt.Fprintf(f, "%s\n\n%s\n\n", title, sanitizeSummaryText(notice))
 		if !fail {
 			_, _ = fmt.Fprintf(f, "Set `fail-on-skip: true` or `fail-on-unenrolled: true` to fail the job instead.\n")
+		}
+		if err := f.Close(); err != nil {
+			return
 		}
 	}
 }

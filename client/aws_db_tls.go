@@ -289,9 +289,7 @@ func modulePath(mod string) []string {
 			}
 			rest = rest[end+1:]
 		}
-		if strings.HasPrefix(rest, ".") {
-			rest = rest[1:]
-		}
+		rest = strings.TrimPrefix(rest, ".")
 	}
 	return parts
 }

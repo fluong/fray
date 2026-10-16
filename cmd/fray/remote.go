@@ -206,7 +206,7 @@ func runRemote(opt options) (bool, error) {
 	if err != nil {
 		return false, errors.New(usermsg.SeeTroubleshooting(usermsg.APIRequestFailed(err.Error())))
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, maxEnrollmentBody+1))
 	if err != nil {
 		return false, err
@@ -431,7 +431,6 @@ func remapPlaceholders(text string, m client.IDMap) string {
 }
 
 var idPlaceholder = regexp.MustCompile(`\{([efb][0-9a-f]{6,})\}`)
-
 
 func truncate(b []byte, n int) string {
 	if len(b) <= n {

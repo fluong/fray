@@ -48,7 +48,7 @@ func defaultReadinessGET(baseURL, token string) (status int, header http.Header,
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err = io.ReadAll(io.LimitReader(resp.Body, maxReadinessBody+1))
 	if err != nil {
 		return resp.StatusCode, resp.Header, nil, err

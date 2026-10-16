@@ -189,14 +189,6 @@ func resolveDBSecurityGroups(db planResource, resources, data []planResource, id
 	return out, true
 }
 
-// resolveSecurityGroupRef resolves a config reference to a managed or data
-// aws_security_group, including module.<m>.<output> chains (depth ≤ 3).
-// ok=false with skip=true means the ref is ignorable noise (bare module path).
-func resolveSecurityGroupRef(ref string, resources, data []planResource, idx configIndex) (planResource, bool) {
-	sg, ok, _ := resolveSecurityGroupRefDetailed(ref, resources, data, idx)
-	return sg, ok
-}
-
 func resolveSecurityGroupRefDetailed(ref string, resources, data []planResource, idx configIndex) (sg planResource, ok, skip bool) {
 	if isDataTypeRef(ref, "aws_security_group") {
 		name := resourceNameFromRef(ref, "aws_security_group")
@@ -295,9 +287,7 @@ func parentModuleAddr(moduleAddr string) string {
 			}
 			rest = rest[end+1:]
 		}
-		if strings.HasPrefix(rest, ".") {
-			rest = rest[1:]
-		}
+		rest = strings.TrimPrefix(rest, ".")
 	}
 	if len(parts) <= 1 {
 		return ""

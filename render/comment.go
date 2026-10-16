@@ -841,8 +841,6 @@ func providerKey(typ string) string {
 	}
 }
 
-const commentWidth = 90
-
 func wrap(s string, width int) string {
 	words := strings.Fields(s)
 	if len(words) == 0 {

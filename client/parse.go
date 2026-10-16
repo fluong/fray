@@ -303,10 +303,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 
 	// When every DATABASE_URL service attaches to exactly one Postgres Cloud SQL
 	// instance, drop the inferred database — flows use the iac element instead.
-	db := databaseElement(secrets, services)
-	if db != nil && suppressInferredDatabase(services, attachedPostgres) {
-		db = nil
-	} else if db != nil {
+	if db := databaseElement(secrets, services); db != nil && !suppressInferredDatabase(services, attachedPostgres) {
 		elements = append(elements, db)
 	}
 	llm := vertexElement(projectIAM, services)

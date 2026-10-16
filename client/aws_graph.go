@@ -532,10 +532,6 @@ func advancedSelectorCoversBucket(sel map[string]any, trail, bucket planResource
 		if !included && !trailSelectorRefsBucket(trail, bucket, "advanced_event_selector", idx) {
 			return false, false
 		}
-		if !included {
-			// Refs name this bucket but concrete ARN values did not match.
-			included = true
-		}
 	}
 	// No resources.ARN filter ⇒ all S3 objects in the account.
 	return true, advancedIncludesReads(readOnlyEquals)
@@ -2310,7 +2306,7 @@ func roleInlinePolicyDocs(role planResource, module string, data []planResource,
 			}
 			continue
 		}
-		cause := role.address
+		var cause string
 		if name, _ := m["name"].(string); name != "" {
 			cause = role.address + "#inline_policy." + name
 		} else {
@@ -2647,16 +2643,6 @@ func rdsAction(a string) bool {
 	return lower == "*" ||
 		strings.HasPrefix(lower, "rds-db:") ||
 		strings.HasPrefix(lower, "rds-data:")
-}
-
-func wildcardResources(resources []any) bool {
-	for _, r := range resources {
-		s, ok := r.(string)
-		if ok && (s == "*" || strings.ContainsAny(s, "*?")) {
-			return true
-		}
-	}
-	return false
 }
 
 func nullResources(resources []any) bool {
@@ -3245,14 +3231,6 @@ func bucketByName(bucketName string, resources []planResource, elements []*Eleme
 	return nil
 }
 
-func s3BucketNameFromARN(arn string) string {
-	b, _, ok := parseS3ARN(arn)
-	if !ok {
-		return ""
-	}
-	return b
-}
-
 func elementForAddress(addr string, elements []*Element) *Element {
 	for _, el := range elements {
 		if len(el.Evidence.Addresses) == 1 && el.Evidence.Addresses[0] == addr {
@@ -3423,15 +3401,6 @@ func calledModule(ref string) string {
 		return "module." + rest
 	}
 	return "module." + rest[:i]
-}
-
-func ingressRefsSG(sg planResource, idx configIndex) bool {
-	for _, ref := range idx.attrRefs(sg.address, "ingress") {
-		if strings.Contains(ref, "aws_security_group.") {
-			return true
-		}
-	}
-	return false
 }
 
 // peerSecurityGroups returns SGs that the DB SG admits via inline ingress,
@@ -3629,12 +3598,6 @@ func dbSources(dbSG planResource, peers []planResource, resources []planResource
 		}
 	}
 	return uniqueElements(out)
-}
-
-// sourceServices is retained for callers that still want the pre-plain single
-// peer-SG → container_service module path (tests / legacy).
-func sourceServices(sg planResource, resources []planResource, elements []*Element, idx configIndex) []*Element {
-	return dbSources(sg, peerSecurityGroups(sg, resources, idx), resources, elements, idx, nil)
 }
 
 func containsResource(ref, typ, name string) bool {

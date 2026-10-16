@@ -21,9 +21,8 @@ import (
 //	FR-026 n/a        → no edge
 
 type gatewayCase struct {
-	name       string
-	plan       string
-	configJSON string // optional configuration block merged into plan
+	name string
+	plan string
 	// want
 	entryKind   string // api_gateway | serverless_function | load_balancer | ""
 	authz       string // public | authenticated | "" (omit) | "-" (no edge)
@@ -110,32 +109,32 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 			fr001: "unverified", fr026: "mitigated", golden: "rest-with-body.dfd.json",
 		},
 		{
-			name: "http_none",
-			plan: httpPlan(t, httpOpts{routes: []string{"NONE"}}),
+			name:      "http_none",
+			plan:      httpPlan(t, httpOpts{routes: []string{"NONE"}}),
 			entryKind: "api_gateway", authz: "public", transport: "tls",
 			fr001: "open", fr026: "mitigated", golden: "http-none.dfd.json",
 		},
 		{
-			name: "http_jwt",
-			plan: httpPlan(t, httpOpts{routes: []string{"JWT", "AWS_IAM"}}),
+			name:      "http_jwt",
+			plan:      httpPlan(t, httpOpts{routes: []string{"JWT", "AWS_IAM"}}),
 			entryKind: "api_gateway", authz: "authenticated", transport: "tls",
 			fr001: "mitigated", fr026: "mitigated", golden: "http-jwt.dfd.json",
 		},
 		{
-			name: "http_disable_execute_api",
-			plan: httpPlan(t, httpOpts{disableEndpoint: true, routes: []string{"NONE"}}),
+			name:      "http_disable_execute_api",
+			plan:      httpPlan(t, httpOpts{disableEndpoint: true, routes: []string{"NONE"}}),
 			entryKind: "", authz: "-", transport: "-",
 			fr001: "n/a", fr026: "n/a", golden: "http-disable-execute-api.dfd.json",
 		},
 		{
-			name: "lambda_url_none",
-			plan: lambdaURLPlan(t, "NONE"),
+			name:      "lambda_url_none",
+			plan:      lambdaURLPlan(t, "NONE"),
 			entryKind: "serverless_function", authz: "public", transport: "tls",
 			fr001: "open", fr026: "mitigated", golden: "lambda-url-none.dfd.json",
 		},
 		{
-			name: "lambda_url_iam",
-			plan: lambdaURLPlan(t, "AWS_IAM"),
+			name:      "lambda_url_iam",
+			plan:      lambdaURLPlan(t, "AWS_IAM"),
 			entryKind: "serverless_function", authz: "authenticated", transport: "tls",
 			fr001: "mitigated", fr026: "mitigated", golden: "lambda-url-iam.dfd.json",
 		},
@@ -150,8 +149,8 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 			fr001: "open", fr026: "mitigated", golden: "rest-integration-lambda.dfd.json",
 		},
 		{
-			name: "alb_cognito",
-			plan: albCognitoPlan(t, albCognitoOpts{}),
+			name:      "alb_cognito",
+			plan:      albCognitoPlan(t, albCognitoOpts{}),
 			entryKind: "load_balancer", authz: "authenticated", transport: "tls",
 			fr001: "mitigated", fr026: "mitigated", golden: "alb-cognito.dfd.json",
 		},
@@ -180,14 +179,14 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 			fr001: "unverified", fr026: "mitigated", golden: "alb-cognito-unknown-rule.dfd.json",
 		},
 		{
-			name: "alb_cognito_rule_via_module_output",
-			plan: albCognitoCrossModulePlan(t, true),
+			name:      "alb_cognito_rule_via_module_output",
+			plan:      albCognitoCrossModulePlan(t, true),
 			entryKind: "load_balancer", authz: "authenticated", transport: "tls",
 			fr001: "mitigated", fr026: "mitigated", golden: "alb-cognito-rule-via-module-output.dfd.json",
 		},
 		{
-			name: "alb_cognito_rule_unresolvable_arn",
-			plan: albCognitoCrossModulePlan(t, false),
+			name:      "alb_cognito_rule_unresolvable_arn",
+			plan:      albCognitoCrossModulePlan(t, false),
 			entryKind: "load_balancer", authz: "", transport: "tls",
 			fr001: "unverified", fr026: "mitigated", golden: "alb-cognito-rule-unresolvable-arn.dfd.json",
 		},
@@ -234,29 +233,29 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 
 func TestIntegrationTransportClassification(t *testing.T) {
 	cases := []struct {
-		name              string
-		integ             planResource
-		wantTransport     string
-		wantKind          string
+		name          string
+		integ         planResource
+		wantTransport string
+		wantKind      string
 	}{
 		{
-			name: "lambda aws_proxy",
-			integ: planResource{values: map[string]any{"type": "AWS_PROXY"}},
+			name:          "lambda aws_proxy",
+			integ:         planResource{values: map[string]any{"type": "AWS_PROXY"}},
 			wantTransport: "tls", wantKind: "lambda",
 		},
 		{
-			name: "https http_proxy",
-			integ: planResource{values: map[string]any{"type": "HTTP_PROXY", "uri": "https://example.com"}},
+			name:          "https http_proxy",
+			integ:         planResource{values: map[string]any{"type": "HTTP_PROXY", "uri": "https://example.com"}},
 			wantTransport: "tls", wantKind: "http",
 		},
 		{
-			name: "http plaintext",
-			integ: planResource{values: map[string]any{"type": "HTTP", "uri": "http://example.com"}},
+			name:          "http plaintext",
+			integ:         planResource{values: map[string]any{"type": "HTTP", "uri": "http://example.com"}},
 			wantTransport: "plaintext", wantKind: "http",
 		},
 		{
-			name: "vpc_link",
-			integ: planResource{values: map[string]any{"type": "HTTP_PROXY", "connection_type": "VPC_LINK"}},
+			name:          "vpc_link",
+			integ:         planResource{values: map[string]any{"type": "HTTP_PROXY", "connection_type": "VPC_LINK"}},
 			wantTransport: "unknown", wantKind: "vpc_link",
 		},
 	}
@@ -382,7 +381,7 @@ func restPlan(t *testing.T, o restOpts) string {
 	if o.stage {
 		resources = append(resources, map[string]any{
 			"address": "aws_api_gateway_stage.prod", "mode": "managed", "type": "aws_api_gateway_stage",
-			"name": "prod",
+			"name":   "prod",
 			"change": map[string]any{"after": map[string]any{"stage_name": "prod"}},
 		})
 		cfgResources = append(cfgResources, map[string]any{
@@ -451,7 +450,7 @@ func httpPlan(t *testing.T, o httpOpts) string {
 			"change": map[string]any{"after": map[string]any{
 				"name": "api", "protocol_type": "HTTP",
 				"disable_execute_api_endpoint": o.disableEndpoint,
-				"body":                        nullIfEmpty(o.body),
+				"body":                         nullIfEmpty(o.body),
 			}},
 		},
 	}

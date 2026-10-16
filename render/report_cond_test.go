@@ -65,9 +65,6 @@ func dbElement(attrs map[string]any) (map[string]client.Element, map[string]clie
 	for k := range attrs {
 		el.Causes[k] = "aws_db_instance.main"
 	}
-	if _, ok := attrs["network_restricted"]; !ok {
-		// cause may still exist for the address even when attr absent
-	}
 	el.Causes["network_restricted"] = "aws_db_instance.main"
 	el.Causes["public"] = "aws_db_instance.main"
 	return map[string]client.Element{"db1": el}, nil

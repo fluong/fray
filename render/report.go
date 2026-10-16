@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fluong/fray/client"
 	apiv1 "github.com/fluong/fray/api/v1"
+	"github.com/fluong/fray/client"
 )
 
 func ThreatModel(doc client.DFD, findings apiv1.Findings, texts map[string]apiv1.RuleText, accepted []MitigationEntry, locs map[string]client.SourceLocation) string {
@@ -223,31 +223,6 @@ func unverifiedSection(doc client.DFD, findings apiv1.Findings, texts map[string
 	}
 	b.WriteString("\n</details>\n")
 	return b.String()
-}
-
-func evidence(id, field, actual string, byID map[string]client.Element, flows map[string]client.Flow) string {
-	place := resourcePlace(id, byID, flows)
-	if field == "" {
-		return place
-	}
-	return fmt.Sprintf("%s, `%s` is %s", place, fieldLabel(field), actual)
-}
-
-func resourcePlace(id string, byID map[string]client.Element, flows map[string]client.Flow) string {
-	if el, ok := byID[id]; ok {
-		return placeElement(el)
-	}
-	if f, ok := flows[id]; ok {
-		return placeElement(byID[f.From]) + " → " + placeElement(byID[f.To])
-	}
-	return id
-}
-
-func placeElement(el client.Element) string {
-	if len(el.Evidence.Addresses) > 0 {
-		return "`" + strings.Join(el.Evidence.Addresses, "`, `") + "`"
-	}
-	return el.Name
 }
 
 // maxGroupDepth mirrors schema/eval: any/all may nest at most this deep.
@@ -805,27 +780,6 @@ func sevRank(s string) int {
 	default:
 		return 2
 	}
-}
-
-func worst(list []apiv1.Finding) int {
-	best := 3
-	for _, f := range list {
-		if r := sevRank(f.Severity); r < best {
-			best = r
-		}
-	}
-	return best
-}
-
-func oneLine(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if s == "" {
-		return ""
-	}
-	if !strings.HasSuffix(s, ".") {
-		s += "."
-	}
-	return s
 }
 
 func ensurePeriod(s string) string {

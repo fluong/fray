@@ -112,13 +112,13 @@ func ngPublicIPFromSubnets(ng planResource, resources, data []planResource, idx 
 // https://docs.aws.amazon.com/eks/latest/APIReference/API_RemoteAccessConfig.html
 //
 // With a launch template that sets security groups, Fray classifies those SGs
-	// only: Amazon EKS does not add the cluster security group in that case
-	// (https://docs.aws.amazon.com/eks/latest/userguide/launch-templates.html#using-custom-security-groups).
-	//
-	// Otherwise nodes use the cluster security group. In-plan ingress rules that
-	// target vpc_config.cluster_security_group_id are classified; with none, the
-	// documented default has no internet SSH/RDP —
-	// https://docs.aws.amazon.com/eks/latest/userguide/sec-group-reqs.html
+// only: Amazon EKS does not add the cluster security group in that case
+// (https://docs.aws.amazon.com/eks/latest/userguide/launch-templates.html#using-custom-security-groups).
+//
+// Otherwise nodes use the cluster security group. In-plan ingress rules that
+// target vpc_config.cluster_security_group_id are classified; with none, the
+// documented default has no internet SSH/RDP —
+// https://docs.aws.amazon.com/eks/latest/userguide/sec-group-reqs.html
 func ngAdminPortsOpen(ng planResource, resources, data []planResource, idx configIndex) (open bool, known bool) {
 	hasRA := ngDeclaresRemoteAccess(ng, idx)
 	hasLT := instanceDeclaresLaunchTemplate(ng, idx)
@@ -242,9 +242,7 @@ func ngRemoteAccessSourceSGRefs(ng planResource, idx configIndex) []string {
 		if m == nil {
 			continue
 		}
-		for _, id := range stringList(m["source_security_group_ids"]) {
-			refs = append(refs, id)
-		}
+		refs = append(refs, stringList(m["source_security_group_ids"])...)
 	}
 	return uniqueStrings(filterLikelySGRefs(refs))
 }
