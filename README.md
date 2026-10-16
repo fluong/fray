@@ -621,6 +621,31 @@ contain a Cloud Run `*.run.app` hostname). Patterns come from the `FRAY_DENYLIST
 secret (CI) or `FRAY_DENYLIST` / `~/.config/fray/denylist` locally — never from
 the committed tree; missing list fails closed. See [docs/release.md](docs/release.md).
 
+## Code quality
+
+`./scripts/check-quality.sh` runs tidy, format, lint, vulnerability scan, build,
+tests (`-race`), and statement coverage in throwaway Docker containers. Images
+are pinned (`golang:1.26.9-bookworm@sha256:…`, `golangci/golangci-lint:v2.14.0@sha256:…`,
+`govulncheck@v1.9.0`); see the script header for digests. The host needs Docker;
+the **vuln** step needs network inside the container.
+
+Optional `.quality-tags` at a module root (one line, e.g. `localrules`) is passed
+as `-tags` to build, test, lint, and vuln for that module. `go test` writes
+`coverage.out` at each module root (gitignored via `*.out`).
+
+```bash
+./scripts/check-quality.sh                 # full verification
+./scripts/check-quality.sh --fast          # fmt and lint only
+./scripts/check-quality.sh --new --fast    # lint only new issues vs origin/main (for CI)
+./scripts/check-quality.sh --only lint     # tidy, fmt, lint, vuln, build, test, or coverage
+./scripts/check-quality.sh --fix           # go mod tidy, fmt, and lint --fix, then verify
+./scripts/check-quality.sh --clean-cache   # delete the named Docker cache volumes
+COVERAGE_MIN=80 ./scripts/check-quality.sh # fail under 80% (default 0 reports only)
+```
+
+Go build, module, and lint caches stay in named Docker volumes, so the next run
+is faster and the containers stay ephemeral.
+
 ## Contributing
 
 Copy paths from the private companion into this repo with an **explicit

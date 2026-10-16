@@ -1,0 +1,59 @@
+# golangci-lint v2. https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - gocritic
+    - revive
+    - gocyclo
+    - gocognit
+    - dupl
+    - errorlint
+    - bodyclose
+    - misspell
+    - unparam
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gocyclo:
+      min-complexity: 15
+    gocognit:
+      min-complexity: 20
+    revive:
+      rules:
+        # Many helpers and tests are unexported; doc comments on every export add noise.
+        - name: exported
+          disabled: true
+        # Internal packages and cmd mains do not need a package-level essay.
+        - name: package-comments
+          disabled: true
+        # Interface satisfaction and test doubles often keep unused parameter names.
+        - name: unused-parameter
+          disabled: true
+  exclusions:
+    generated: lax
+    paths:
+      - "(^|/)vendor(/|$)"
+    rules:
+      - path: _test\.go
+        linters:
+          - dupl
+          - gocognit
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - "(^|/)vendor(/|$)"
+
+issues:
+  # Show every finding. The defaults stop at 50 per linter and 3 identical texts.
+  max-issues-per-linter: 0
+  max-same-issues: 0

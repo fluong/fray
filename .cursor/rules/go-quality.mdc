@@ -1,0 +1,23 @@
+---
+description: Go code quality checks
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go code quality
+
+Cursor must not run Docker or `./scripts/check-quality.sh` (pinned images and
+module tags live in that script).
+
+After changing Go files, run locally in the touched modules:
+
+- `gofmt -l` on changed files (or `gofmt -w` to fix)
+- `go vet ./...`
+- `go test ./...` (add `-tags …` from that module's `.quality-tags` when the file exists)
+
+In your report, list the changed Go files and ask Francis to run
+`./scripts/check-quality.sh --fast`, and the full script before a release.
+
+Prefer real fixes over `//nolint`. If a nolint is truly needed, scope it to the specific linter and add a reason comment.
+
+Do not edit `.golangci.yml` or `scripts/check-quality.sh` to silence issues unless the user asks.
