@@ -2457,7 +2457,8 @@ func attrAfterUnknown(r planResource, attr string) bool {
 
 // syntheticDocFromPolicyJSON maps an IAM policy JSON string into the statement
 // shape docStatements / docDenyStatements already read from data sources.
-// Principal, Sid, and Version are ignored. Malformed JSON → ok=false.
+// Principal is preserved for resource-policy classification; Sid and Version
+// are ignored. Malformed JSON → ok=false.
 func syntheticDocFromPolicyJSON(cause, raw string) (planResource, bool) {
 	var top map[string]any
 	if err := json.Unmarshal([]byte(raw), &top); err != nil {
@@ -2510,6 +2511,9 @@ func normalizeIAMJSONStatement(st map[string]any) map[string]any {
 	}
 	if v, ok := firstKey(st, "Condition", "condition"); ok {
 		norm["condition"] = v
+	}
+	if v, ok := firstKey(st, "Principal", "principal"); ok {
+		norm["principal"] = v
 	}
 	return norm
 }

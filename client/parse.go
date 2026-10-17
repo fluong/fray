@@ -225,7 +225,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			"google_folder_iam_audit_config",
 			"google_organization_iam_audit_config":
 			audits = append(audits, r)
-		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_dynamodb_table", "aws_secretsmanager_secret",
+		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_dynamodb_table", "aws_dynamodb_resource_policy", "aws_secretsmanager_secret",
 			"aws_api_gateway_rest_api", "aws_apigatewayv2_api", "aws_lambda_function", "aws_lambda_function_url",
 			"aws_instance", "aws_autoscaling_group", "aws_eks_node_group",
 			"aws_elasticache_replication_group", "aws_elasticache_cluster":

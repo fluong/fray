@@ -28,6 +28,19 @@ type iamHCLStatement struct {
 	actions   []string
 	resources []iamHCLResourcePattern
 	condition map[string]any
+	principal iamHCLPrincipal
+}
+
+type iamHCLPrincipal struct {
+	star        bool
+	aws         []iamHCLPrincipalEntry
+	service     []string
+	serviceStar bool
+}
+
+type iamHCLPrincipalEntry struct {
+	literal string
+	ref     string
 }
 
 type iamHCLResourcePattern struct {
@@ -80,6 +93,22 @@ func readRootIAMPolicyLiterals(moduleDir string) (iamPolicyHCLIndex, error) {
 				continue
 			}
 			switch typ {
+			case "aws_dynamodb_resource_policy":
+				if dup[addr] || seen[addr] {
+					dup[addr] = true
+					delete(out, addr)
+					continue
+				}
+				seen[addr] = true
+				attr, ok := block.Body.Attributes["policy"]
+				if !ok {
+					continue
+				}
+				pol, ok := parseIAMJSONEncodePolicy(attr.Expr)
+				if !ok {
+					continue
+				}
+				out[addr] = pol
 			case "aws_iam_role_policy", "aws_iam_policy":
 				if dup[addr] || seen[addr] {
 					dup[addr] = true
@@ -242,10 +271,16 @@ func parseOneIAMHCLStatement(obj *hclsyntax.ObjectConsExpr) (iamHCLStatement, bo
 				return iamHCLStatement{}, false
 			}
 			st.condition = cond
+		case "Principal", "principal":
+			pr, ok := parseIAMHCLPrincipal(item.ValueExpr)
+			if !ok {
+				return iamHCLStatement{}, false
+			}
+			st.principal = pr
 		case "NotAction", "not_action", "NotResource", "not_resource":
 			return iamHCLStatement{}, false
 		default:
-			// Sid, Principal — ignored
+			// Sid — ignored
 		}
 	}
 	if st.effect == "" || len(st.actions) == 0 || len(st.resources) == 0 {
@@ -442,6 +477,7 @@ func materializeIAMHCLPolicyJSON(pol iamHCLPolicy, resources []planResource) (st
 		Effect    string         `json:"Effect"`
 		Action    any            `json:"Action"`
 		Resource  any            `json:"Resource"`
+		Principal any            `json:"Principal,omitempty"`
 		Condition map[string]any `json:"Condition,omitempty"`
 	}
 	var stmts []stmtOut
@@ -466,6 +502,9 @@ func materializeIAMHCLPolicyJSON(pol iamHCLPolicy, resources []planResource) (st
 			Effect:   st.effect,
 			Action:   action,
 			Resource: resource,
+		}
+		if pr, ok := materializeIAMHCLPrincipal(st.principal, resources); ok {
+			out.Principal = pr
 		}
 		if len(st.condition) > 0 {
 			out.Condition = st.condition
@@ -528,8 +567,11 @@ func planRootResourceAttr(ref string, resources []planResource) (string, bool) {
 	if v, ok := r.values[attr].(string); ok && v != "" && !attrAfterUnknown(r, attr) {
 		return v, true
 	}
-	if attr == "arn" && attrAfterUnknown(r, attr) && r.typ == "aws_s3_bucket" {
+	if attr == "arn" && attrAfterUnknown(r, attr) {
 		if arn, ok := synthesizeS3BucketARN(r); ok {
+			return arn, true
+		}
+		if arn, ok := synthesizeDynamoDBTableARN(r); ok {
 			return arn, true
 		}
 		return "", false
@@ -543,6 +585,189 @@ func planRootResourceAttr(ref string, resources []planResource) (string, bool) {
 // synthesizeS3BucketARN is the only ARN synthesis the HCL IAM path performs.
 // It applies when the plan leaves arn unknown but bucket is a known literal name
 // and the resource region is not cn-* or us-gov-* (partition cannot be inferred).
+func parseIAMHCLPrincipal(expr hclsyntax.Expression) (iamHCLPrincipal, bool) {
+	if s, ok := literalString(expr); ok {
+		if s == "*" {
+			return iamHCLPrincipal{star: true}, true
+		}
+		return iamHCLPrincipal{}, false
+	}
+	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
+	if !ok {
+		return iamHCLPrincipal{}, false
+	}
+	var pr iamHCLPrincipal
+	for _, item := range obj.Items {
+		key, ok := attrName(item.KeyExpr)
+		if !ok {
+			return iamHCLPrincipal{}, false
+		}
+		switch key {
+		case "AWS", "aws":
+			entries, star, ok := parseIAMHCLPrincipalAWS(item.ValueExpr)
+			if !ok {
+				return iamHCLPrincipal{}, false
+			}
+			pr.aws = append(pr.aws, entries...)
+			pr.star = pr.star || star
+		case "Service", "service":
+			services, star, ok := parseIAMHCLPrincipalService(item.ValueExpr)
+			if !ok {
+				return iamHCLPrincipal{}, false
+			}
+			pr.service = append(pr.service, services...)
+			pr.serviceStar = pr.serviceStar || star
+		default:
+			return iamHCLPrincipal{}, false
+		}
+	}
+	if !pr.star && len(pr.aws) == 0 && len(pr.service) == 0 && !pr.serviceStar {
+		return iamHCLPrincipal{}, false
+	}
+	return pr, true
+}
+
+func parseIAMHCLPrincipalAWS(expr hclsyntax.Expression) ([]iamHCLPrincipalEntry, bool, bool) {
+	if s, ok := literalString(expr); ok {
+		if s == "*" {
+			return nil, true, true
+		}
+		return []iamHCLPrincipalEntry{{literal: s}}, false, true
+	}
+	if ref, ok := rootModuleResourceRef(expr); ok {
+		return []iamHCLPrincipalEntry{{ref: ref}}, false, true
+	}
+	if list, ok := literalStringListExpr(expr); ok {
+		var out []iamHCLPrincipalEntry
+		for _, s := range list {
+			if s == "*" {
+				return out, true, true
+			}
+			out = append(out, iamHCLPrincipalEntry{literal: s})
+		}
+		return out, false, true
+	}
+	tup, ok := expr.(*hclsyntax.TupleConsExpr)
+	if !ok {
+		return nil, false, false
+	}
+	var out []iamHCLPrincipalEntry
+	for _, item := range tup.Exprs {
+		if s, ok := literalString(item); ok {
+			if s == "*" {
+				return out, true, true
+			}
+			out = append(out, iamHCLPrincipalEntry{literal: s})
+			continue
+		}
+		if ref, ok := rootModuleResourceRef(item); ok {
+			out = append(out, iamHCLPrincipalEntry{ref: ref})
+			continue
+		}
+		return nil, false, false
+	}
+	return out, false, true
+}
+
+func parseIAMHCLPrincipalService(expr hclsyntax.Expression) ([]string, bool, bool) {
+	if s, ok := literalString(expr); ok {
+		if s == "*" {
+			return nil, true, true
+		}
+		return []string{s}, false, true
+	}
+	list, ok := literalStringListExpr(expr)
+	if !ok {
+		return nil, false, false
+	}
+	for _, s := range list {
+		if s == "*" {
+			return nil, true, true
+		}
+	}
+	return list, false, true
+}
+
+func materializeIAMHCLPrincipal(pr iamHCLPrincipal, resources []planResource) (any, bool) {
+	if pr.star {
+		return "*", true
+	}
+	out := map[string]any{}
+	if len(pr.aws) > 0 {
+		var aws any
+		var list []string
+		for _, entry := range pr.aws {
+			if entry.ref != "" {
+				if v, ok := planRootResourceAttr(entry.ref, resources); ok {
+					list = append(list, v)
+					continue
+				}
+				if samePlanIdentityRef(entry.ref, resources) {
+					list = append(list, samePlanIdentityPrincipal)
+					continue
+				}
+				return nil, false
+			}
+			list = append(list, entry.literal)
+		}
+		if len(list) == 1 {
+			aws = list[0]
+		} else {
+			aws = list
+		}
+		out["AWS"] = aws
+	}
+	if len(pr.service) > 0 || pr.serviceStar {
+		if pr.serviceStar {
+			out["Service"] = "*"
+		} else if len(pr.service) == 1 {
+			out["Service"] = pr.service[0]
+		} else {
+			out["Service"] = pr.service
+		}
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	return out, true
+}
+
+func samePlanIdentityRef(ref string, resources []planResource) bool {
+	parts := strings.SplitN(ref, ".", 3)
+	if len(parts) != 3 || parts[2] != "arn" {
+		return false
+	}
+	typ := parts[0]
+	if typ != "aws_iam_role" && typ != "aws_iam_user" {
+		return false
+	}
+	addr := parts[0] + "." + parts[1]
+	for _, r := range resources {
+		if r.address == addr {
+			return true
+		}
+	}
+	return false
+}
+
+func synthesizeDynamoDBTableARN(r planResource) (string, bool) {
+	if r.typ != "aws_dynamodb_table" || !attrAfterUnknown(r, "arn") {
+		return "", false
+	}
+	name, ok := r.values["name"].(string)
+	if !ok || name == "" || attrAfterUnknown(r, "name") {
+		return "", false
+	}
+	region, _ := r.values["region"].(string)
+	if region == "" {
+		region = "us-east-1"
+	}
+	if strings.HasPrefix(region, "cn-") || strings.HasPrefix(region, "us-gov-") {
+		return "", false
+	}
+	return "arn:aws:dynamodb:" + region + ":111122223333:table/" + name, true
+}
+
 func synthesizeS3BucketARN(r planResource) (string, bool) {
 	if r.typ != "aws_s3_bucket" || !attrAfterUnknown(r, "arn") {
 		return "", false

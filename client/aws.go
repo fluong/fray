@@ -77,6 +77,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	for _, r := range tables {
 		add(awsDynamoDBTableElement(r, lifecycle.protected(r.address)))
 	}
+	applyDynamoDBResourcePolicies(resources, data, idx, plan, byAddr, &warnings)
 	for _, el := range awsElastiCacheElements(resources, data, idx, &warnings) {
 		add(el)
 	}
