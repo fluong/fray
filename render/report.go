@@ -627,6 +627,16 @@ func lookup(field string, el *client.Element, f *client.Flow, byID map[string]cl
 				return nil, false
 			}
 			return f.SecretDelivery, true
+		case "authz_db_control_classes":
+			if len(f.AuthzDBControlClasses) == 0 {
+				return nil, false
+			}
+			return f.AuthzDBControlClasses, true
+		case "authz_db_control_scope":
+			if f.AuthzDBControlScope == "" {
+				return nil, false
+			}
+			return f.AuthzDBControlScope, true
 		}
 	}
 	return nil, false
