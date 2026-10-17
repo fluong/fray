@@ -21,6 +21,7 @@ type configIndex struct {
 	resources map[string]exprSet
 	calls     map[string]exprSet
 	outputs   map[string]exprSet // module call address → output name → refs
+	iamHCL    iamPolicyHCLIndex  // root-module literal jsonencode IAM policies from .tf
 }
 
 func (idx configIndex) attrRefs(address, attr string) []string {
@@ -1736,7 +1737,7 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		if len(matched) == 0 {
 			continue
 		}
-		got, unk := resolvePolicyContent(rp, "policy", module, data, idx)
+		got, unk := resolvePolicyContent(rp, "policy", module, data, resources, idx)
 		out = append(out, got...)
 		if unk {
 			unknown = true
@@ -1749,7 +1750,7 @@ func roleDocuments(module string, roleRefs []string, resources, data []planResou
 		if !overlaps([]string{localTypeName(role.address)}, roles) {
 			continue
 		}
-		got, unk := roleInlinePolicyDocs(role, module, data, idx)
+		got, unk := roleInlinePolicyDocs(role, module, resources, data, idx)
 		out = append(out, got...)
 		if unk {
 			unknown = true
@@ -1786,7 +1787,7 @@ func resolveAttachedPolicyARN(holder planResource, arnAttr, module string, resou
 			unknown = true
 			continue
 		}
-		got, unk := resolvePolicyContent(pol, "policy", module, data, idx)
+		got, unk := resolvePolicyContent(pol, "policy", module, data, resources, idx)
 		docs = append(docs, got...)
 		if unk {
 			unknown = true
@@ -1882,7 +1883,7 @@ func rolePoliciesExclusiveDocs(module string, roles []string, resources, data []
 				unknown = true
 				continue
 			}
-			got, unk := resolvePolicyContent(rp, "policy", module, data, idx)
+			got, unk := resolvePolicyContent(rp, "policy", module, data, resources, idx)
 			docs = append(docs, got...)
 			if unk {
 				unknown = true
@@ -2230,9 +2231,9 @@ func findRolePolicyByName(resources []planResource, module string, roleNames []s
 }
 
 // resolvePolicyContent reads holder.policyAttr: data.aws_iam_policy_document
-// refs first, else a known JSON string, else unknown. Never reconstructs
-// statements from jsonencode configuration references alone.
-func resolvePolicyContent(holder planResource, policyAttr, module string, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+// refs first, else a known JSON string, else a qualifying root-module
+// jsonencode({...}) from .tf when moduleDir was provided at parse time.
+func resolvePolicyContent(holder planResource, policyAttr, module string, data, resources []planResource, idx configIndex) (docs []planResource, unknown bool) {
 	docNames := namedResources(idx.attrRefs(holder.address, policyAttr), "aws_iam_policy_document")
 	if len(docNames) > 0 {
 		var found []planResource
@@ -2258,11 +2259,13 @@ func resolvePolicyContent(holder planResource, policyAttr, module string, data [
 		}
 		return []planResource{syn}, false
 	}
-	// Unknown at plan time (after_unknown, null, or jsonencode-with-refs only).
+	if syn, ok := resolvePolicyFromHCL(holder.address, holder.address, module, resources, idx); ok {
+		return []planResource{syn}, false
+	}
 	return nil, true
 }
 
-func roleInlinePolicyDocs(role planResource, module string, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
+func roleInlinePolicyDocs(role planResource, module string, resources, data []planResource, idx configIndex) (docs []planResource, unknown bool) {
 	if !hasConfigAttr(idx, role.address, "inline_policy") {
 		// Bare after_unknown.inline_policy with no config blocks: ignore.
 		return nil, false
@@ -2299,9 +2302,15 @@ func roleInlinePolicyDocs(role planResource, module string, data []planResource,
 		}
 		s, _ := m["policy"].(string)
 		if strings.TrimSpace(s) == "" {
-			// Block present without a known policy string; data-doc path may
-			// already have covered it via attrRefs.
 			if len(namedResources(idx.attrRefs(role.address, "inline_policy"), "aws_iam_policy_document")) == 0 {
+				var cause string
+				if name, _ := m["name"].(string); name != "" {
+					cause = role.address + "#inline_policy." + name
+					if syn, ok := resolvePolicyFromHCL(cause, cause, module, resources, idx); ok {
+						docs = append(docs, syn)
+						continue
+					}
+				}
 				unknown = true
 			}
 			continue
@@ -2334,7 +2343,7 @@ func roleManagedPolicyDocs(role planResource, module string, resources, data []p
 			unknown = true
 			continue
 		}
-		got, unk := resolvePolicyContent(pol, "policy", module, data, idx)
+		got, unk := resolvePolicyContent(pol, "policy", module, data, resources, idx)
 		docs = append(docs, got...)
 		if unk {
 			unknown = true

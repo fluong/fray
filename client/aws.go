@@ -44,6 +44,10 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	idx.iamHCL, err = readRootIAMPolicyLiterals(moduleDir)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 	data, err := loadDataResources(plan)
 	if err != nil {
 		return nil, nil, nil, nil, err
