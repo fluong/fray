@@ -357,6 +357,8 @@
         "attributes.network_restricted",
         "attributes.tls_enforced",
         "attributes.customer_managed_key",
+        "attributes.resource_policy_cross_account",
+        "attributes.resource_policy_world_principal",
         "data_class",
         "transport",
         "authz_scope",
