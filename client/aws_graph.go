@@ -2731,6 +2731,36 @@ func awsSecretScope(sec *Element, docs []planResource, callRefs []string, resour
 	return effectiveAuthzScope(grants), grants, cause
 }
 
+// ensureS3GrantPolicyCause keeps authz_scope cause on the granting IAM policy or
+// data document, not the bucket To-element address.
+func ensureS3GrantPolicyCause(flowCause string, bucket *Element, docs []planResource, resources []planResource, elements []*Element) string {
+	if bucket == nil || len(bucket.Evidence.Addresses) == 0 {
+		return flowCause
+	}
+	bucketAddr := bucket.Evidence.Addresses[0]
+	if flowCause != "" && flowCause != bucketAddr {
+		return flowCause
+	}
+	for _, doc := range docs {
+		for _, st := range docStatements(doc) {
+			if !grantsAction(st, s3Action) {
+				continue
+			}
+			if !resourcesFullyKnown(st.resources) {
+				continue
+			}
+			for _, raw := range st.resources {
+				arn, _ := raw.(string)
+				_, el := classifyS3ARN(arn, resources, elements)
+				if el != nil && el.canonicalKey() == bucket.canonicalKey() {
+					return st.doc
+				}
+			}
+		}
+	}
+	return flowCause
+}
+
 func bucketsFromDocs(docs []planResource, callRefs []string, resources []planResource, elements []*Element) (hits []*Element, grants, actions []string, cause string, ambiguous bool, actionWarn string) {
 	resolved, amb := elementsFromRefs(callRefs, resources, elements, "aws_s3_bucket")
 	if amb {

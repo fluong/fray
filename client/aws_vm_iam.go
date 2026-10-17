@@ -386,9 +386,9 @@ func bucketFlowsForRole(fromEl *Element, module string, roleRefs []string, resou
 			From: fromEl.canonicalKey(), To: hit.canonicalKey(),
 			DataClass: "unknown", Transport: "tls",
 		}
-		flowCause := cause
+		flowCause := ensureS3GrantPolicyCause(cause, hit, docs, resources, elements)
 		if wideS3 {
-			flow.AuthzScope, flow.AuthzGrants, flowCause = widenScopeWithKnownWide(scope, cause, wideCause)
+			flow.AuthzScope, flow.AuthzGrants, flowCause = widenScopeWithKnownWide(scope, flowCause, wideCause)
 			flow.AuthzActions = actions
 			if flowCause != "" {
 				flow.Causes = map[string]string{"authz_scope": flowCause}

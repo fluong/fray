@@ -128,6 +128,9 @@ func TestCoverageDBControlDEFGH(t *testing.T) {
 		if f.AuthzDBControlScope != "account" || len(f.AuthzDBControlClasses) != 4 {
 			t.Fatalf("control scope=%q classes=%v", f.AuthzDBControlScope, f.AuthzDBControlClasses)
 		}
+		if f.Causes["authz_db_control_classes"] != "aws_iam_role_policy.db_control_wildcard" {
+			t.Fatalf("cause=%q", f.Causes["authz_db_control_classes"])
+		}
 	})
 }
 
@@ -142,6 +145,9 @@ func TestCoverageLambdaS3FGH(t *testing.T) {
 		if f.AuthzScope != "resource" {
 			t.Fatalf("authz_scope=%q want resource", f.AuthzScope)
 		}
+		if f.Causes["authz_scope"] != "aws_iam_role_policy.b71_reader_s3" {
+			t.Fatalf("cause=%q want aws_iam_role_policy.b71_reader_s3", f.Causes["authz_scope"])
+		}
 	})
 	t.Run("G_b71_dual", func(t *testing.T) {
 		a := flowLambdaToBucket(doc, "aws_lambda_function.b71_dual", "aws_s3_bucket.b71_a")
@@ -149,8 +155,9 @@ func TestCoverageLambdaS3FGH(t *testing.T) {
 		if a == nil || b == nil {
 			t.Fatal("missing dual bucket flows")
 		}
-		if a.Causes["authz_scope"] != b.Causes["authz_scope"] {
-			t.Fatalf("causes differ: %q vs %q", a.Causes["authz_scope"], b.Causes["authz_scope"])
+		want := "aws_iam_role_policy.b71_dual_s3"
+		if a.Causes["authz_scope"] != want || b.Causes["authz_scope"] != want {
+			t.Fatalf("causes a=%q b=%q want %q", a.Causes["authz_scope"], b.Causes["authz_scope"], want)
 		}
 	})
 	t.Run("H_b71_h", func(t *testing.T) {
