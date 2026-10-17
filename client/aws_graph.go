@@ -2050,10 +2050,12 @@ const (
 //   - SecretsManagerReadWrite: secretsmanager:* on "*".
 //   - AdministratorAccess: Action "*" on Resource "*" (all services below).
 var knownWideAWSManagedPolicies = map[string][]string{
-	"arn:aws:iam::aws:policy/AmazonBedrockFullAccess": {iamServiceBedrock},
-	"arn:aws:iam::aws:policy/AmazonS3FullAccess":      {iamServiceS3},
-	"arn:aws:iam::aws:policy/SecretsManagerReadWrite": {iamServiceSecretsManager},
-	"arn:aws:iam::aws:policy/AdministratorAccess":     {iamWideAll},
+	"arn:aws:iam::aws:policy/AmazonBedrockFullAccess":      {iamServiceBedrock},
+	"arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess":     {iamServiceDynamoDB},
+	"arn:aws:iam::aws:policy/AmazonDynamoDBReadOnlyAccess": {iamServiceDynamoDB},
+	"arn:aws:iam::aws:policy/AmazonS3FullAccess":           {iamServiceS3},
+	"arn:aws:iam::aws:policy/SecretsManagerReadWrite":      {iamServiceSecretsManager},
+	"arn:aws:iam::aws:policy/AdministratorAccess":          {iamWideAll},
 }
 
 func awsManagedPolicyAllowed(arn string) bool {
@@ -3202,6 +3204,107 @@ func parseS3ARN(arn string) (bucket string, ok bool) {
 		return rest[:i], true
 	}
 	return rest, true
+}
+
+// classifyDynamoDBARN classifies a DynamoDB Resource ARN.
+// table/name, table/name/index/*, and table/name/stream/* map to that table.
+// Wildcards in the table name, region, account, or bare "*" → account-wide.
+func classifyDynamoDBARN(arn string, resources []planResource, elements []*Element) (account bool, el *Element) {
+	if arn == "" {
+		return false, nil
+	}
+	if arn == "*" {
+		return true, nil
+	}
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) < 6 || parts[2] != "dynamodb" {
+		if strings.ContainsAny(arn, "*?") {
+			return true, nil
+		}
+		return false, nil
+	}
+	if strings.ContainsAny(parts[3], "*?") || strings.ContainsAny(parts[4], "*?") {
+		return true, nil
+	}
+	rest := parts[5]
+	if !strings.HasPrefix(rest, "table/") {
+		if strings.ContainsAny(rest, "*?") {
+			return true, nil
+		}
+		return false, nil
+	}
+	tableName := strings.TrimPrefix(rest, "table/")
+	if i := strings.IndexByte(tableName, '/'); i >= 0 {
+		tableName = tableName[:i]
+	}
+	if strings.ContainsAny(tableName, "*?") {
+		return true, nil
+	}
+	return false, tableByName(tableName, resources, elements)
+}
+
+func tableByName(tableName string, resources []planResource, elements []*Element) *Element {
+	if tableName == "" {
+		return nil
+	}
+	for _, r := range resources {
+		if r.typ != "aws_dynamodb_table" {
+			continue
+		}
+		if a, ok := r.values["arn"].(string); ok && a != "" {
+			if name, ok := dynamoTableNameFromARN(a); ok && name == tableName {
+				return elementForAddress(r.address, elements)
+			}
+		}
+		if n, ok := r.values["name"].(string); ok && n == tableName {
+			return elementForAddress(r.address, elements)
+		}
+		if id, ok := r.values["id"].(string); ok && id == tableName {
+			return elementForAddress(r.address, elements)
+		}
+	}
+	return nil
+}
+
+func dynamoTableNameFromARN(arn string) (name string, ok bool) {
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) < 6 || parts[2] != "dynamodb" {
+		return "", false
+	}
+	rest := parts[5]
+	if !strings.HasPrefix(rest, "table/") {
+		return "", false
+	}
+	tableName := strings.TrimPrefix(rest, "table/")
+	if i := strings.IndexByte(tableName, '/'); i >= 0 {
+		tableName = tableName[:i]
+	}
+	if tableName == "" || strings.ContainsAny(tableName, "*?") {
+		return "", false
+	}
+	return tableName, true
+}
+
+// docRefsDynamoDBTable reports whether a policy document's config references the
+// destination table's arn when the plan-time Resource value is unknown.
+func docRefsDynamoDBTable(doc planResource, dest *Element, idx configIndex) bool {
+	if dest == nil || len(dest.Evidence.Addresses) != 1 {
+		return false
+	}
+	_, typ, name, ok := splitResourceAddress(dest.Evidence.Addresses[0])
+	if !ok || typ != "aws_dynamodb_table" {
+		return false
+	}
+	for _, ref := range idx.attrRefs(doc.address, "statement") {
+		if !containsResource(ref, typ, name) {
+			continue
+		}
+		if strings.Contains(ref, typ+"."+name+".arn") ||
+			strings.HasSuffix(ref, typ+"."+name) {
+			return true
+		}
+	}
+	return false
 }
 
 func bucketByName(bucketName string, resources []planResource, elements []*Element) *Element {

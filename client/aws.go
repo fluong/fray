@@ -4,7 +4,7 @@ package client
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
 func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle preventIndex, auditOwned bool) ([]*Element, []*Flow, []*Boundary, []string, error) {
-	var lbs, services, dbs, buckets, secrets, restAPIs, httpAPIs, fnURLs, lambdas, instances, asgs, nodeGroups []planResource
+	var lbs, services, dbs, buckets, tables, secrets, restAPIs, httpAPIs, fnURLs, lambdas, instances, asgs, nodeGroups []planResource
 	for _, r := range resources {
 		switch r.typ {
 		case "aws_lb":
@@ -15,6 +15,8 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			dbs = append(dbs, r)
 		case "aws_s3_bucket":
 			buckets = append(buckets, r)
+		case "aws_dynamodb_table":
+			tables = append(tables, r)
 		case "aws_secretsmanager_secret":
 			secrets = append(secrets, r)
 		case "aws_api_gateway_rest_api":
@@ -33,7 +35,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			nodeGroups = append(nodeGroups, r)
 		}
 	}
-	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas)+len(instances)+len(asgs)+len(nodeGroups) == 0 {
+	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(tables)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas)+len(instances)+len(asgs)+len(nodeGroups) == 0 {
 		return nil, nil, nil, nil, nil
 	}
 	idx, err := indexConfig(plan)
@@ -65,6 +67,9 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 
 	for _, r := range buckets {
 		add(awsBucketElement(r, resources, idx, lifecycle.protected(r.address), auditOwned))
+	}
+	for _, r := range tables {
+		add(awsDynamoDBTableElement(r, lifecycle.protected(r.address)))
 	}
 	for _, r := range secrets {
 		add(awsSecretElement(r, resources, idx, lifecycle.protected(r.address)))
@@ -355,6 +360,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		specs := resolveContainerSpecs(mod, task, containers, rootTaskContainers)
 		flows = append(flows, secretFlowsFrom(svc, svcEl, mod, task.address, specs, resources, data, idx, elements, &warnings)...)
 		flows = append(flows, bucketFlows(svc, svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
+		flows = append(flows, tableFlows(svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
 	}
 	iamOmitWarned := map[string]bool{}
 	flows = append(flows, dbFlows(resources, data, idx, elements, &warnings, iamOmitWarned)...)
@@ -366,6 +372,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 	if bedrockEl != nil {
 		extra = append(extra, bedrockEl)
 	}
+	flows = append(flows, dynamodbLambdaFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 
 	var bounds []*Boundary
 	if public != nil && len(inside) > 0 {

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- DynamoDB tables are modelled as `nosql_db` elements; IAM-derived flows from ECS
+  task roles, Lambda execution roles, and EC2/ASG/EKS compute to tables named in
+  the role policy (FR-039/FR-040). Requires Action v0.34.0.
+
 ## [0.33.2] — 2026-10-16
 
 ### Fixed

@@ -1,0 +1,56 @@
+{
+  "schema_version": "dfd/v1",
+  "source": {
+    "repo": "t/ddb-golden",
+    "commit": "ddb0001",
+    "iac_tool": "terraform",
+    "fidelity": "plan"
+  },
+  "elements": [
+    {
+      "id": "e058f54b61c17c6d7",
+      "name": "sessions",
+      "type": "datastore",
+      "kind": "nosql_db",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "aws_dynamodb_table.sessions"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "deletion_protection": true,
+        "provider_deletion_protection": true
+      }
+    },
+    {
+      "id": "e250e091b0d65d04f",
+      "name": "app",
+      "type": "process",
+      "kind": "container_service",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "aws_ecs_service.app"
+        ]
+      },
+      "provider": "aws"
+    }
+  ],
+  "trust_boundaries": [],
+  "flows": [
+    {
+      "id": "f971bb064a3c21f91",
+      "from": "e250e091b0d65d04f",
+      "to": "e058f54b61c17c6d7",
+      "data_class": "unknown",
+      "transport": "tls",
+      "boundaries": [],
+      "authz_scope": "resource",
+      "authz_grants": [
+        "resource"
+      ]
+    }
+  ]
+}

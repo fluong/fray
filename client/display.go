@@ -45,6 +45,8 @@ func kindNoun(kind string) string {
 		return "secret"
 	case "relational_db":
 		return "database"
+	case "nosql_db":
+		return "table"
 	case "load_balancer":
 		return "load balancer"
 	case "api_gateway":

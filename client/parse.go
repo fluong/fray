@@ -73,6 +73,9 @@ var ignoredTypes = map[string]bool{
 	"aws_s3_bucket_public_access_block":                  true,
 	"aws_s3_bucket_server_side_encryption_configuration": true,
 	"aws_s3_bucket_versioning":                           true,
+	"aws_dynamodb_table_item":                            true,
+	"aws_dynamodb_global_table":                          true,
+	"aws_dynamodb_tag":                                   true,
 	"google_kms_crypto_key":                              true,
 	"aws_secretsmanager_secret_rotation":                 true,
 	"aws_secretsmanager_secret_version":                  true,
@@ -220,7 +223,7 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			"google_folder_iam_audit_config",
 			"google_organization_iam_audit_config":
 			audits = append(audits, r)
-		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_secretsmanager_secret",
+		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_dynamodb_table", "aws_secretsmanager_secret",
 			"aws_api_gateway_rest_api", "aws_apigatewayv2_api", "aws_lambda_function", "aws_lambda_function_url",
 			"aws_instance", "aws_autoscaling_group", "aws_eks_node_group":
 			// Mapped in buildAWS. Not warned as unknown.
