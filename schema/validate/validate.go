@@ -182,7 +182,11 @@ func Semantic(doc document) error {
 				set(ptr+"/subtype", "redacted element must omit subtype")
 			}
 			if el.ProviderSubtype != "" {
-				set(ptr+"/provider_subtype", "redacted element must omit provider_subtype")
+				switch el.ProviderSubtype {
+				case "redis", "valkey", "memcached":
+				default:
+					set(ptr+"/provider_subtype", "redacted provider_subtype must be redis, valkey, or memcached")
+				}
 			}
 			if err := checkRedactedEvidence(ptr, el); err != "" {
 				set(ptr+"/evidence", err)

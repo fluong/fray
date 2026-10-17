@@ -259,6 +259,14 @@
         },
         "purpose": {
           "$ref": "#/$defs/purpose"
+        },
+        "provider_subtype": {
+          "description": "Closed cache engine label when kind is cache (FR-043 memcached exclusion). Only these values may appear on redacted DFDs; other subtypes stay on the plaintext wire only.",
+          "enum": [
+            "redis",
+            "valkey",
+            "memcached"
+          ]
         }
       },
       "not": {
@@ -271,11 +279,6 @@
           {
             "required": [
               "subtype"
-            ]
-          },
-          {
-            "required": [
-              "provider_subtype"
             ]
           }
         ]
