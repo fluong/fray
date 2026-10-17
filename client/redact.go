@@ -69,7 +69,8 @@ func HashField(key []byte, field, value string) string {
 
 // Redact replaces identifying fields with HMAC digests, re-derives ids under
 // the same key, and returns a map for local de-redaction. The input doc is not
-// modified. subtype and provider_subtype are never emitted (Go types omit them).
+// modified. name is cleared; provider_subtype is kept only when it is in
+// WireProviderSubtypes (closed enum on redacted elements).
 func Redact(doc DFD, key []byte) (DFD, IDMap, error) {
 	plain := collectPlaintext(doc)
 	out := cloneDFD(doc)
@@ -81,7 +82,7 @@ func Redact(doc DFD, key []byte) (DFD, IDMap, error) {
 	for i := range out.Elements {
 		el := &out.Elements[i]
 		el.Name = ""
-		el.ProviderSubtype = ""
+		el.ProviderSubtype = redactedProviderSubtype(el.ProviderSubtype)
 		for j, addr := range el.Evidence.Addresses {
 			el.Evidence.Addresses[j] = HashField(key, fieldAddress, addr)
 			hashed++

@@ -14,7 +14,7 @@ func parseCacheCoveragePlan(t *testing.T, name string) (DFD, []string) {
 		t.Fatal(err)
 	}
 	doc, warnings, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "",
-		Source{Repo: "fluong/fray", Commit: "coverage", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+		Source{Repo: "fluong/fray", Commit: "abcdef1234567890abcdef1234567890abcd", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

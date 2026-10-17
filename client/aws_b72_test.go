@@ -15,7 +15,7 @@ func parseCoveragePlanModule(t *testing.T, planName, moduleDir string) (DFD, []s
 		t.Fatal(err)
 	}
 	doc, warnings, err := Parse(plan, []byte("schema_version: fray-config/v1\n"), "",
-		Source{Repo: "fluong/fray", Commit: "coverage", Tool: "terraform", Fidelity: "plan"}, moduleDir)
+		Source{Repo: "fluong/fray", Commit: "abcdef1234567890abcdef1234567890abcd", Tool: "terraform", Fidelity: "plan"}, moduleDir)
 	if err != nil {
 		t.Fatal(err)
 	}
