@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.35.1] — 2026-10-18
+
+### Fixed
+- Redacted DFDs no longer include `provider_subtype` on cache elements; the
+  hosted API validates redacted payloads against `element_redacted`, which
+  forbids that field (v0.35.0 ElastiCache modelling had left it on the wire).
+
 ## [0.35.0] — 2026-10-18
 
 ### Added
