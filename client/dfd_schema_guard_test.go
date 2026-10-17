@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fluong/fray/schema/validate"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // TestEveryFixtureDFDValidatesAgainstSchema marshals DFDs produced from the
@@ -141,6 +142,96 @@ func TestEveryFixtureDFDValidatesAgainstSchema(t *testing.T) {
 			},
 		},
 		{
+			name: "coverage_cache_plan",
+			doc: func(t *testing.T) DFD {
+				t.Helper()
+				plan, err := os.ReadFile(filepath.Join("testdata", "coverage-cache-plan.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				doc, _, err := Parse(plan, cfg, "fray.yaml", src("probe/coverage-cache"), t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return doc
+			},
+		},
+		{
+			name: "coverage_db_control_plan",
+			doc: func(t *testing.T) DFD {
+				t.Helper()
+				plan, err := os.ReadFile(filepath.Join("testdata", "coverage-db-control-plan.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				doc, _, err := Parse(plan, cfg, "fray.yaml", src("probe/coverage-db-control"), t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return doc
+			},
+		},
+		{
+			name: "coverage_lambda_s3_plan",
+			doc: func(t *testing.T) DFD {
+				t.Helper()
+				plan, err := os.ReadFile(filepath.Join("testdata", "coverage-lambda-s3-plan.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				doc, _, err := Parse(plan, cfg, "fray.yaml", src("probe/coverage-lambda-s3"), t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return doc
+			},
+		},
+		{
+			name: "coverage_b72_plan",
+			doc: func(t *testing.T) DFD {
+				t.Helper()
+				plan, err := os.ReadFile(filepath.Join("testdata", "coverage-b72-plan.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				doc, _, err := Parse(plan, cfg, "fray.yaml", src("probe/coverage-b72"), t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return doc
+			},
+		},
+		{
+			name: "coverage_db_worker_plan",
+			doc: func(t *testing.T) DFD {
+				t.Helper()
+				plan, err := os.ReadFile(filepath.Join("testdata", "coverage-db-worker-plan.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				doc, _, err := Parse(plan, cfg, "fray.yaml", src("probe/coverage-db-worker"), t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return doc
+			},
+		},
+		{
+			name: "coverage_cache_serverless_plan",
+			doc: func(t *testing.T) DFD {
+				t.Helper()
+				plan, err := os.ReadFile(filepath.Join("testdata", "coverage-cache-serverless-plan.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				doc, _, err := Parse(plan, cfg, "fray.yaml", src("probe/coverage-cache-serverless"), t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return doc
+			},
+		},
+		{
 			name: "gcp_cloud_run_secret_r2",
 			doc: func(t *testing.T) DFD {
 				t.Helper()
@@ -165,17 +256,22 @@ func TestEveryFixtureDFDValidatesAgainstSchema(t *testing.T) {
 		},
 	}
 
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := tc.doc(t)
-			raw, err := Marshal(doc)
+			if len(doc.Elements) == 0 {
+				t.Skip("parser produced no elements")
+			}
+			assertDFDValidates(t, schema, doc, "plain")
+			redacted, _, err := Redact(doc, key)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := validate.DFD(schema, raw); err != nil {
-				_, pointer := validate.LogSafe(err)
-				t.Fatalf("DFD schema validation failed: pointer=%s err=%v", pointer, err)
-			}
+			assertDFDValidates(t, schema, redacted, "redacted")
 		})
 	}
 
@@ -211,4 +307,16 @@ func TestEveryFixtureDFDValidatesAgainstSchema(t *testing.T) {
 		})
 		return nil
 	})
+}
+
+func assertDFDValidates(t *testing.T, schema *jsonschema.Schema, doc DFD, label string) {
+	t.Helper()
+	raw, err := Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.DFD(schema, raw); err != nil {
+		_, pointer := validate.LogSafe(err)
+		t.Fatalf("%s DFD schema validation failed: pointer=%s err=%v", label, pointer, err)
+	}
 }
