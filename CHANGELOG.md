@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.35.2] — 2026-10-18
+
+### Fixed
+- Hosted scans of large plans failed with "response body too large".
+
 ## [0.35.1] — 2026-10-18
 
 ### Fixed
