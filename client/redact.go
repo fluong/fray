@@ -81,6 +81,7 @@ func Redact(doc DFD, key []byte) (DFD, IDMap, error) {
 	for i := range out.Elements {
 		el := &out.Elements[i]
 		el.Name = ""
+		el.ProviderSubtype = ""
 		for j, addr := range el.Evidence.Addresses {
 			el.Evidence.Addresses[j] = HashField(key, fieldAddress, addr)
 			hashed++
