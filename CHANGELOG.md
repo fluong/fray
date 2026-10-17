@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.34.1] — Unreleased
+## [0.34.1] — 2026-10-17
 
 ### Fixed
 - DynamoDB IAM flows from deferred `data.aws_iam_policy_document` sources when
