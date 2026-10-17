@@ -34,15 +34,16 @@ type Source struct {
 }
 
 type Element struct {
-	ID         string         `json:"id"`
-	Name       string         `json:"name,omitempty"`
-	Type       string         `json:"type"`
-	Kind       string         `json:"kind"`
-	Provenance string         `json:"provenance"`
-	Evidence   Evidence       `json:"evidence"`
-	Provider   string         `json:"provider,omitempty"`
-	Purpose    string         `json:"purpose,omitempty"` // closed enum; never a free-text name
-	Attributes map[string]any `json:"attributes,omitempty"`
+	ID              string         `json:"id"`
+	Name            string         `json:"name,omitempty"`
+	Type            string         `json:"type"`
+	Kind            string         `json:"kind"`
+	Provenance      string         `json:"provenance"`
+	Evidence        Evidence       `json:"evidence"`
+	Provider        string         `json:"provider,omitempty"`
+	ProviderSubtype string         `json:"provider_subtype,omitempty"`
+	Purpose         string         `json:"purpose,omitempty"` // closed enum; never a free-text name
+	Attributes      map[string]any `json:"attributes,omitempty"`
 	// Causes maps an attribute name to the resource address that set it.
 	// It is local report data and is not part of the DFD.
 	Causes map[string]string `json:"-"`
@@ -79,8 +80,11 @@ type Flow struct {
 	AuthzGrants []string `json:"authz_grants,omitempty"`
 	// AuthzActions lists S3 write/policy actions granted on this flow when known
 	// (closed enum including DeleteObject, PutObject, BypassGovernanceRetention, …).
-	AuthzActions   []string `json:"authz_actions,omitempty"`
-	SecretDelivery string   `json:"secret_delivery,omitempty"`
+	AuthzActions []string `json:"authz_actions,omitempty"`
+	// AuthzDBControlClasses lists control-plane DB rights on this flow (FR-046).
+	AuthzDBControlClasses []string `json:"authz_db_control_classes,omitempty"`
+	AuthzDBControlScope   string   `json:"authz_db_control_scope,omitempty"`
+	SecretDelivery        string   `json:"secret_delivery,omitempty"`
 	// Causes maps a flow field to the resource address that set it.
 	Causes map[string]string `json:"-"`
 	// identityClass is the data_class used for the flow id. It is set when

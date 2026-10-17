@@ -4,7 +4,7 @@ package client
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
 func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle preventIndex, auditOwned bool) ([]*Element, []*Flow, []*Boundary, []string, error) {
-	var lbs, services, dbs, buckets, tables, secrets, restAPIs, httpAPIs, fnURLs, lambdas, instances, asgs, nodeGroups []planResource
+	var lbs, services, dbs, buckets, tables, caches, secrets, restAPIs, httpAPIs, fnURLs, lambdas, instances, asgs, nodeGroups []planResource
 	for _, r := range resources {
 		switch r.typ {
 		case "aws_lb":
@@ -17,6 +17,8 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			buckets = append(buckets, r)
 		case "aws_dynamodb_table":
 			tables = append(tables, r)
+		case "aws_elasticache_replication_group", "aws_elasticache_cluster":
+			caches = append(caches, r)
 		case "aws_secretsmanager_secret":
 			secrets = append(secrets, r)
 		case "aws_api_gateway_rest_api":
@@ -35,7 +37,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			nodeGroups = append(nodeGroups, r)
 		}
 	}
-	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(tables)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas)+len(instances)+len(asgs)+len(nodeGroups) == 0 {
+	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(tables)+len(caches)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas)+len(instances)+len(asgs)+len(nodeGroups) == 0 {
 		return nil, nil, nil, nil, nil
 	}
 	idx, err := indexConfig(plan)
@@ -70,6 +72,9 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	}
 	for _, r := range tables {
 		add(awsDynamoDBTableElement(r, lifecycle.protected(r.address)))
+	}
+	for _, el := range awsElastiCacheElements(resources, data, idx, &warnings) {
+		add(el)
 	}
 	for _, r := range secrets {
 		add(awsSecretElement(r, resources, idx, lifecycle.protected(r.address)))
@@ -373,6 +378,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		extra = append(extra, bedrockEl)
 	}
 	flows = append(flows, dynamodbLambdaFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
+	flows = append(flows, lambdaS3Flows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 
 	var bounds []*Boundary
 	if public != nil && len(inside) > 0 {
@@ -498,11 +504,10 @@ func dbNetworkFlowWithAuthz(src, dest *Element, resources, data []planResource, 
 		if cause != "" {
 			flow.Causes = map[string]string{"authz_scope": cause}
 		}
-		return flow
-	}
-	if omittedRole != "" {
+	} else if omittedRole != "" {
 		flow.Causes = map[string]string{"authz_scope_omitted_for": omittedRole}
 	}
+	attachDBControlPlane(flow, src, dest, resources, data, idx, elements, warnings)
 	return flow
 }
 

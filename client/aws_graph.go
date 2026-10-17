@@ -2054,6 +2054,7 @@ var knownWideAWSManagedPolicies = map[string][]string{
 	"arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess":     {iamServiceDynamoDB},
 	"arn:aws:iam::aws:policy/AmazonDynamoDBReadOnlyAccess": {iamServiceDynamoDB},
 	"arn:aws:iam::aws:policy/AmazonS3FullAccess":           {iamServiceS3},
+	"arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess":       {iamServiceS3},
 	"arn:aws:iam::aws:policy/SecretsManagerReadWrite":      {iamServiceSecretsManager},
 	"arn:aws:iam::aws:policy/AdministratorAccess":          {iamWideAll},
 }
@@ -2493,10 +2494,10 @@ func normalizeIAMJSONStatement(st map[string]any) map[string]any {
 		norm["not_actions"] = asStringListAny(v)
 	}
 	if v, ok := firstKey(st, "Resource", "resource", "Resources", "resources"); ok {
-		norm["resources"] = asList(v)
+		norm["resources"] = asStringListAny(v)
 	}
 	if v, ok := firstKey(st, "NotResource", "not_resource", "NotResources", "not_resources"); ok {
-		norm["not_resources"] = asList(v)
+		norm["not_resources"] = asStringListAny(v)
 	}
 	if v, ok := firstKey(st, "Condition", "condition"); ok {
 		norm["condition"] = v
@@ -2796,7 +2797,11 @@ func bucketsFromDocs(docs []planResource, callRefs []string, resources []planRes
 		}
 	}
 	if len(matched) > 1 && len(resolved) == 0 {
-		return nil, grants, actionSet, cause, true, actionWarn
+		var els []*Element
+		for _, el := range matched {
+			els = append(els, el)
+		}
+		return els, grants, actionSet, cause, false, actionWarn
 	}
 	if len(resolved) != 1 {
 		return nil, grants, actionSet, cause, len(resolved) > 1, actionWarn

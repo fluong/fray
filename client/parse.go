@@ -76,6 +76,8 @@ var ignoredTypes = map[string]bool{
 	"aws_dynamodb_table_item":                            true,
 	"aws_dynamodb_global_table":                          true,
 	"aws_dynamodb_tag":                                   true,
+	"aws_elasticache_subnet_group":                       true,
+	"aws_elasticache_parameter_group":                    true,
 	"google_kms_crypto_key":                              true,
 	"aws_secretsmanager_secret_rotation":                 true,
 	"aws_secretsmanager_secret_version":                  true,
@@ -225,8 +227,14 @@ func Parse(plan, config []byte, declaredSource string, src Source, moduleDir str
 			audits = append(audits, r)
 		case "aws_lb", "aws_ecs_service", "aws_db_instance", "aws_rds_cluster", "aws_s3_bucket", "aws_dynamodb_table", "aws_secretsmanager_secret",
 			"aws_api_gateway_rest_api", "aws_apigatewayv2_api", "aws_lambda_function", "aws_lambda_function_url",
-			"aws_instance", "aws_autoscaling_group", "aws_eks_node_group":
+			"aws_instance", "aws_autoscaling_group", "aws_eks_node_group",
+			"aws_elasticache_replication_group", "aws_elasticache_cluster":
 			// Mapped in buildAWS. Not warned as unknown.
+		case "aws_elasticache_serverless_cache":
+			if !seenUnknown[r.typ] {
+				seenUnknown[r.typ] = true
+				warnings = append(warnings, "no mapping for "+r.address+"; skipped")
+			}
 		case "cloudflare_r2_managed_domain", "cloudflare_r2_custom_domain":
 			// Read later to decide whether a bucket is public. Not an element.
 		case "cloudflare_r2_bucket_lock":
@@ -1068,6 +1076,7 @@ func mechanicalFlows(services, secrets, r2buckets, invokers, secretIAM, projectI
 						flow.Causes = map[string]string{"authz_scope": cause}
 					}
 				}
+				attachCloudSQLControlPlane(flow, sa, sqlRes, projectIAM, idx)
 			}
 			flows = append(flows, flow)
 		} else if db != nil && hasEnv(svc, "DATABASE_URL") {

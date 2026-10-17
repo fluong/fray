@@ -60,6 +60,8 @@ func iamRoleRefsForCompute(src *Element, resources, data []planResource, idx con
 		return instanceDirectProfileRoleRefs(r, resources, data, idx)
 	case "aws_autoscaling_group":
 		return instanceProfileRoleRefsASG(r, resources, data, idx)
+	case "aws_lambda_function":
+		return mod, idx.attrRefs(r.address, "role"), ""
 	case "aws_eks_node_group":
 		refs := idx.attrRefs(r.address, "node_role_arn")
 		if len(refs) == 0 && !declaresAttr(r, idx, "node_role_arn") {
@@ -368,41 +370,48 @@ func bucketFlowsForRole(fromEl *Element, module string, roleRefs []string, resou
 		}
 		return nil
 	}
-	if len(hits) != 1 {
-		return nil
-	}
-	scope := effectiveAuthzScope(grants)
-	if scope == "" {
+	if len(hits) == 0 {
 		return nil
 	}
 	if actionWarn != "" && warnings != nil {
 		*warnings = append(*warnings, actionWarn)
 	}
-	flow := &Flow{
-		From: fromEl.canonicalKey(), To: hits[0].canonicalKey(),
-		DataClass: "unknown", Transport: "tls",
-	}
-	if wideS3 {
-		flow.AuthzScope, flow.AuthzGrants, cause = widenScopeWithKnownWide(scope, cause, wideCause)
+	var flows []*Flow
+	for _, hit := range hits {
+		scope := effectiveAuthzScope(grants)
+		if scope == "" {
+			continue
+		}
+		flow := &Flow{
+			From: fromEl.canonicalKey(), To: hit.canonicalKey(),
+			DataClass: "unknown", Transport: "tls",
+		}
+		flowCause := cause
+		if wideS3 {
+			flow.AuthzScope, flow.AuthzGrants, flowCause = widenScopeWithKnownWide(scope, cause, wideCause)
+			flow.AuthzActions = actions
+			if flowCause != "" {
+				flow.Causes = map[string]string{"authz_scope": flowCause}
+			}
+			flows = append(flows, flow)
+			continue
+		}
+		if unknownDocs {
+			if role := omittedScopeRole(module, roleRefs); role != "" {
+				flow.Causes = map[string]string{"authz_scope_omitted_for": role}
+			}
+			flows = append(flows, flow)
+			continue
+		}
+		flow.AuthzScope = scope
+		flow.AuthzGrants = grants
 		flow.AuthzActions = actions
-		if cause != "" {
-			flow.Causes = map[string]string{"authz_scope": cause}
+		if flowCause != "" {
+			flow.Causes = map[string]string{"authz_scope": flowCause}
 		}
-		return []*Flow{flow}
+		flows = append(flows, flow)
 	}
-	if unknownDocs {
-		if role := omittedScopeRole(module, roleRefs); role != "" {
-			flow.Causes = map[string]string{"authz_scope_omitted_for": role}
-		}
-		return []*Flow{flow}
-	}
-	flow.AuthzScope = scope
-	flow.AuthzGrants = grants
-	flow.AuthzActions = actions
-	if cause != "" {
-		flow.Causes = map[string]string{"authz_scope": cause}
-	}
-	return []*Flow{flow}
+	return flows
 }
 
 func asgResourceRefsPeerSG(asg, sg planResource, resources, data []planResource, idx configIndex) bool {
