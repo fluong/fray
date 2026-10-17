@@ -772,6 +772,27 @@
             "env",
             "volume"
           ]
+        },
+        "authz_db_control_classes": {
+          "type": "array",
+          "description": "Database control-plane rights inferred on this flow (for example RDS ModifyDBInstance or snapshot APIs), not data-plane connect. Omitted when no control-plane grant is known from the plan.",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "reset_credentials",
+              "snapshot_exfiltrate",
+              "restore_clone",
+              "delete"
+            ]
+          }
+        },
+        "authz_db_control_scope": {
+          "description": "Whether the control-plane grant on this flow applies to one database target or broadly across the account (or GCP project). Omitted when authz_db_control_classes is omitted.",
+          "enum": [
+            "resource",
+            "account"
+          ]
         }
       }
     },
