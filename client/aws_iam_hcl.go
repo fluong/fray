@@ -528,16 +528,35 @@ func planRootResourceAttr(ref string, resources []planResource) (string, bool) {
 	if v, ok := r.values[attr].(string); ok && v != "" && !attrAfterUnknown(r, attr) {
 		return v, true
 	}
-	if attr == "arn" && attrAfterUnknown(r, attr) {
-		switch r.typ {
-		case "aws_s3_bucket":
-			if bucket, ok := r.values["bucket"].(string); ok && bucket != "" {
-				return "arn:aws:s3:::" + bucket, true
-			}
+	if attr == "arn" && attrAfterUnknown(r, attr) && r.typ == "aws_s3_bucket" {
+		if arn, ok := synthesizeS3BucketARN(r); ok {
+			return arn, true
 		}
+		return "", false
 	}
-	if v, ok := r.values[attr].(string); ok && v != "" {
+	if v, ok := r.values[attr].(string); ok && v != "" && !attrAfterUnknown(r, attr) {
 		return v, true
 	}
 	return "", false
+}
+
+// synthesizeS3BucketARN is the only ARN synthesis the HCL IAM path performs.
+// It applies when the plan leaves arn unknown but bucket is a known literal name
+// and the resource region is not cn-* or us-gov-* (partition cannot be inferred).
+func synthesizeS3BucketARN(r planResource) (string, bool) {
+	if r.typ != "aws_s3_bucket" || !attrAfterUnknown(r, "arn") {
+		return "", false
+	}
+	if attrAfterUnknown(r, "bucket") {
+		return "", false
+	}
+	bucket, ok := r.values["bucket"].(string)
+	if !ok || bucket == "" {
+		return "", false
+	}
+	region, _ := r.values["region"].(string)
+	if region != "" && (strings.HasPrefix(region, "cn-") || strings.HasPrefix(region, "us-gov-")) {
+		return "", false
+	}
+	return "arn:aws:s3:::" + bucket, true
 }

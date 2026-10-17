@@ -330,6 +330,51 @@ func TestB72HCLJSONEquivalence(t *testing.T) {
 	}
 }
 
+func TestB72S3ARNsynthesisGuardrails(t *testing.T) {
+	t.Run("bucket_prefix_unknown", func(t *testing.T) {
+		r := planResource{
+			address: "aws_s3_bucket.pref",
+			typ:     "aws_s3_bucket",
+			values:  map[string]any{"bucket_prefix": "uploads-"},
+			afterUnknown: map[string]any{
+				"arn": true, "bucket": true,
+			},
+		}
+		if _, ok := planRootResourceAttr("aws_s3_bucket.pref.arn", []planResource{r}); ok {
+			t.Fatal("want no synthesis for bucket_prefix-only bucket")
+		}
+	})
+	t.Run("cn_north_1_unknown", func(t *testing.T) {
+		r := planResource{
+			address: "aws_s3_bucket.cn",
+			typ:     "aws_s3_bucket",
+			values: map[string]any{
+				"bucket": "my-bucket",
+				"region": "cn-north-1",
+			},
+			afterUnknown: map[string]any{"arn": true},
+		}
+		if _, ok := planRootResourceAttr("aws_s3_bucket.cn.arn", []planResource{r}); ok {
+			t.Fatal("want no synthesis in cn-* region")
+		}
+	})
+	t.Run("known_bucket_us_east", func(t *testing.T) {
+		r := planResource{
+			address: "aws_s3_bucket.ok",
+			typ:     "aws_s3_bucket",
+			values: map[string]any{
+				"bucket": "my-bucket",
+				"region": "us-east-1",
+			},
+			afterUnknown: map[string]any{"arn": true},
+		}
+		got, ok := planRootResourceAttr("aws_s3_bucket.ok.arn", []planResource{r})
+		if !ok || got != "arn:aws:s3:::my-bucket" {
+			t.Fatalf("got %q ok=%v", got, ok)
+		}
+	})
+}
+
 func TestB72FR046JsonencodeRDS(t *testing.T) {
 	dir := t.TempDir()
 	writeTF(t, dir, `resource "aws_iam_role_policy" "snap" {
@@ -339,7 +384,7 @@ func TestB72FR046JsonencodeRDS(t *testing.T) {
     Statement = [{
       Effect   = "Allow"
       Action   = ["rds:CreateDBSnapshot"]
-      Resource = aws_db_instance.main.arn
+      Resource = "${aws_db_instance.main.arn}"
     }]
   })
 }`)
