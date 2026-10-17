@@ -40,23 +40,14 @@ func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 }
 
 func TestAllowedAttributesMatchSchemaAndCode(t *testing.T) {
-	// Attributes accepted by the schema before the client emits them (schema-first).
-	// Remove from this list in the client change that adds them to the allow-list.
-	pendingSchemaOnly := []string{
-		"resource_policy_cross_account",
-		"resource_policy_world_principal",
-	}
-
 	schemaKeys := loadSchemaAttributeKeys(t)
 	allow := AllowedAttributeKeys()
 	slices.Sort(schemaKeys)
 	slices.Sort(allow)
-	slices.Sort(pendingSchemaOnly)
-
 	schemaMinusAllow := setDiff(schemaKeys, allow)
 	allowMinusSchema := setDiff(allow, schemaKeys)
-	if !slices.Equal(schemaMinusAllow, pendingSchemaOnly) {
-		t.Fatalf("schema − allow-list = %#v want %#v", schemaMinusAllow, pendingSchemaOnly)
+	if len(schemaMinusAllow) > 0 {
+		t.Fatalf("schema − allow-list = %#v want empty", schemaMinusAllow)
 	}
 	if len(allowMinusSchema) > 0 {
 		t.Fatalf("allow-list − schema = %#v want empty", allowMinusSchema)

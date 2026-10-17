@@ -202,6 +202,21 @@ func TestEveryFixtureDFDValidatesAgainstSchema(t *testing.T) {
 			},
 		},
 		{
+			name: "coverage_b73_plan",
+			doc: func(t *testing.T) DFD {
+				t.Helper()
+				plan, err := os.ReadFile(filepath.Join("testdata", "coverage-b73-plan.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				doc, _, err := Parse(plan, cfg, "fray.yaml", src("probe/coverage-b73"), filepath.Join("testdata", "b73_hcl"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return doc
+			},
+		},
+		{
 			name: "coverage_db_worker_plan",
 			doc: func(t *testing.T) DFD {
 				t.Helper()

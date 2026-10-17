@@ -786,7 +786,6 @@ func TestDynamoDBUnmodelledCompanionTypesWarn(t *testing.T) {
 		typ     string
 		address string
 	}{
-		{"aws_dynamodb_resource_policy", "aws_dynamodb_resource_policy.sessions"},
 		{"aws_dynamodb_kinesis_streaming_destination", "aws_dynamodb_kinesis_streaming_destination.sessions"},
 	}
 	for _, tc := range cases {

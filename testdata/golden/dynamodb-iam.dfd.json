@@ -21,7 +21,9 @@
       "provider": "aws",
       "attributes": {
         "deletion_protection": true,
-        "provider_deletion_protection": true
+        "provider_deletion_protection": true,
+        "resource_policy_cross_account": false,
+        "resource_policy_world_principal": false
       }
     },
     {

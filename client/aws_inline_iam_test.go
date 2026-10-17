@@ -67,8 +67,10 @@ func TestSyntheticDocFromPolicyJSON(t *testing.T) {
 			if m["effect"] != tc.effect {
 				t.Fatalf("effect=%v", m["effect"])
 			}
-			if _, ok := m["principal"]; ok {
-				t.Fatal("principal must be ignored")
+			if strings.Contains(tc.raw, "Principal") {
+				if _, ok := m["principal"]; !ok {
+					t.Fatal("principal must be preserved for resource-policy classification")
+				}
 			}
 			if _, ok := m["sid"]; ok {
 				t.Fatal("sid must be ignored")
