@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-10-17
+
 ### Added
 - DynamoDB tables are modelled as `nosql_db` elements; IAM-derived flows from ECS
   task roles, Lambda execution roles, and EC2/ASG/EKS compute to tables named in
@@ -584,7 +586,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.33.2...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/fluong/fray/compare/v0.33.2...v0.34.0
 [0.33.2]: https://github.com/fluong/fray/compare/v0.33.1...v0.33.2
 [0.33.1]: https://github.com/fluong/fray/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/fluong/fray/compare/v0.32.0...v0.33.0
