@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-10-18
+
+### Added
+- ElastiCache replication groups and clusters are modelled as cache elements with
+  `network_restricted`, `tls_enforced`, and (Redis) `encrypted_at_rest` where the
+  plan exposes enough detail (FR-041–043).
+- Database flows can carry `authz_db_control_classes` and `authz_db_control_scope`
+  for RDS control-plane IAM actions on the compute role (FR-046).
+- Lambda execution roles now get IAM-derived flows to S3 buckets named in the
+  role policy, including read-only grants from the AWS-managed ReadOnlyAccess
+  attachment when it is the only S3 source on the role.
+- When a role policy is still unknown in plan JSON but written as a literal
+  `jsonencode({...})` in the Terraform root module, the client can read that
+  policy from configuration (including bucket ARNs synthesized only for standard
+  S3 buckets with a known name).
+
 ## [0.34.1] — 2026-10-17
 
 ### Fixed
