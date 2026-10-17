@@ -1,0 +1,39 @@
+{
+  "id": "FR-998",
+  "title": "Synthetic database control-plane flow rule",
+  "threat": "Synthetic threat for schema fixtures",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["tampering", "elevation_of_privilege", "denial_of_service"],
+  "severity": "medium",
+  "severity_when": [
+    {
+      "when": [
+        { "op": "equals", "field": "authz_db_control_scope", "value": "account" }
+      ],
+      "severity": "high"
+    }
+  ],
+  "platforms": ["aws", "gcp"],
+  "category": "identity",
+  "target": "flow",
+  "when": [
+    { "op": "equals", "field": "to.kind", "value": "relational_db" },
+    { "op": "exists", "field": "authz_db_control_classes" }
+  ],
+  "pass": [
+    {
+      "op": "all",
+      "conds": [
+        { "op": "equals", "field": "authz_db_control_scope", "value": "resource" },
+        { "op": "equals", "field": "authz_db_control_scope", "value": "account" }
+      ]
+    }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  }
+}

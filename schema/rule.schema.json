@@ -36,6 +36,12 @@
         "operator": { "enum": ["low", "medium", "high"] }
       }
     },
+    "severity_when": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Optional severity overrides when a condition matches.",
+      "items": { "$ref": "#/$defs/severity_when_entry" }
+    },
     "platforms": {
       "type": "array",
       "minItems": 1,
@@ -161,6 +167,19 @@
       "properties": {
         "framework": { "type": "string", "minLength": 1, "maxLength": 64 },
         "id": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "severity_when_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["when", "severity"],
+      "properties": {
+        "when": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "severity": { "enum": ["low", "medium", "high"] }
       }
     },
     "condition": {
@@ -342,6 +361,8 @@
         "transport",
         "authz_scope",
         "authz_grants",
+        "authz_db_control_classes",
+        "authz_db_control_scope",
         "secret_delivery",
         "from.type",
         "from.kind",

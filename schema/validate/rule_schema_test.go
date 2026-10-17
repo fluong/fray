@@ -34,6 +34,9 @@ func TestRuleSchemaFixtures(t *testing.T) {
 	for _, name := range []string{
 		"valid-min-action-catalog.json",
 		"valid-any-prefer-false.json",
+		"valid-severity-when.json",
+		"valid-flow-db-control-plane.json",
+		"valid-cache-provider-subtype-not.json",
 	} {
 		t.Run(name, func(t *testing.T) {
 			raw, err := os.ReadFile(filepath.Join(dir, name))
@@ -55,6 +58,9 @@ func TestRuleSchemaFixtures(t *testing.T) {
 		{"negative-empty-catalog-text.json", "catalog_text"},
 		{"negative-unknown-remediation-key.json", "additional properties"},
 		{"negative-unknown-op.json", "op"},
+		{"negative-severity-when-empty.json", "minitems"},
+		{"negative-severity-when-bad-severity.json", "severity"},
+		{"negative-severity-when-extra-key.json", "additional properties"},
 	}
 	for _, tc := range negatives {
 		t.Run(tc.file, func(t *testing.T) {

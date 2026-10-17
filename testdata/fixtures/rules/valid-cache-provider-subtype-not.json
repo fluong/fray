@@ -1,0 +1,33 @@
+{
+  "id": "FR-997",
+  "title": "Synthetic cache at-rest rule",
+  "threat": "Synthetic threat for schema fixtures",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["information_disclosure"],
+  "severity": "medium",
+  "platforms": ["aws"],
+  "category": "encryption",
+  "target": "element",
+  "when": [
+    { "op": "equals", "field": "kind", "value": "cache" },
+    { "op": "in", "field": "provenance", "value": ["iac"] },
+    {
+      "op": "not",
+      "cond": {
+        "op": "equals",
+        "field": "provider_subtype",
+        "value": "memcached"
+      }
+    }
+  ],
+  "pass": [
+    { "op": "equals", "field": "attributes.encrypted_at_rest", "value": true }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  }
+}

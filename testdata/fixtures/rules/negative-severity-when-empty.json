@@ -1,0 +1,25 @@
+{
+  "id": "FR-998",
+  "title": "Synthetic severity_when fixture",
+  "threat": "Synthetic threat",
+  "explanation": "Synthetic explanation.",
+  "stride": ["information_disclosure"],
+  "severity": "medium",
+  "severity_when": [],
+  "platforms": ["aws"],
+  "category": "identity",
+  "target": "flow",
+  "when": [
+    { "op": "exists", "field": "authz_db_control_classes" }
+  ],
+  "pass": [
+    { "op": "equals", "field": "authz_db_control_scope", "value": "resource" }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  }
+}
