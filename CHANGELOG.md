@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-10-18
+
+### Added
+- DynamoDB table resource policies are modelled on `nosql_db` elements as
+  `resource_policy_world_principal` and `resource_policy_cross_account` for
+  rule FR-048 (Action v0.36.0 or later).
+
 ## [0.35.2] — 2026-10-18
 
 ### Fixed
