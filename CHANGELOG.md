@@ -5,6 +5,9 @@
 ## [0.35.1] — 2026-10-18
 
 ### Fixed
+- v0.35.0 reported its version as 0.34.1, so the hosted service skipped the new
+  checks introduced in 0.35.0 (FR-041, FR-042, FR-043, FR-046); upgrade to 0.35.1
+  to get them.
 - Hosted scans no longer fail schema validation for plans that include
   ElastiCache (v0.35.0): redacted DFDs keep a closed `provider_subtype` enum
   on cache elements so FR-043 can still skip Memcached while other subtypes stay
