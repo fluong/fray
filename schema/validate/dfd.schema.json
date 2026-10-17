@@ -637,6 +637,14 @@
         "customer_managed_key": {
           "type": "boolean",
           "description": "true when object storage is encrypted with a customer-managed key (AWS SSE-KMS/DSSE-KMS with a customer key; GCS CMEK); false for SSE-S3, the AWS-managed alias/aws/s3 key, or the provider-managed default; omitted when unknown."
+        },
+        "resource_policy_world_principal": {
+          "type": "boolean",
+          "description": "true when a readable resource policy allows any principal without a fully restricting condition; false when policies were read and none allow any principal; omitted when this could not be determined from the plan."
+        },
+        "resource_policy_cross_account": {
+          "type": "boolean",
+          "description": "true when a readable resource policy allows a principal in another AWS account; false when policies were read and no foreign account is allowed; omitted when this could not be determined from the plan (including when the owning account is unknown)."
         }
       }
     },
