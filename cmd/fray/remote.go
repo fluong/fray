@@ -25,6 +25,25 @@ import (
 // written; main exits 1 without printing the error again.
 var errEnrollmentRejected = errors.New("enrollment rejected")
 
+const maxScanResponseBody = 8 << 20 // 8 MiB
+
+func readRemoteScanResponseBody(status int, r io.Reader) ([]byte, error) {
+	respBody, err := io.ReadAll(io.LimitReader(r, maxScanResponseBody+1))
+	if err != nil {
+		return nil, err
+	}
+	if status == http.StatusOK {
+		if len(respBody) > maxScanResponseBody {
+			return nil, fmt.Errorf("remote scan: response body too large (limit %d MiB)", maxScanResponseBody/(1<<20))
+		}
+		return respBody, nil
+	}
+	if len(respBody) > maxEnrollmentBody {
+		return nil, fmt.Errorf("remote scan: response body too large")
+	}
+	return respBody, nil
+}
+
 func runRemote(opt options) (bool, error) {
 	if err := apiv1.ValidateStack(opt.Stack); err != nil {
 		return false, err
@@ -207,12 +226,9 @@ func runRemote(opt options) (bool, error) {
 		return false, errors.New(usermsg.SeeTroubleshooting(usermsg.APIRequestFailed(err.Error())))
 	}
 	defer func() { _ = httpResp.Body.Close() }()
-	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, maxEnrollmentBody+1))
+	respBody, err := readRemoteScanResponseBody(httpResp.StatusCode, httpResp.Body)
 	if err != nil {
 		return false, err
-	}
-	if len(respBody) > maxEnrollmentBody {
-		return false, fmt.Errorf("remote scan: response body too large")
 	}
 	if httpResp.StatusCode != http.StatusOK {
 		ct := httpResp.Header.Get("Content-Type")
