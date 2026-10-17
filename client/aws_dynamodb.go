@@ -149,15 +149,12 @@ func collectDynamoDBGrants(docs []planResource, resources []planResource, elemen
 }
 
 func applyDynamoStatementGrant(scan *dynamoGrantScan, doc planResource, st iamStatement, resources []planResource, elements []*Element, idx configIndex) {
-	if nullResources(st.resources) {
-		scan.accountWide = true
-		scan.accountCause = st.doc
-		return
-	}
 	if resourcesFullyKnown(st.resources) {
 		applyKnownDynamoResources(scan, st, resources, elements)
 		return
 	}
+	// Plan-time null/unknown Resource slots (common on data.aws_iam_policy_document):
+	// match tables from configuration statement references, same as RDS db scope.
 	applyUnknownDynamoResources(scan, doc, st.doc, elements, idx)
 }
 
@@ -193,6 +190,10 @@ func assembleDynamoTableTargets(scan dynamoGrantScan, resolved []*Element, eleme
 	if len(scan.matched) > 0 {
 		grants, cause := dynamoTableGrants(scan.accountWide, scan.coverCause, scan.accountCause)
 		return dynamoTablesFromMatched(scan.matched), grants, cause, ""
+	}
+	// Wildcard-only grants with no named table: target the sole plan table if any.
+	if !scan.accountWide {
+		return nil, nil, "", ""
 	}
 	target := singleDynamoDBTableTarget(resolved, elements)
 	if target == nil {

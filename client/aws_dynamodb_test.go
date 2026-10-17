@@ -120,6 +120,194 @@ func TestTablesFromDocsStarOnlyOneTableAccount(t *testing.T) {
 	}
 }
 
+func dynamoDataDocPlanIndex(t *testing.T, docAddr string, statementExprs []map[string]any) configIndex {
+	t.Helper()
+	stmtExprs := make([]any, len(statementExprs))
+	for i, se := range statementExprs {
+		stmtExprs[i] = se
+	}
+	plan := map[string]any{
+		"configuration": map[string]any{
+			"root_module": map[string]any{
+				"resources": []any{
+					map[string]any{
+						"address": docAddr, "mode": "data", "type": "aws_iam_policy_document",
+						"name":        strings.TrimPrefix(docAddr, "data.aws_iam_policy_document."),
+						"expressions": map[string]any{"statement": stmtExprs},
+					},
+				},
+			},
+		},
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := indexConfig(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return idx
+}
+
+func deferredDynamoDataDoc(address string, stmts []map[string]any) planResource {
+	stmtAny := make([]any, len(stmts))
+	for i, s := range stmts {
+		stmtAny[i] = s
+	}
+	return planResource{
+		address: address, typ: "aws_iam_policy_document",
+		values: map[string]any{"statement": stmtAny},
+	}
+}
+
+// (a) Unknown plan resources + config refs that do not name an in-plan table must
+// not infer a table target (including the sole-table wildcard fallback).
+func TestTablesFromDocsVarRefDoesNotGuessTable(t *testing.T) {
+	table := planResource{
+		address: "aws_dynamodb_table.sessions", typ: "aws_dynamodb_table",
+		values: map[string]any{"name": "sessions", "arn": "arn:aws:dynamodb:us-east-1:1:table/sessions"},
+	}
+	el := awsDynamoDBTableElement(table, false)
+	doc := deferredDynamoDataDoc("data.aws_iam_policy_document.app", []map[string]any{{
+		"actions": []any{"dynamodb:GetItem"}, "resources": []any{nil},
+	}})
+	idx := dynamoDataDocPlanIndex(t, doc.address, []map[string]any{
+		{"resources": map[string]any{"references": []any{"var.table_arn"}}},
+	})
+	tables, grants, _, _ := tablesFromDocs([]planResource{doc}, nil, []planResource{table}, nil, []*Element{el}, idx)
+	if len(tables) != 0 || len(grants) != 0 {
+		t.Fatalf("want no targets/grants, got tables=%d grants=%v", len(tables), grants)
+	}
+}
+
+func TestTableFlowsForRoleVarRefDynamoScopeOmittedNotGuessed(t *testing.T) {
+	table := planResource{
+		address: "aws_dynamodb_table.sessions", typ: "aws_dynamodb_table",
+		values: map[string]any{"name": "sessions", "arn": "arn:aws:dynamodb:us-east-1:1:table/sessions"},
+	}
+	el := awsDynamoDBTableElement(table, false)
+	doc := deferredDynamoDataDoc("data.aws_iam_policy_document.app", []map[string]any{{
+		"actions": []any{"dynamodb:GetItem"}, "resources": []any{nil},
+	}})
+	idx := dynamoDataDocPlanIndex(t, doc.address, []map[string]any{
+		{"resources": map[string]any{"references": []any{"module.out.aws_dynamodb_table.x.arn", "module.out.aws_dynamodb_table.x"}}},
+	})
+	resources := []planResource{
+		table,
+		{address: "aws_iam_role.task", typ: "aws_iam_role", values: map[string]any{"name": "task"}},
+		{address: "aws_iam_role_policy.app", typ: "aws_iam_role_policy", values: map[string]any{"name": "app-dynamo"}},
+		{address: "aws_iam_role_policy_attachment.extra", typ: "aws_iam_role_policy_attachment", values: map[string]any{
+			"policy_arn": "arn:aws:iam::123456789012:policy/ExternalDDB",
+		}},
+	}
+	// Merge attachment role ref into index via minimal plan patch.
+	attachPlan := map[string]any{
+		"configuration": map[string]any{
+			"root_module": map[string]any{
+				"resources": []any{
+					map[string]any{
+						"address": "aws_iam_role_policy_attachment.extra", "type": "aws_iam_role_policy_attachment", "name": "extra",
+						"expressions": map[string]any{
+							"role": map[string]any{"references": []any{"aws_iam_role.task.id", "aws_iam_role.task"}},
+						},
+					},
+					map[string]any{
+						"address": "aws_iam_role_policy.app", "type": "aws_iam_role_policy", "name": "app",
+						"expressions": map[string]any{
+							"role":   map[string]any{"references": []any{"aws_iam_role.task.id", "aws_iam_role.task"}},
+							"policy": map[string]any{"references": []any{"data.aws_iam_policy_document.app.json", "data.aws_iam_policy_document.app"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	raw, _ := json.Marshal(attachPlan)
+	attachIdx, _ := indexConfig(raw)
+	for k, v := range attachIdx.resources {
+		idx.resources[k] = v
+	}
+	from := &Element{Kind: "container_service", Evidence: Evidence{Addresses: []string{"aws_ecs_service.app"}}}
+	var warns []string
+	flows := tableFlowsForRole(from, "", []string{"aws_iam_role.task"}, resources, []planResource{doc}, idx, []*Element{el}, &warns)
+	for _, f := range flows {
+		if f.AuthzScope != "" {
+			t.Fatalf("must not guess authz_scope, got %q flow=%v", f.AuthzScope, f)
+		}
+	}
+	if len(flows) != 0 {
+		t.Fatalf("var/module-output refs must not produce DynamoDB flows, got %d", len(flows))
+	}
+	var omitWarn bool
+	for _, w := range warns {
+		if strings.Contains(w, "authz_scope omitted for aws_iam_role.task") {
+			omitWarn = true
+		}
+	}
+	if !omitWarn {
+		t.Fatalf("want authz_scope omitted warning for role, got %v", warns)
+	}
+}
+
+// (b) Constant "*" plus a second statement with unknown resources naming table X → account on X.
+func TestTablesFromDocsStarPlusUnknownRefTableAccountScope(t *testing.T) {
+	audit := planResource{
+		address: "aws_dynamodb_table.audit", typ: "aws_dynamodb_table",
+		values: map[string]any{"name": "audit", "arn": "arn:aws:dynamodb:us-east-1:1:table/audit"},
+	}
+	sessions := planResource{
+		address: "aws_dynamodb_table.sessions", typ: "aws_dynamodb_table",
+		values: map[string]any{"name": "sessions", "arn": "arn:aws:dynamodb:us-east-1:1:table/sessions"},
+	}
+	elements := []*Element{awsDynamoDBTableElement(audit, false), awsDynamoDBTableElement(sessions, false)}
+	doc := deferredDynamoDataDoc("data.aws_iam_policy_document.audit_writer_ddb", []map[string]any{
+		{"actions": []any{"dynamodb:*"}, "resources": []any{"*"}, "sid": "wide"},
+		{"actions": []any{"dynamodb:*"}, "resources": []any{nil}, "sid": "audit"},
+	})
+	idx := dynamoDataDocPlanIndex(t, doc.address, []map[string]any{
+		{"resources": map[string]any{"constant_value": []any{"*"}}},
+		{"resources": map[string]any{"references": []any{"aws_dynamodb_table.audit.arn", "aws_dynamodb_table.audit"}}},
+	})
+	tables, grants, cause, _ := tablesFromDocs([]planResource{doc}, nil, []planResource{audit, sessions}, nil, elements, idx)
+	if len(tables) != 1 || tables[0].Evidence.Addresses[0] != "aws_dynamodb_table.audit" {
+		t.Fatalf("tables=%v", tables)
+	}
+	if effectiveAuthzScope(grants) != "account" {
+		t.Fatalf("grants=%v", grants)
+	}
+	if cause != doc.address {
+		t.Fatalf("cause=%q", cause)
+	}
+}
+
+// (c) Unknown resources with configuration refs to table X only → resource scope on X.
+func TestTablesFromDocsUnknownResourcesConfigTableRefResourceScope(t *testing.T) {
+	table := planResource{
+		address: "aws_dynamodb_table.sessions", typ: "aws_dynamodb_table",
+		values: map[string]any{"name": "sessions", "arn": "arn:aws:dynamodb:us-east-1:1:table/sessions"},
+	}
+	el := awsDynamoDBTableElement(table, false)
+	doc := deferredDynamoDataDoc("data.aws_iam_policy_document.app_dynamodb_sessions", []map[string]any{{
+		"actions":   []any{"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"},
+		"resources": []any{nil, nil},
+		"sid":       "DynamoDBSessions",
+	}})
+	idx := dynamoDataDocPlanIndex(t, doc.address, []map[string]any{
+		{"resources": map[string]any{"references": []any{
+			"aws_dynamodb_table.sessions.arn", "aws_dynamodb_table.sessions",
+			"aws_dynamodb_table.sessions.arn", "aws_dynamodb_table.sessions",
+		}}},
+	})
+	tables, grants, cause, _ := tablesFromDocs([]planResource{doc}, nil, []planResource{table}, nil, []*Element{el}, idx)
+	if len(tables) != 1 || effectiveAuthzScope(grants) != "resource" {
+		t.Fatalf("tables=%d grants=%v", len(tables), grants)
+	}
+	if cause != doc.address {
+		t.Fatalf("cause=%q", cause)
+	}
+}
+
 func TestTablesFromDocsStarOnlyTwoTablesNoFlow(t *testing.T) {
 	a := planResource{address: "aws_dynamodb_table.a", typ: "aws_dynamodb_table", values: map[string]any{"name": "a"}}
 	b := planResource{address: "aws_dynamodb_table.b", typ: "aws_dynamodb_table", values: map[string]any{"name": "b"}}
@@ -271,6 +459,56 @@ func TestDynamoDBTableDeletionProtectionAttrs(t *testing.T) {
 	}, false)
 	if _, ok := el.Attributes["provider_deletion_protection"]; ok {
 		t.Fatalf("want omitted when unknown, got %#v", el.Attributes)
+	}
+}
+
+func TestDeferredDynamoDBPolicyDocumentPlan034(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "deferred-dynamodb-policy-plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, warnings, err := Parse(raw, []byte("schema_version: fray-config/v1\n"), "",
+		Source{Repo: "t/deferred-ddb", Commit: "plan034", Tool: "terraform", Fidelity: "plan"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "no mapping") && strings.Contains(strings.ToLower(w), "dynamodb") {
+			t.Fatalf("warning: %s", w)
+		}
+	}
+	byID := map[string]Element{}
+	addrByID := map[string]string{}
+	for _, el := range doc.Elements {
+		byID[el.ID] = el
+		if len(el.Evidence.Addresses) == 1 {
+			addrByID[el.ID] = el.Evidence.Addresses[0]
+		}
+	}
+	type flowKey struct{ from, to string }
+	got := map[flowKey]*Flow{}
+	for i := range doc.Flows {
+		f := &doc.Flows[i]
+		from := addrByID[f.From]
+		to := addrByID[f.To]
+		if byID[f.To].Kind != "nosql_db" {
+			continue
+		}
+		got[flowKey{from, to}] = f
+	}
+	appSessions := flowKey{"aws_ecs_service.app", "aws_dynamodb_table.sessions"}
+	if f := got[appSessions]; f == nil || f.AuthzScope != "resource" {
+		t.Fatalf("app→sessions: flow=%v scope=%q", got[appSessions], "")
+	}
+	if got[appSessions].Causes["authz_scope"] != "data.aws_iam_policy_document.app_dynamodb_sessions" {
+		t.Fatalf("app cause=%q", got[appSessions].Causes["authz_scope"])
+	}
+	lambdaAudit := flowKey{"aws_lambda_function.audit_writer", "aws_dynamodb_table.audit"}
+	if f := got[lambdaAudit]; f == nil || f.AuthzScope != "account" {
+		t.Fatalf("audit_writer→audit: flow=%v scope=%q", got[lambdaAudit], "")
+	}
+	if got[flowKey{"aws_lambda_function.audit_writer", "aws_dynamodb_table.sessions"}] != nil {
+		t.Fatal("unexpected audit_writer→sessions flow")
 	}
 }
 

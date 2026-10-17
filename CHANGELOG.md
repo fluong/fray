@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.34.1] — Unreleased
+
+### Fixed
+- DynamoDB IAM flows from deferred `data.aws_iam_policy_document` sources when
+  planned statement `resources` are unknown nulls but configuration references
+  name the table (including multi-table plans; found on a real coverage plan).
+
 ## [0.34.0] — 2026-10-17
 
 ### Added

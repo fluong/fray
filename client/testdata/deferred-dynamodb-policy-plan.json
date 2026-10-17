@@ -1,0 +1,1192 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.16.6",
+  "resource_changes": [
+    {
+      "address": "data.aws_iam_policy_document.app_dynamodb_sessions",
+      "mode": "data",
+      "type": "aws_iam_policy_document",
+      "name": "app_dynamodb_sessions",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "read"
+        ],
+        "before": null,
+        "after": {
+          "override_json": null,
+          "override_policy_documents": null,
+          "policy_id": null,
+          "source_json": null,
+          "source_policy_documents": null,
+          "statement": [
+            {
+              "actions": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:Query"
+              ],
+              "condition": [],
+              "effect": null,
+              "not_actions": null,
+              "not_principals": [],
+              "not_resources": null,
+              "principals": [],
+              "resources": [
+                null,
+                null
+              ],
+              "sid": "DynamoDBSessions"
+            }
+          ],
+          "version": null
+        },
+        "after_unknown": {
+          "id": true,
+          "json": true,
+          "minified_json": true,
+          "statement": [
+            {
+              "actions": [
+                false,
+                false,
+                false
+              ],
+              "condition": [],
+              "not_principals": [],
+              "principals": [],
+              "resources": [
+                true,
+                true
+              ]
+            }
+          ]
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "statement": [
+            {
+              "actions": [
+                false,
+                false,
+                false
+              ],
+              "condition": [],
+              "not_principals": [],
+              "principals": [],
+              "resources": [
+                false,
+                false
+              ]
+            }
+          ]
+        }
+      },
+      "action_reason": "read_because_config_unknown"
+    },
+    {
+      "address": "data.aws_iam_policy_document.audit_writer_ddb",
+      "mode": "data",
+      "type": "aws_iam_policy_document",
+      "name": "audit_writer_ddb",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "read"
+        ],
+        "before": null,
+        "after": {
+          "override_json": null,
+          "override_policy_documents": null,
+          "policy_id": null,
+          "source_json": null,
+          "source_policy_documents": null,
+          "statement": [
+            {
+              "actions": [
+                "dynamodb:*"
+              ],
+              "condition": [],
+              "effect": null,
+              "not_actions": null,
+              "not_principals": [],
+              "not_resources": null,
+              "principals": [],
+              "resources": [
+                "*"
+              ],
+              "sid": "DynamoDBAccountWide"
+            },
+            {
+              "actions": [
+                "dynamodb:*"
+              ],
+              "condition": [],
+              "effect": null,
+              "not_actions": null,
+              "not_principals": [],
+              "not_resources": null,
+              "principals": [],
+              "resources": [
+                null
+              ],
+              "sid": "DynamoDBAuditTable"
+            }
+          ],
+          "version": null
+        },
+        "after_unknown": {
+          "id": true,
+          "json": true,
+          "minified_json": true,
+          "statement": [
+            {
+              "actions": [
+                false
+              ],
+              "condition": [],
+              "not_principals": [],
+              "principals": [],
+              "resources": [
+                false
+              ]
+            },
+            {
+              "actions": [
+                false
+              ],
+              "condition": [],
+              "not_principals": [],
+              "principals": [],
+              "resources": [
+                true
+              ]
+            }
+          ]
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "statement": [
+            {
+              "actions": [
+                false
+              ],
+              "condition": [],
+              "not_principals": [],
+              "principals": [],
+              "resources": [
+                false
+              ]
+            },
+            {
+              "actions": [
+                false
+              ],
+              "condition": [],
+              "not_principals": [],
+              "principals": [],
+              "resources": [
+                false
+              ]
+            }
+          ]
+        }
+      },
+      "action_reason": "read_because_config_unknown"
+    },
+    {
+      "address": "aws_dynamodb_table.audit",
+      "mode": "managed",
+      "type": "aws_dynamodb_table",
+      "name": "audit",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "attribute": [
+            {
+              "name": "id",
+              "type": "S"
+            }
+          ],
+          "billing_mode": "PAY_PER_REQUEST",
+          "deletion_protection_enabled": false,
+          "hash_key": "id",
+          "import_table": [],
+          "local_secondary_index": [],
+          "name": "fray-coverage-audit",
+          "on_demand_throughput": [],
+          "range_key": null,
+          "region": "us-east-1",
+          "replica": [],
+          "restore_backup_arn": null,
+          "restore_date_time": null,
+          "restore_source_name": null,
+          "restore_source_table_arn": null,
+          "restore_to_latest_time": null,
+          "stream_enabled": null,
+          "table_class": null,
+          "tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "attribute": [
+            {}
+          ],
+          "global_secondary_index": true,
+          "global_table_witness": true,
+          "id": true,
+          "import_table": [],
+          "local_secondary_index": [],
+          "on_demand_throughput": [],
+          "point_in_time_recovery": true,
+          "read_capacity": true,
+          "replica": [],
+          "server_side_encryption": true,
+          "stream_arn": true,
+          "stream_label": true,
+          "stream_view_type": true,
+          "tags_all": true,
+          "ttl": true,
+          "warm_throughput": true,
+          "write_capacity": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "attribute": [
+            {}
+          ],
+          "global_secondary_index": [],
+          "global_table_witness": [],
+          "import_table": [],
+          "local_secondary_index": [],
+          "on_demand_throughput": [],
+          "point_in_time_recovery": [],
+          "replica": [],
+          "server_side_encryption": [],
+          "tags_all": {},
+          "ttl": [],
+          "warm_throughput": []
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "region": null
+        }
+      }
+    },
+    {
+      "address": "aws_dynamodb_table.sessions",
+      "mode": "managed",
+      "type": "aws_dynamodb_table",
+      "name": "sessions",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "attribute": [
+            {
+              "name": "id",
+              "type": "S"
+            }
+          ],
+          "billing_mode": "PAY_PER_REQUEST",
+          "deletion_protection_enabled": true,
+          "hash_key": "id",
+          "import_table": [],
+          "local_secondary_index": [],
+          "name": "fray-coverage-sessions",
+          "on_demand_throughput": [],
+          "range_key": null,
+          "region": "us-east-1",
+          "replica": [],
+          "restore_backup_arn": null,
+          "restore_date_time": null,
+          "restore_source_name": null,
+          "restore_source_table_arn": null,
+          "restore_to_latest_time": null,
+          "stream_enabled": null,
+          "table_class": null,
+          "tags": null,
+          "timeouts": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "attribute": [
+            {}
+          ],
+          "global_secondary_index": true,
+          "global_table_witness": true,
+          "id": true,
+          "import_table": [],
+          "local_secondary_index": [],
+          "on_demand_throughput": [],
+          "point_in_time_recovery": true,
+          "read_capacity": true,
+          "replica": [],
+          "server_side_encryption": true,
+          "stream_arn": true,
+          "stream_label": true,
+          "stream_view_type": true,
+          "tags_all": true,
+          "ttl": true,
+          "warm_throughput": true,
+          "write_capacity": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "attribute": [
+            {}
+          ],
+          "global_secondary_index": [],
+          "global_table_witness": [],
+          "import_table": [],
+          "local_secondary_index": [],
+          "on_demand_throughput": [],
+          "point_in_time_recovery": [],
+          "replica": [],
+          "server_side_encryption": [],
+          "tags_all": {},
+          "ttl": [],
+          "warm_throughput": []
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "region": null
+        }
+      }
+    },
+    {
+      "address": "aws_ecs_service.app",
+      "mode": "managed",
+      "type": "aws_ecs_service",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "alarms": [],
+          "capacity_provider_strategy": [],
+          "deployment_circuit_breaker": [],
+          "deployment_controller": [],
+          "deployment_maximum_percent": 200,
+          "deployment_minimum_healthy_percent": 100,
+          "desired_count": 1,
+          "enable_ecs_managed_tags": false,
+          "enable_execute_command": false,
+          "force_delete": null,
+          "force_new_deployment": null,
+          "health_check_grace_period_seconds": null,
+          "launch_type": "FARGATE",
+          "load_balancer": [
+            {
+              "advanced_configuration": [],
+              "container_name": "app",
+              "container_port": 8080,
+              "elb_name": ""
+            }
+          ],
+          "name": "fray-coverage",
+          "network_configuration": [
+            {
+              "assign_public_ip": true
+            }
+          ],
+          "ordered_placement_strategy": [],
+          "placement_constraints": [],
+          "propagate_tags": null,
+          "region": "us-east-1",
+          "scheduling_strategy": "REPLICA",
+          "service_connect_configuration": [],
+          "service_registries": [],
+          "sigint_rollback": null,
+          "tags": null,
+          "timeouts": null,
+          "volume_configuration": [],
+          "vpc_lattice_configurations": [],
+          "wait_for_steady_state": false
+        },
+        "after_unknown": {
+          "alarms": [],
+          "arn": true,
+          "availability_zone_rebalancing": true,
+          "capacity_provider_strategy": [],
+          "cluster": true,
+          "deployment_circuit_breaker": [],
+          "deployment_configuration": true,
+          "deployment_controller": [],
+          "iam_role": true,
+          "id": true,
+          "load_balancer": [
+            {
+              "advanced_configuration": [],
+              "target_group_arn": true
+            }
+          ],
+          "network_configuration": [
+            {
+              "security_groups": true,
+              "subnets": true
+            }
+          ],
+          "ordered_placement_strategy": [],
+          "placement_constraints": [],
+          "platform_version": true,
+          "service_connect_configuration": [],
+          "service_registries": [],
+          "tags_all": true,
+          "task_definition": true,
+          "triggers": true,
+          "volume_configuration": [],
+          "vpc_lattice_configurations": []
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "alarms": [],
+          "capacity_provider_strategy": [],
+          "deployment_circuit_breaker": [],
+          "deployment_configuration": [],
+          "deployment_controller": [],
+          "load_balancer": [
+            {
+              "advanced_configuration": []
+            }
+          ],
+          "network_configuration": [
+            {
+              "security_groups": [],
+              "subnets": []
+            }
+          ],
+          "ordered_placement_strategy": [],
+          "placement_constraints": [],
+          "service_connect_configuration": [],
+          "service_registries": [],
+          "tags_all": {},
+          "triggers": {},
+          "volume_configuration": [],
+          "vpc_lattice_configurations": []
+        },
+        "after_identity": {
+          "account_id": null,
+          "cluster": null,
+          "name": null,
+          "region": null
+        }
+      }
+    },
+    {
+      "address": "aws_ecs_task_definition.app",
+      "mode": "managed",
+      "type": "aws_ecs_task_definition",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cpu": "256",
+          "ephemeral_storage": [],
+          "family": "fray-coverage",
+          "ipc_mode": null,
+          "memory": "512",
+          "network_mode": "awsvpc",
+          "pid_mode": null,
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "region": "us-east-1",
+          "requires_compatibilities": [
+            "FARGATE"
+          ],
+          "runtime_platform": [],
+          "skip_destroy": false,
+          "tags": null,
+          "track_latest": false,
+          "volume": []
+        },
+        "after_unknown": {
+          "arn": true,
+          "arn_without_revision": true,
+          "container_definitions": true,
+          "enable_fault_injection": true,
+          "ephemeral_storage": [],
+          "execution_role_arn": true,
+          "id": true,
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            false
+          ],
+          "revision": true,
+          "runtime_platform": [],
+          "tags_all": true,
+          "task_role_arn": true,
+          "volume": []
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "ephemeral_storage": [],
+          "placement_constraints": [],
+          "proxy_configuration": [],
+          "requires_compatibilities": [
+            false
+          ],
+          "runtime_platform": [],
+          "tags_all": {},
+          "volume": []
+        },
+        "after_identity": {
+          "account_id": null,
+          "family": null,
+          "region": null,
+          "revision": null
+        }
+      }
+    },
+    {
+      "address": "aws_iam_role.audit_writer",
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "name": "audit_writer",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+          "description": null,
+          "force_detach_policies": false,
+          "max_session_duration": 3600,
+          "name": "fray-coverage-audit-writer",
+          "path": "/",
+          "permissions_boundary": null,
+          "tags": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "create_date": true,
+          "id": true,
+          "inline_policy": true,
+          "managed_policy_arns": true,
+          "name_prefix": true,
+          "tags_all": true,
+          "unique_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "inline_policy": [],
+          "managed_policy_arns": [],
+          "tags_all": {}
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null
+        }
+      }
+    },
+    {
+      "address": "aws_iam_role.ecs_task",
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "name": "ecs_task",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+          "description": null,
+          "force_detach_policies": false,
+          "max_session_duration": 3600,
+          "name": "fray-coverage-ecs-task",
+          "path": "/",
+          "permissions_boundary": null,
+          "tags": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "create_date": true,
+          "id": true,
+          "inline_policy": true,
+          "managed_policy_arns": true,
+          "name_prefix": true,
+          "tags_all": true,
+          "unique_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "inline_policy": [],
+          "managed_policy_arns": [],
+          "tags_all": {}
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null
+        }
+      }
+    },
+    {
+      "address": "aws_iam_role_policy.app_dynamodb_sessions",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "app_dynamodb_sessions",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "app-dynamodb-sessions"
+        },
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true,
+          "policy": true,
+          "role": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {},
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "role": null
+        }
+      }
+    },
+    {
+      "address": "aws_iam_role_policy.audit_writer_ddb",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "audit_writer_ddb",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "audit-writer-dynamodb"
+        },
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true,
+          "policy": true,
+          "role": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {},
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "role": null
+        }
+      }
+    },
+    {
+      "address": "aws_lambda_function.audit_writer",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "audit_writer",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "capacity_provider_config": [],
+          "code_signing_config_arn": null,
+          "dead_letter_config": [],
+          "description": null,
+          "durable_config": [],
+          "environment": [],
+          "file_system_config": [],
+          "filename": "./lambda_placeholder.zip",
+          "function_name": "fray-coverage-audit-writer",
+          "handler": "index.handler",
+          "image_config": [],
+          "image_uri": null,
+          "kms_key_arn": null,
+          "layers": null,
+          "memory_size": 128,
+          "package_type": "Zip",
+          "publish": false,
+          "publish_to": null,
+          "region": "us-east-1",
+          "replace_security_groups_on_destroy": null,
+          "replacement_security_group_ids": null,
+          "reserved_concurrent_executions": -1,
+          "runtime": "nodejs20.x",
+          "s3_bucket": null,
+          "s3_key": null,
+          "s3_object_version": null,
+          "skip_destroy": false,
+          "snap_start": [],
+          "source_kms_key_arn": null,
+          "tags": null,
+          "tenancy_config": [],
+          "timeout": 3,
+          "timeouts": null,
+          "use_resource_timeout_for_propagation": null,
+          "vpc_config": []
+        },
+        "after_unknown": {
+          "architectures": true,
+          "arn": true,
+          "capacity_provider_config": [],
+          "code_sha256": true,
+          "dead_letter_config": [],
+          "durable_config": [],
+          "environment": [],
+          "ephemeral_storage": true,
+          "file_system_config": [],
+          "id": true,
+          "image_config": [],
+          "invoke_arn": true,
+          "last_modified": true,
+          "logging_config": true,
+          "qualified_arn": true,
+          "qualified_invoke_arn": true,
+          "response_streaming_invoke_arn": true,
+          "role": true,
+          "signing_job_arn": true,
+          "signing_profile_version_arn": true,
+          "snap_start": [],
+          "source_code_hash": true,
+          "source_code_size": true,
+          "tags_all": true,
+          "tenancy_config": [],
+          "tracing_config": true,
+          "version": true,
+          "vpc_config": []
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "architectures": [],
+          "capacity_provider_config": [],
+          "dead_letter_config": [],
+          "durable_config": [],
+          "environment": [],
+          "ephemeral_storage": [],
+          "file_system_config": [],
+          "image_config": [],
+          "logging_config": [],
+          "snap_start": [],
+          "tags_all": {},
+          "tenancy_config": [],
+          "tracing_config": [],
+          "vpc_config": []
+        },
+        "after_identity": {
+          "account_id": null,
+          "function_name": null,
+          "region": null
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_dynamodb_table.audit",
+          "mode": "managed",
+          "type": "aws_dynamodb_table",
+          "name": "audit",
+          "provider_config_key": "aws",
+          "expressions": {
+            "attribute": [
+              {
+                "name": {
+                  "constant_value": "id"
+                },
+                "type": {
+                  "constant_value": "S"
+                }
+              }
+            ],
+            "billing_mode": {
+              "constant_value": "PAY_PER_REQUEST"
+            },
+            "deletion_protection_enabled": {
+              "constant_value": false
+            },
+            "hash_key": {
+              "constant_value": "id"
+            },
+            "name": {
+              "references": [
+                "local.name"
+              ]
+            }
+          },
+          "schema_version": 1
+        },
+        {
+          "address": "aws_dynamodb_table.sessions",
+          "mode": "managed",
+          "type": "aws_dynamodb_table",
+          "name": "sessions",
+          "provider_config_key": "aws",
+          "expressions": {
+            "attribute": [
+              {
+                "name": {
+                  "constant_value": "id"
+                },
+                "type": {
+                  "constant_value": "S"
+                }
+              }
+            ],
+            "billing_mode": {
+              "constant_value": "PAY_PER_REQUEST"
+            },
+            "deletion_protection_enabled": {
+              "constant_value": true
+            },
+            "hash_key": {
+              "constant_value": "id"
+            },
+            "name": {
+              "references": [
+                "local.name"
+              ]
+            }
+          },
+          "schema_version": 1
+        },
+        {
+          "address": "aws_ecs_service.app",
+          "mode": "managed",
+          "type": "aws_ecs_service",
+          "name": "app",
+          "provider_config_key": "aws",
+          "expressions": {
+            "cluster": {
+              "references": [
+                "aws_ecs_cluster.this.id",
+                "aws_ecs_cluster.this"
+              ]
+            },
+            "desired_count": {
+              "constant_value": 1
+            },
+            "launch_type": {
+              "constant_value": "FARGATE"
+            },
+            "load_balancer": [
+              {
+                "container_name": {
+                  "constant_value": "app"
+                },
+                "container_port": {
+                  "constant_value": 8080
+                },
+                "target_group_arn": {
+                  "references": [
+                    "aws_lb_target_group.app.arn",
+                    "aws_lb_target_group.app"
+                  ]
+                }
+              }
+            ],
+            "name": {
+              "references": [
+                "local.name"
+              ]
+            },
+            "network_configuration": [
+              {
+                "assign_public_ip": {
+                  "constant_value": true
+                },
+                "security_groups": {
+                  "references": [
+                    "aws_security_group.app.id",
+                    "aws_security_group.app"
+                  ]
+                },
+                "subnets": {
+                  "references": [
+                    "aws_subnet.public.id",
+                    "aws_subnet.public"
+                  ]
+                }
+              }
+            ],
+            "task_definition": {
+              "references": [
+                "aws_ecs_task_definition.app.arn",
+                "aws_ecs_task_definition.app"
+              ]
+            }
+          },
+          "schema_version": 1
+        },
+        {
+          "address": "aws_ecs_task_definition.app",
+          "mode": "managed",
+          "type": "aws_ecs_task_definition",
+          "name": "app",
+          "provider_config_key": "aws",
+          "expressions": {
+            "container_definitions": {
+              "references": [
+                "aws_secretsmanager_secret.app.arn",
+                "aws_secretsmanager_secret.app"
+              ]
+            },
+            "cpu": {
+              "constant_value": "256"
+            },
+            "execution_role_arn": {
+              "references": [
+                "aws_iam_role.ecs_exec.arn",
+                "aws_iam_role.ecs_exec"
+              ]
+            },
+            "family": {
+              "references": [
+                "local.name"
+              ]
+            },
+            "memory": {
+              "constant_value": "512"
+            },
+            "network_mode": {
+              "constant_value": "awsvpc"
+            },
+            "requires_compatibilities": {
+              "constant_value": [
+                "FARGATE"
+              ]
+            },
+            "task_role_arn": {
+              "references": [
+                "aws_iam_role.ecs_task.arn",
+                "aws_iam_role.ecs_task"
+              ]
+            }
+          },
+          "schema_version": 1
+        },
+        {
+          "address": "aws_iam_role.audit_writer",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "audit_writer",
+          "provider_config_key": "aws",
+          "expressions": {
+            "assume_role_policy": {
+              "references": [
+                "local.assume_lambda"
+              ]
+            },
+            "name": {
+              "references": [
+                "local.name"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_iam_role.ecs_task",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "ecs_task",
+          "provider_config_key": "aws",
+          "expressions": {
+            "assume_role_policy": {
+              "references": [
+                "local.assume_ecs"
+              ]
+            },
+            "name": {
+              "references": [
+                "local.name"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_iam_role_policy.app_dynamodb_sessions",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "app_dynamodb_sessions",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "app-dynamodb-sessions"
+            },
+            "policy": {
+              "references": [
+                "data.aws_iam_policy_document.app_dynamodb_sessions.json",
+                "data.aws_iam_policy_document.app_dynamodb_sessions"
+              ]
+            },
+            "role": {
+              "references": [
+                "aws_iam_role.ecs_task.id",
+                "aws_iam_role.ecs_task"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_iam_role_policy.audit_writer_ddb",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "audit_writer_ddb",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "audit-writer-dynamodb"
+            },
+            "policy": {
+              "references": [
+                "data.aws_iam_policy_document.audit_writer_ddb.json",
+                "data.aws_iam_policy_document.audit_writer_ddb"
+              ]
+            },
+            "role": {
+              "references": [
+                "aws_iam_role.audit_writer.id",
+                "aws_iam_role.audit_writer"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_lambda_function.audit_writer",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "audit_writer",
+          "provider_config_key": "aws",
+          "expressions": {
+            "filename": {
+              "references": [
+                "path.module"
+              ]
+            },
+            "function_name": {
+              "references": [
+                "local.name"
+              ]
+            },
+            "handler": {
+              "constant_value": "index.handler"
+            },
+            "role": {
+              "references": [
+                "aws_iam_role.audit_writer.arn",
+                "aws_iam_role.audit_writer"
+              ]
+            },
+            "runtime": {
+              "constant_value": "nodejs20.x"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "data.aws_iam_policy_document.app_dynamodb_sessions",
+          "mode": "data",
+          "type": "aws_iam_policy_document",
+          "name": "app_dynamodb_sessions",
+          "provider_config_key": "aws",
+          "expressions": {
+            "statement": [
+              {
+                "actions": {
+                  "constant_value": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:Query"
+                  ]
+                },
+                "resources": {
+                  "references": [
+                    "aws_dynamodb_table.sessions.arn",
+                    "aws_dynamodb_table.sessions",
+                    "aws_dynamodb_table.sessions.arn",
+                    "aws_dynamodb_table.sessions"
+                  ]
+                },
+                "sid": {
+                  "constant_value": "DynamoDBSessions"
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "data.aws_iam_policy_document.audit_writer_ddb",
+          "mode": "data",
+          "type": "aws_iam_policy_document",
+          "name": "audit_writer_ddb",
+          "provider_config_key": "aws",
+          "expressions": {
+            "statement": [
+              {
+                "actions": {
+                  "constant_value": [
+                    "dynamodb:*"
+                  ]
+                },
+                "resources": {
+                  "constant_value": [
+                    "*"
+                  ]
+                },
+                "sid": {
+                  "constant_value": "DynamoDBAccountWide"
+                }
+              },
+              {
+                "actions": {
+                  "constant_value": [
+                    "dynamodb:*"
+                  ]
+                },
+                "resources": {
+                  "references": [
+                    "aws_dynamodb_table.audit.arn",
+                    "aws_dynamodb_table.audit"
+                  ]
+                },
+                "sid": {
+                  "constant_value": "DynamoDBAuditTable"
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}
