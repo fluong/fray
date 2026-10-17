@@ -15,7 +15,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-025](FR-025.md) | Object storage blocks public access | high | Information disclosure | AWS, Google Cloud, Cloudflare |  |
 | [FR-029](FR-029.md) | Relational database is not directly reachable from the internet | high | Information disclosure | AWS, Google Cloud | 2026-10-11 |
 | [FR-034](FR-034.md) | Admin ports are not open to the internet | high | Elevation of privilege | AWS | 2026-10-13 |
-| [FR-041](FR-041.md) | Cache security group allows a wide CIDR | low | Information disclosure | AWS | 2026-10-17 |
+| [FR-041](FR-041.md) | Cache accepts traffic only from restricted networks | low | Information disclosure | AWS | 2026-10-17 |
 
 ## Encryption
 
@@ -26,8 +26,8 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-031](FR-031.md) | Database requires TLS for client connections | medium | Information disclosure | AWS, Google Cloud | 2026-10-12 |
 | [FR-035](FR-035.md) | Traffic from internet-reachable compute to a datastore is encrypted | high | Information disclosure | AWS, Google Cloud | 2026-10-15 |
 | [FR-036](FR-036.md) | Object storage is encrypted with a customer-managed key | medium | Information disclosure | AWS, Google Cloud | 2026-10-15 |
-| [FR-042](FR-042.md) | Cache transit encryption disabled | medium | Information disclosure | AWS | 2026-10-17 |
-| [FR-043](FR-043.md) | Cache at-rest encryption disabled | medium | Information disclosure | AWS | 2026-10-17 |
+| [FR-042](FR-042.md) | Cache encrypts data in transit | medium | Information disclosure | AWS | 2026-10-17 |
+| [FR-043](FR-043.md) | Cache is encrypted at rest | medium | Information disclosure | AWS | 2026-10-17 |
 
 ## Identity
 
