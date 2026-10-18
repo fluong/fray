@@ -117,10 +117,9 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 		add(awsEKSNodeGroupElement(r, resources, data, idx))
 	}
 	for _, r := range restAPIs {
-		if restAPIInternetEntry(r, resources, idx) {
-			add(awsAPIGatewayElement(r))
-		}
+		add(awsAPIGatewayElement(r))
 	}
+	applyAPIGatewayRESTResourcePolicies(resources, data, idx, plan, byAddr, &warnings)
 	for _, r := range httpAPIs {
 		if httpAPIInternetEntry(r) {
 			add(awsAPIGatewayElement(r))

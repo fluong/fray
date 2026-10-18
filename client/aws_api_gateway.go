@@ -8,10 +8,8 @@ import (
 // entries. Mirrors the ALB path: inferred public_client → edge flow → network
 // boundary, plus entry → backend integration flows.
 //
-// Known limitation: a REST API with a resource policy (policy attribute set) is
-// treated like an unresolved ALB security group — exposure is unknown, so no
-// entry flow is emitted. Parsing resource policies for internet reachability is
-// out of scope.
+// REST API resource policies (inline or aws_api_gateway_rest_api_policy) set
+// resource_policy_* attributes and gate the public_client edge on world exposure.
 
 func awsAPIGatewayElement(r planResource) *Element {
 	name, _ := r.values["name"].(string)
@@ -71,7 +69,7 @@ func awsAPIEntries(
 		if api.typ != "aws_api_gateway_rest_api" {
 			continue
 		}
-		if !restAPIInternetEntry(api, resources, idx) {
+		if !restAPIInternetEntry(api, resources, idx, byAddr) {
 			continue
 		}
 		apiEl := byAddr[api.address]
@@ -173,17 +171,28 @@ func byAddrElement(byAddr map[string]*Element, canonicalOrAddr string) *Element 
 	return nil
 }
 
-// restAPIInternetEntry is true for EDGE/REGIONAL APIs that have a stage (or
-// deployment with stage_name) and no resource policy. A set policy means
-// exposure is unknown — same fail-closed stance as an unresolved ALB SG.
-func restAPIInternetEntry(api planResource, resources []planResource, idx configIndex) bool {
-	if restAPIHasPolicy(api) {
-		return false
-	}
+// restAPIInternetEntry is true for EDGE/REGIONAL APIs with a stage when there is
+// no resource policy, or the classified policy allows any principal (world).
+func restAPIInternetEntry(api planResource, resources []planResource, idx configIndex, byAddr map[string]*Element) bool {
 	if !restAPIHasPublicEndpointType(api) {
 		return false
 	}
-	return restAPIHasStage(api, resources, idx)
+	if !restAPIHasStage(api, resources, idx) {
+		return false
+	}
+	if !restAPIHasAnyPolicy(api, resources, idx) {
+		return true
+	}
+	el := byAddr[api.address]
+	if el == nil || el.Attributes == nil {
+		return false
+	}
+	world, ok := el.Attributes["resource_policy_world_principal"]
+	if !ok {
+		return false
+	}
+	w, _ := world.(bool)
+	return w
 }
 
 func restAPIHasPolicy(api planResource) bool {
