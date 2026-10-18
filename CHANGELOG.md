@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- DFD flows gain an optional `authz_scope_source` field. `declared` marks an
+  `authz_scope` that came from fray.yaml (`annotations.flows` or `flows:`);
+  absent means it was derived from the Terraform plan. Redacted DFDs carry only
+  `declared`. Findings and results are unchanged.
+
 ## [0.38.0] — 2026-10-18
 
 ### Added
