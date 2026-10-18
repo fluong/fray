@@ -19,6 +19,7 @@
         ]
       },
       "provider": "aws",
+      "provider_subtype": "rest_api",
       "attributes": {
         "public": true,
         "resource_policy_cross_account": true,

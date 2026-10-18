@@ -241,6 +241,71 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 	}
 }
 
+func TestAPIGatewayProviderSubtype(t *testing.T) {
+	src := Source{
+		Repo: "example/api-gw", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Tool: "terraform", Fidelity: "plan",
+	}
+	cfg := []byte("schema_version: fray-config/v1\n")
+	t.Run("rest_private", func(t *testing.T) {
+		doc, _, err := Parse([]byte(restPlan(t, restOpts{
+			types: []string{"PRIVATE"}, stage: true, methods: []string{"NONE"},
+		})), cfg, "", src, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		el := apigwElementByKind(doc, "api_gateway")
+		if el == nil || el.ProviderSubtype != "rest_api" {
+			t.Fatalf("REST private subtype=%q want rest_api", el.ProviderSubtype)
+		}
+	})
+	t.Run("rest_no_policy", func(t *testing.T) {
+		doc, _, err := Parse([]byte(restPlan(t, restOpts{
+			types: []string{"REGIONAL"}, stage: true, methods: []string{"NONE"},
+		})), cfg, "", src, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		el := apigwElementByKind(doc, "api_gateway")
+		if el == nil || el.ProviderSubtype != "rest_api" {
+			t.Fatalf("REST no-policy subtype=%q want rest_api", el.ProviderSubtype)
+		}
+	})
+	t.Run("rest_unknown_policy_unresolvable", func(t *testing.T) {
+		plan := apigwRESTPlanInlinePolicyUnknown(t, []any{"var.opaque_policy"})
+		doc, _, err := Parse([]byte(plan), cfg, "", src, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		el := apigwElementByKind(doc, "api_gateway")
+		if el == nil || el.ProviderSubtype != "rest_api" {
+			t.Fatalf("REST unknown-policy subtype=%q want rest_api", el.ProviderSubtype)
+		}
+	})
+	t.Run("http_v2_none", func(t *testing.T) {
+		doc, _, err := Parse([]byte(httpPlan(t, httpOpts{routes: []string{"NONE"}})), cfg, "", src, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		el := apigwElementByKind(doc, "api_gateway")
+		if el == nil {
+			t.Fatal("missing http api element")
+		}
+		if el.ProviderSubtype != "" {
+			t.Fatalf("HTTP subtype=%q want empty", el.ProviderSubtype)
+		}
+	})
+}
+
+func apigwElementByKind(doc DFD, kind string) *Element {
+	for i := range doc.Elements {
+		if doc.Elements[i].Kind == kind {
+			return &doc.Elements[i]
+		}
+	}
+	return nil
+}
+
 func TestIntegrationTransportClassification(t *testing.T) {
 	cases := []struct {
 		name          string

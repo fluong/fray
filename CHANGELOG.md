@@ -11,7 +11,8 @@
 ### Added
 - REST API Gateway resource policies (inline `policy` or
   `aws_api_gateway_rest_api_policy`) are classified on `api_gateway` elements for
-  rule FR-051; public rule page added.
+  rule FR-051; public rule page added. REST API elements are marked with
+  `provider_subtype` `rest_api`.
 
 ### Changed
 - REST APIs with a resource policy that allows any principal now receive the

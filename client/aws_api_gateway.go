@@ -14,12 +14,16 @@ import (
 func awsAPIGatewayElement(r planResource) *Element {
 	name, _ := r.values["name"].(string)
 	attrs := map[string]any{"public": true}
-	return &Element{
+	el := &Element{
 		Name: DisplayName(r.address, name, "api_gateway"), Type: "process", Kind: "api_gateway", Provider: "aws",
 		Provenance: "iac",
 		Evidence:   Evidence{Addresses: []string{r.address}},
 		Attributes: attrs,
 	}
+	if r.typ == "aws_api_gateway_rest_api" {
+		el.ProviderSubtype = "rest_api"
+	}
+	return el
 }
 
 func awsLambdaFunctionElement(r planResource) *Element {

@@ -39,6 +39,44 @@ func TestRedactKeepsAllowlistedProviderSubtype(t *testing.T) {
 	}
 }
 
+func TestRedactKeepsRESTAPIProviderSubtype(t *testing.T) {
+	doc := DFD{
+		SchemaVersion: "dfd/v1",
+		Source: Source{
+			Repo: "acme/app", Commit: "abcdef1234567890abcdef1234567890abcd", Tool: "terraform", Fidelity: "plan",
+		},
+		Elements: []Element{{
+			ID: "e1", Type: "process", Kind: "api_gateway", Provider: "aws",
+			ProviderSubtype: "rest_api",
+			Provenance:      "iac",
+			Evidence:        Evidence{Addresses: []string{"aws_api_gateway_rest_api.api"}},
+			Attributes:      map[string]any{"public": true},
+		}},
+		TrustBoundaries: []Boundary{},
+		Flows:           []Flow{},
+	}
+	finalize(&doc)
+	key := make([]byte, 32)
+	redacted, _, err := Redact(doc, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redacted.Elements[0].ProviderSubtype != "rest_api" {
+		t.Fatalf("rest_api subtype=%q want rest_api", redacted.Elements[0].ProviderSubtype)
+	}
+	schema, err := validate.CompileDFD()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := Marshal(redacted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.DFD(schema, raw); err != nil {
+		t.Fatalf("redacted REST API DFD invalid: %v", err)
+	}
+}
+
 func TestRedactClearsNonAllowlistedProviderSubtype(t *testing.T) {
 	doc := DFD{
 		SchemaVersion: "dfd/v1",
