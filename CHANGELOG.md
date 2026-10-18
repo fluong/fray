@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Authorization for API Gateway REST and HTTP APIs is read from an OpenAPI body
+  when present; the body itself is never sent.
+
+### Changed
+
+- **FR-001** results for APIs defined by an OpenAPI body can change from
+  unverified to open or mitigated.
+
 ## [0.40.0] — 2026-10-18
 
 ### Fixed
