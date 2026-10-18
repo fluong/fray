@@ -224,6 +224,18 @@ func TestAPIGatewayPolicyIntegration(t *testing.T) {
 	}
 }
 
+func TestAPIGatewayEmptyPolicyDocumentOmitsAttrs(t *testing.T) {
+	// Same as B-73 classifyResourcePolicyDoc when Statement is absent (aws_resource_policy.go:224-225).
+	doc, ok := syntheticDocFromPolicyJSON("aws_api_gateway_rest_api.api", `{"Version":"2012-10-17"}`)
+	if !ok {
+		t.Fatal("bad policy json")
+	}
+	got := classifyAPIGatewayResourcePolicyDoc(doc, awsResourcePolicyContext{owner: "111122223333", ownerOK: true})
+	if got.world != triOmit || got.cross != triOmit {
+		t.Fatalf("world=%v cross=%v want omit/omit", got.world, got.cross)
+	}
+}
+
 func TestAPIGatewayResourcePolicyRedaction(t *testing.T) {
 	plan := apigwRESTPlanWithPolicy(t, `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"444455556666"},"Action":"execute-api:Invoke","Resource":"execute-api:/*"}]}`, false, "REGIONAL")
 	doc, _, err := Parse([]byte(plan), apigwOwnerConfig(t), "", Source{
