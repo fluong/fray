@@ -292,10 +292,6 @@ func aggregateMethodAuth(methods []planResource) (scope, cause string, ok bool) 
 	hasNone, hasIdentity, hasCustom, hasUnknown := false, false, false, false
 	noneCause := ""
 	for _, m := range methods {
-		if v, ok := m.values["api_key_required"].(bool); ok && v {
-			hasIdentity = true
-			continue
-		}
 		auth := strings.ToUpper(stringAttr(m.values["authorization"]))
 		switch auth {
 		case "NONE", "":

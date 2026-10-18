@@ -79,7 +79,7 @@ func aggregateAuthorizationAuths(auths []string) (scope, cause string, ok bool) 
 		switch strings.ToUpper(auth) {
 		case "NONE", "":
 			hasNone = true
-		case "AWS_IAM", "COGNITO_USER_POOLS", "JWT", "API_KEY":
+		case "AWS_IAM", "COGNITO_USER_POOLS", "JWT":
 			hasIdentity = true
 		case "CUSTOM":
 			hasCustom = true
@@ -196,9 +196,6 @@ func operationOpenAPIAuth(doc, op map[string]any, sec []any, oas2, httpV2 bool) 
 		}
 		return class, true
 	}
-	if apiKey, ok := op["x-amazon-apigateway-api-key-required"].(bool); ok && apiKey {
-		return "API_KEY", true
-	}
 	if sec != nil && len(sec) == 0 {
 		return "NONE", true
 	}
@@ -223,7 +220,7 @@ func securityAlternativesAuth(doc map[string]any, sec []any, oas2, httpV2 bool) 
 		switch class {
 		case "NONE":
 			anyNone = true
-		case "AWS_IAM", "COGNITO_USER_POOLS", "JWT", "API_KEY":
+		case "AWS_IAM", "COGNITO_USER_POOLS", "JWT":
 			anyIdentity = true
 		default:
 			return "", false
@@ -253,9 +250,8 @@ func securityRequirementAuth(doc map[string]any, req map[string]any, oas2, httpV
 		}
 		switch class {
 		case "NONE":
-			// AND group cannot include explicit NONE scheme name.
-			return "", false
-		case "AWS_IAM", "COGNITO_USER_POOLS", "JWT", "API_KEY":
+			// Plain usage-plan API keys do not affect authz_scope.
+		case "AWS_IAM", "COGNITO_USER_POOLS", "JWT":
 			hasIdentity = true
 		default:
 			return "", false
@@ -347,9 +343,9 @@ func classifySecurityScheme(scheme map[string]any, httpV2 bool) (string, bool) {
 			return "", false
 		}
 	}
-	authtype := strings.ToLower(stringAttr(scheme["x-amazon-apigateway-authtype"]))
+	authtype := stringAttr(scheme["x-amazon-apigateway-authtype"])
 	switch authtype {
-	case "awssigv4", "aws_sigv4":
+	case "awsSigv4":
 		return "AWS_IAM", true
 	case "cognito_user_pools":
 		return "COGNITO_USER_POOLS", true
@@ -358,12 +354,7 @@ func classifySecurityScheme(scheme map[string]any, httpV2 bool) (string, bool) {
 	case "":
 		// fall through
 	default:
-		if strings.HasPrefix(authtype, "aws") {
-			return "AWS_IAM", true
-		}
-		if authtype != "" {
-			return "CUSTOM", true
-		}
+		return "", false
 	}
 	typ := strings.ToLower(stringAttr(scheme["type"]))
 	switch typ {
@@ -374,7 +365,7 @@ func classifySecurityScheme(scheme map[string]any, httpV2 bool) (string, bool) {
 		return "", false
 	case "apikey", "api_key":
 		if authtype == "" {
-			return "API_KEY", true
+			return "NONE", true
 		}
 		return "", false
 	default:

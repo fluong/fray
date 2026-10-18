@@ -19,7 +19,8 @@ func TestOpenAPIBodyAuthEquivalenceREST(t *testing.T) {
 		{name: "iam", body: oas3RESTIAM(), method: "AWS_IAM", want: "authenticated"},
 		{name: "cognito", body: oas3RESTCognito(), method: "COGNITO_USER_POOLS", want: "authenticated"},
 		{name: "custom", body: oas3RESTCustom(), method: "CUSTOM", want: ""},
-		{name: "api_key", body: oas3RESTAPIKey(), method: "NONE", apiKey: true, want: "authenticated"},
+		{name: "api_key_only", body: oas3RESTAPIKey(), method: "NONE", apiKey: true, want: "public"},
+		{name: "iam_with_api_key", body: oas3RESTIAMWithAPIKeyRequired(), method: "AWS_IAM", apiKey: true, want: "authenticated"},
 		{name: "mixed_none_iam", body: oas3RESTMixedNoneIAM(), method: "NONE", want: "public"},
 	}
 	for _, row := range rows {
@@ -93,6 +94,29 @@ func TestOpenAPIBodyFailClosed(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if authFromPlan(t, tc.plan) != "" {
+				t.Fatal("want omitted authz_scope")
+			}
+		})
+	}
+}
+
+func TestOpenAPIBodyPlainAPIKeySchemeOnly(t *testing.T) {
+	if got := authFromRESTPlan(t, restBodyOnly{body: oas3RESTPlainAPIKeyScheme()}); got != "public" {
+		t.Fatalf("plain apiKey scheme only: got %q want public", got)
+	}
+}
+
+func TestOpenAPIBodyRESTAuthtypeExactAwsSigv4(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{name: "awsSigv4X", body: oas3RESTWithAuthtype("awsSigv4X")},
+		{name: "aws_iam", body: oas3RESTWithAuthtype("aws_iam")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if authFromRESTPlan(t, restBodyOnly{body: tc.body}) != "" {
 				t.Fatal("want omitted authz_scope")
 			}
 		})
@@ -258,6 +282,18 @@ func oas3RESTCustom() string {
 
 func oas3RESTAPIKey() string {
 	return `{"openapi":"3.0.1","paths":{"/x":{"get":{"x-amazon-apigateway-api-key-required":true,"responses":{"default":{"description":"ok"}}}}}}`
+}
+
+func oas3RESTIAMWithAPIKeyRequired() string {
+	return `{"openapi":"3.0.1","paths":{"/x":{"get":{"x-amazon-apigateway-api-key-required":true,"security":[{"sigv4":[]}],"responses":{"default":{"description":"ok"}}}}},"components":{"securitySchemes":{"sigv4":{"type":"apiKey","name":"Authorization","in":"header","x-amazon-apigateway-authtype":"awsSigv4"}}}}`
+}
+
+func oas3RESTPlainAPIKeyScheme() string {
+	return `{"openapi":"3.0.1","paths":{"/x":{"get":{"security":[{"key":[]}],"responses":{"default":{"description":"ok"}}}}},"components":{"securitySchemes":{"key":{"type":"apiKey","name":"x-api-key","in":"header"}}}}`
+}
+
+func oas3RESTWithAuthtype(authtype string) string {
+	return `{"openapi":"3.0.1","paths":{"/x":{"get":{"security":[{"sigv4":[]}],"responses":{"default":{"description":"ok"}}}}},"components":{"securitySchemes":{"sigv4":{"type":"apiKey","name":"Authorization","in":"header","x-amazon-apigateway-authtype":"` + authtype + `"}}}}`
 }
 
 func oas3RESTMixedNoneIAM() string {
