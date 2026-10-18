@@ -11,6 +11,9 @@
 - REST APIs with a resource policy that allows any principal now receive the
   `public_client` entry flow, so **FR-001** evaluates them; restrictive or unknown
   policies keep the previous no-edge behaviour.
+- REST APIs without a deployed stage and **PRIVATE** REST APIs now appear as
+  `api_gateway` elements (so a resource policy can be checked); no public entry
+  flow is added for them.
 
 ## [0.39.0] — 2026-10-18
 
