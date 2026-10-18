@@ -258,27 +258,15 @@ func httpAPIInternetEntry(api planResource) bool {
 	return true
 }
 
-func restAPIHasOpenAPIBody(api planResource) bool {
-	s, ok := api.values["body"].(string)
-	return ok && strings.TrimSpace(s) != ""
-}
-
-func httpAPIHasOpenAPIBody(api planResource) bool {
-	s, ok := api.values["body"].(string)
-	return ok && strings.TrimSpace(s) != ""
-}
-
 // restAPIEdgeAuth returns the edge authz_scope. ok is false when the scope
-// must be omitted (CUSTOM, OpenAPI body, undeterminable methods).
+// must be omitted (CUSTOM, unparseable OpenAPI body, conflict body+methods).
 func restAPIEdgeAuth(api planResource, resources []planResource, idx configIndex) (scope, cause string, ok bool) {
-	if restAPIHasOpenAPIBody(api) {
-		return "", "", false
-	}
-	var methods []planResource
-	for _, r := range resources {
-		if r.typ == "aws_api_gateway_method" && refsAPI(r, idx, "rest_api_id", api) {
-			methods = append(methods, r)
+	methods := restAPIMethods(api, resources, idx)
+	if raw, hasBody := apiOpenAPIBody(api); hasBody {
+		if len(methods) > 0 {
+			return "", "", false
 		}
+		return openAPIEdgeAuthFromBody(api.address, raw, false)
 	}
 	if len(methods) == 0 {
 		return "", "", false
@@ -287,14 +275,12 @@ func restAPIEdgeAuth(api planResource, resources []planResource, idx configIndex
 }
 
 func httpAPIEdgeAuth(api planResource, resources []planResource, idx configIndex) (scope, cause string, ok bool) {
-	if httpAPIHasOpenAPIBody(api) {
-		return "", "", false
-	}
-	var routes []planResource
-	for _, r := range resources {
-		if r.typ == "aws_apigatewayv2_route" && refsAPI(r, idx, "api_id", api) {
-			routes = append(routes, r)
+	routes := httpAPIRoutes(api, resources, idx)
+	if raw, hasBody := apiOpenAPIBody(api); hasBody {
+		if len(routes) > 0 {
+			return "", "", false
 		}
+		return openAPIEdgeAuthFromBody(api.address, raw, true)
 	}
 	if len(routes) == 0 {
 		return "", "", false
@@ -306,6 +292,10 @@ func aggregateMethodAuth(methods []planResource) (scope, cause string, ok bool) 
 	hasNone, hasIdentity, hasCustom, hasUnknown := false, false, false, false
 	noneCause := ""
 	for _, m := range methods {
+		if v, ok := m.values["api_key_required"].(bool); ok && v {
+			hasIdentity = true
+			continue
+		}
 		auth := strings.ToUpper(stringAttr(m.values["authorization"]))
 		switch auth {
 		case "NONE", "":

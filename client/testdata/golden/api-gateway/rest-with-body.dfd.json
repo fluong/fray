@@ -63,6 +63,10 @@
       "transport": "tls",
       "boundaries": [
         "b5f552fe1f02a4fca"
+      ],
+      "authz_scope": "public",
+      "authz_grants": [
+        "public"
       ]
     }
   ]

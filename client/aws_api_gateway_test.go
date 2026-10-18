@@ -112,11 +112,19 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 		{
 			name: "rest_with_body",
 			plan: restPlan(t, restOpts{
-				types: []string{"REGIONAL"}, stage: true, body: `{"openapi":"3.0.0"}`,
-				methods: []string{"NONE"},
+				types: []string{"REGIONAL"}, stage: true,
+				body: `{"openapi":"3.0.1","paths":{"/health":{"get":{"responses":{"default":{"description":"ok"}}}}}}`,
 			}),
-			entryKind: "api_gateway", authz: "", transport: "tls",
-			fr001: "unverified", fr026: "mitigated", golden: "rest-with-body.dfd.json",
+			entryKind: "api_gateway", authz: "public", transport: "tls",
+			fr001: "open", fr026: "mitigated", golden: "rest-with-body.dfd.json",
+		},
+		{
+			name: "http_with_body",
+			plan: httpPlan(t, httpOpts{
+				body: `{"openapi":"3.0.1","paths":{"/health":{"get":{"responses":{"default":{"description":"ok"}}}}}}`,
+			}),
+			entryKind: "api_gateway", authz: "public", transport: "tls",
+			fr001: "open", fr026: "mitigated", golden: "http-with-body.dfd.json",
 		},
 		{
 			name:      "http_none",
@@ -425,26 +433,32 @@ func elementByID(doc DFD, id string) *Element {
 }
 
 type restOpts struct {
-	types       []string
-	stage       bool
-	policy      string
-	body        string
-	methods     []string
-	lambdaInteg bool
+	types         []string
+	stage         bool
+	policy        string
+	body          string
+	bodyUnknown   bool
+	methods       []string
+	methodAPIKeys []bool
+	lambdaInteg   bool
 }
 
 func restPlan(t *testing.T, o restOpts) string {
 	t.Helper()
+	apiChange := map[string]any{"after": map[string]any{
+		"name":                   "api",
+		"endpoint_configuration": []any{map[string]any{"types": toAny(o.types)}},
+		"policy":                 nullIfEmpty(o.policy),
+		"body":                   nullIfEmpty(o.body),
+	}}
+	if o.bodyUnknown {
+		apiChange["after_unknown"] = map[string]any{"body": true}
+	}
 	resources := []map[string]any{
 		{
 			"address": "aws_api_gateway_rest_api.api", "mode": "managed", "type": "aws_api_gateway_rest_api",
-			"name": "api",
-			"change": map[string]any{"after": map[string]any{
-				"name":                   "api",
-				"endpoint_configuration": []any{map[string]any{"types": toAny(o.types)}},
-				"policy":                 nullIfEmpty(o.policy),
-				"body":                   nullIfEmpty(o.body),
-			}},
+			"name":   "api",
+			"change": apiChange,
 		},
 	}
 	cfgResources := []map[string]any{
@@ -468,12 +482,14 @@ func restPlan(t *testing.T, o restOpts) string {
 	}
 	for i, auth := range o.methods {
 		addr := "aws_api_gateway_method.m" + string(rune('a'+i))
+		after := map[string]any{"http_method": "GET", "authorization": auth}
+		if i < len(o.methodAPIKeys) && o.methodAPIKeys[i] {
+			after["api_key_required"] = true
+		}
 		resources = append(resources, map[string]any{
 			"address": addr, "mode": "managed", "type": "aws_api_gateway_method",
-			"name": "m" + string(rune('a'+i)),
-			"change": map[string]any{"after": map[string]any{
-				"http_method": "GET", "authorization": auth,
-			}},
+			"name":   "m" + string(rune('a'+i)),
+			"change": map[string]any{"after": after},
 		})
 		cfgResources = append(cfgResources, map[string]any{
 			"address": addr, "type": "aws_api_gateway_method", "name": "m" + string(rune('a'+i)),
@@ -514,19 +530,24 @@ type httpOpts struct {
 	disableEndpoint bool
 	routes          []string
 	body            string
+	bodyUnknown     bool
 }
 
 func httpPlan(t *testing.T, o httpOpts) string {
 	t.Helper()
+	apiChange := map[string]any{"after": map[string]any{
+		"name": "api", "protocol_type": "HTTP",
+		"disable_execute_api_endpoint": o.disableEndpoint,
+		"body":                         nullIfEmpty(o.body),
+	}}
+	if o.bodyUnknown {
+		apiChange["after_unknown"] = map[string]any{"body": true}
+	}
 	resources := []map[string]any{
 		{
 			"address": "aws_apigatewayv2_api.api", "mode": "managed", "type": "aws_apigatewayv2_api",
-			"name": "api",
-			"change": map[string]any{"after": map[string]any{
-				"name": "api", "protocol_type": "HTTP",
-				"disable_execute_api_endpoint": o.disableEndpoint,
-				"body":                         nullIfEmpty(o.body),
-			}},
+			"name":   "api",
+			"change": apiChange,
 		},
 	}
 	cfgResources := []map[string]any{
