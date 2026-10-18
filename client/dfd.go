@@ -70,12 +70,12 @@ type Boundary struct {
 }
 
 type Flow struct {
-	ID          string   `json:"id"`
-	From        string   `json:"from"`
-	To          string   `json:"to"`
-	DataClass   string   `json:"data_class"`
-	Transport   string   `json:"transport"`
-	Boundaries  []string `json:"boundaries"`
+	ID               string   `json:"id"`
+	From             string   `json:"from"`
+	To               string   `json:"to"`
+	DataClass        string   `json:"data_class"`
+	Transport        string   `json:"transport"`
+	Boundaries       []string `json:"boundaries"`
 	AuthzScope       string   `json:"authz_scope,omitempty"`
 	AuthzScopeSource string   `json:"authz_scope_source,omitempty"`
 	AuthzGrants      []string `json:"authz_grants,omitempty"`
