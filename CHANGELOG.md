@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-10-18
+
 ### Added
 - REST API Gateway resource policies (inline `policy` or
   `aws_api_gateway_rest_api_policy`) are classified on `api_gateway` elements for
@@ -12,7 +14,7 @@
   `public_client` entry flow, so **FR-001** evaluates them; restrictive or unknown
   policies keep the previous no-edge behaviour.
 - REST APIs without a deployed stage and **PRIVATE** REST APIs now appear as
-  `api_gateway` elements (so a resource policy can be checked); no public entry
+  `api_gateway` elements (so a policy can be checked); no public entry
   flow is added for them.
 
 ## [0.39.0] — 2026-10-18
@@ -675,7 +677,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.39.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/fluong/fray/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/fluong/fray/compare/v0.38.0...v0.39.0
 [0.34.0]: https://github.com/fluong/fray/compare/v0.33.2...v0.34.0
 [0.33.2]: https://github.com/fluong/fray/compare/v0.33.1...v0.33.2
