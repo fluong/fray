@@ -19,6 +19,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-048](FR-048.md) | NoSQL table is not shared through its resource policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 | [FR-049](FR-049.md) | Storage bucket is not shared through its bucket policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 | [FR-050](FR-050.md) | Secret is not shared through its resource policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
+| [FR-044](FR-044.md) | Queue or topic is not shared through its access policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 
 ## Encryption
 
@@ -44,6 +45,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-028](FR-028.md) | Database access is scoped to one instance | medium | Elevation of privilege | AWS, Google Cloud | 2026-10-15 |
 | [FR-032](FR-032.md) | Object storage access is scoped to one resource | medium | Elevation of privilege | AWS, Google Cloud, Cloudflare | 2026-10-11 |
 | [FR-039](FR-039.md) | NoSQL table access is scoped to that table | medium | Elevation of privilege | AWS | 2026-10-16 |
+| [FR-045](FR-045.md) | Message queue access is scoped to that queue or topic | medium | Elevation of privilege | AWS | 2026-10-18 |
 | [FR-046](FR-046.md) | Workload cannot administer the database through the cloud API | medium | Tampering, Elevation of privilege, Denial of service | AWS, Google Cloud | 2026-10-17 |
 
 ## Logging
