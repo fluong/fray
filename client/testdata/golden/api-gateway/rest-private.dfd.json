@@ -6,7 +6,26 @@
     "iac_tool": "terraform",
     "fidelity": "plan"
   },
-  "elements": [],
+  "elements": [
+    {
+      "id": "e4492a2d5ba2cf9be",
+      "name": "api",
+      "type": "process",
+      "kind": "api_gateway",
+      "provenance": "iac",
+      "evidence": {
+        "addresses": [
+          "aws_api_gateway_rest_api.api"
+        ]
+      },
+      "provider": "aws",
+      "attributes": {
+        "public": true,
+        "resource_policy_cross_account": false,
+        "resource_policy_world_principal": false
+      }
+    }
+  ],
   "trust_boundaries": [],
   "flows": []
 }
