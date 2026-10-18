@@ -92,6 +92,11 @@ func TestAPIGatewayResourcePolicyClassification(t *testing.T) {
 			world:  triFalse, cross: triFalse,
 		},
 		{
+			name:   "org_restricted",
+			policy: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"execute-api:Invoke","Resource":"execute-api:/*","Condition":{"StringEquals":{"aws:PrincipalOrgID":"o-exampleorgid"}}}]}`,
+			world:  triFalse, cross: triFalse,
+		},
+		{
 			name:   "foreign_unknown_owner_cross_omit",
 			policy: `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"444455556666"},"Action":"execute-api:Invoke","Resource":"execute-api:/*"}]}`,
 			world:  triFalse, cross: triOmit,

@@ -459,7 +459,15 @@ func classifyAPIGWStatementCross(st apigwPolicyStmt, ctx awsResourcePolicyContex
 		if apigwAllowNeutralized(st, neutralizers, apigwDenyWorldAndCross) {
 			return triFalse
 		}
-		// NotIpAddress-style neutralization restricts world only; * still allows cross-account.
+		if st.condition != nil {
+			if cond, ok := st.condition["__invalid"]; ok && cond != nil {
+				return triOmit
+			}
+			if conditionFullyRestricts(st.condition) {
+				return triFalse
+			}
+			return triOmit
+		}
 		return triTrue
 	}
 	if sourceOwnerConditionPresent(st.condition) && !ctx.ownerOK {
