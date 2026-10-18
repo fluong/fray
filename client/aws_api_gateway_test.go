@@ -100,6 +100,16 @@ func TestAPIGatewayAndLambdaURLEntries(t *testing.T) {
 			fr001: "n/a", fr026: "n/a", golden: "rest-with-policy.dfd.json",
 		},
 		{
+			name: "rest_policy_world_open",
+			plan: restPlan(t, restOpts{
+				types: []string{"REGIONAL"}, stage: true,
+				policy:  `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"execute-api:Invoke","Resource":"execute-api:/*"}]}`,
+				methods: []string{"NONE"},
+			}),
+			entryKind: "api_gateway", authz: "public", transport: "tls",
+			fr001: "open", fr026: "mitigated", golden: "rest-policy-world-open.dfd.json",
+		},
+		{
 			name: "rest_with_body",
 			plan: restPlan(t, restOpts{
 				types: []string{"REGIONAL"}, stage: true, body: `{"openapi":"3.0.0"}`,
