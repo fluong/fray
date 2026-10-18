@@ -1,8 +1,12 @@
 package client
 
-import "testing"
+import (
+	"slices"
+	"strings"
+	"testing"
+)
 
-func TestAuthzScopeSourceDeclaredFromAnnotation(t *testing.T) {
+func TestAuthzScopeSourceFillAuthzScopeWithAndWithoutAnnotation(t *testing.T) {
 	src := Source{Repo: "t/b66", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}
 	reason := "rds-db:connect scoped via managed policy arn:aws:iam::123:policy/app-db"
 	plan := bucketUnknownDocsPlan(t)
@@ -24,11 +28,86 @@ func TestAuthzScopeSourceDeclaredFromAnnotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, flow := range doc.Flows {
-		if flow.From == "" || flow.AuthzScope == "" {
+		if flow.AuthzScope == "" {
 			continue
 		}
 		if flow.AuthzScopeSource != "" {
-			t.Fatalf("parser flow %s->%s authz_scope_source=%q want absent", flow.From, flow.To, flow.AuthzScopeSource)
+			t.Fatalf("parser flow authz_scope_source=%q want absent", flow.AuthzScopeSource)
+		}
+	}
+}
+
+func TestAuthzScopeSourceDeclaredFlow(t *testing.T) {
+	plan := []byte(`{
+	  "format_version": "1.2",
+	  "resource_changes": [
+	    {"address":"aws_ecs_service.app","mode":"managed","type":"aws_ecs_service","change":{"after":{"name":"app"}}},
+	    {"address":"aws_db_instance.main","mode":"managed","type":"aws_db_instance","change":{"after":{"identifier":"main"}}}
+	  ]
+	}`)
+	src := Source{Repo: "t/b66", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}
+
+	withScope := `schema_version: fray-config/v1
+flows:
+  - from: aws_ecs_service.app
+    to: aws_db_instance.main
+    data_class: unknown
+    transport: tls
+    authz_scope: account
+`
+	doc, _, err := Parse(plan, []byte(withScope), "fray.yaml", src, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var declared Flow
+	for _, f := range doc.Flows {
+		if f.AuthzScope == "account" {
+			declared = f
+		}
+	}
+	if declared.AuthzScopeSource != authzScopeSourceDeclared {
+		t.Fatalf("declared flow authz_scope_source=%q", declared.AuthzScopeSource)
+	}
+
+	noScope := `schema_version: fray-config/v1
+flows:
+  - from: aws_ecs_service.app
+    to: aws_db_instance.main
+    data_class: unknown
+    transport: tls
+`
+	doc2, _, err := Parse(plan, []byte(noScope), "fray.yaml", src, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range doc2.Flows {
+		if f.AuthzScopeSource != "" {
+			t.Fatalf("flow without yaml authz_scope has authz_scope_source=%q", f.AuthzScopeSource)
+		}
+	}
+}
+
+func TestAuthzScopeSourceAnnotationIgnoredWhenParserDerived(t *testing.T) {
+	src := Source{Repo: "t/b66", Commit: "abcdef1", Tool: "terraform", Fidelity: "plan"}
+	plan := dbAuthzECSPlan(t, `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds-db:connect"],"Resource":["arn:aws:rds-db:us-east-1:111122223333:dbuser:db-ABCDEF/app"]}]}`, false)
+	doc, warnings, err := Parse([]byte(plan), []byte(`schema_version: fray-config/v1
+annotations:
+  flows:
+    - from: module.ecs.aws_ecs_service.this
+      to: module.db.aws_db_instance.this
+      authz_scope: resource
+      reason: "parser already derived resource from the task role"
+`), "fray.yaml", src, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWarn := "fray.yaml annotation ignored: module.ecs.aws_ecs_service.this -> module.db.aws_db_instance.this already has derived authz_scope resource"
+	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, wantWarn) }) {
+		t.Fatalf("warnings: %s", strings.Join(warnings, "\n"))
+	}
+	for _, f := range doc.Flows {
+		if f.AuthzScope != "" && f.AuthzScopeSource != "" {
+			t.Fatalf("derived scope must not carry authz_scope_source=%q", f.AuthzScopeSource)
 		}
 	}
 }

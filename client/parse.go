@@ -1162,13 +1162,15 @@ func declaredFlow(f frayFlow, elements []*Element) (*Flow, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Flow{
+	flow := &Flow{
 		From: from.canonicalKey(), To: to.canonicalKey(),
 		DataClass: f.DataClass, Transport: f.Transport,
 		AuthzScope: f.AuthzScope, AuthzGrants: normalizeAuthzGrants(f.AuthzGrants...),
 		SecretDelivery: f.SecretDelivery,
 		Boundaries:     []string{},
-	}, nil
+	}
+	markAuthzScopeFromConfig(flow)
+	return flow, nil
 }
 
 func applyElementAnnotations(elements []*Element, cfg frayConfig) error {
@@ -1275,7 +1277,7 @@ func fillAuthzScope(flows []*Flow, ann frayFlowAnnotation, fromKey, toKey, decla
 		return nil
 	}
 	f.AuthzScope = ann.AuthzScope
-	f.AuthzScopeSource = authzScopeSourceDeclared
+	markAuthzScopeFromConfig(f)
 	f.AuthzGrants = normalizeAuthzGrants(ann.AuthzScope)
 	if f.Causes == nil {
 		f.Causes = map[string]string{}
