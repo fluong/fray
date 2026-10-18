@@ -120,6 +120,7 @@ func Redact(doc DFD, key []byte) (DFD, IDMap, error) {
 		f.To = idToNewKey[f.To]
 		f.ID = ""
 		f.Boundaries = nil
+		f.AuthzScopeSource = redactedAuthzScopeSource(f.AuthzScopeSource)
 	}
 
 	finalizeHMAC(&out, key)

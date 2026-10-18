@@ -503,7 +503,9 @@ scope of `resource` is what FR-007, FR-028, and FR-032 treat as mitigated; any
 wider filled scope stays open. To accept a finding the parser derived as
 account- or project-wide, use a [waiver](#waivers) instead of narrowing it
 here. `authz_scope` and `reason` on `annotations.flows` require Action v0.32.0
-or later; older Actions reject the fields.
+or later; older Actions reject the fields. When a fill succeeds, the scan DFD
+may include `authz_scope_source: declared` on that flow (redacted scans keep
+only `declared`; omit the field means the scope was derived from Terraform).
 
 ```yaml
 schema_version: fray-config/v1

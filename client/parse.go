@@ -1275,6 +1275,7 @@ func fillAuthzScope(flows []*Flow, ann frayFlowAnnotation, fromKey, toKey, decla
 		return nil
 	}
 	f.AuthzScope = ann.AuthzScope
+	f.AuthzScopeSource = authzScopeSourceDeclared
 	f.AuthzGrants = normalizeAuthzGrants(ann.AuthzScope)
 	if f.Causes == nil {
 		f.Causes = map[string]string{}

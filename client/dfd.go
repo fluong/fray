@@ -76,8 +76,9 @@ type Flow struct {
 	DataClass   string   `json:"data_class"`
 	Transport   string   `json:"transport"`
 	Boundaries  []string `json:"boundaries"`
-	AuthzScope  string   `json:"authz_scope,omitempty"`
-	AuthzGrants []string `json:"authz_grants,omitempty"`
+	AuthzScope       string   `json:"authz_scope,omitempty"`
+	AuthzScopeSource string   `json:"authz_scope_source,omitempty"`
+	AuthzGrants      []string `json:"authz_grants,omitempty"`
 	// AuthzActions lists S3 write/policy actions granted on this flow when known
 	// (closed enum including DeleteObject, PutObject, BypassGovernanceRetention, …).
 	AuthzActions []string `json:"authz_actions,omitempty"`

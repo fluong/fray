@@ -30,6 +30,9 @@ func TestAuthzScopeAnnotationFill(t *testing.T) {
 		if f.AuthzScope != "resource" || !slices.Equal(f.AuthzGrants, []string{"resource"}) {
 			t.Fatalf("scope=%q grants=%v; resource is the mitigated verdict", f.AuthzScope, f.AuthzGrants)
 		}
+		if f.AuthzScopeSource != authzScopeSourceDeclared {
+			t.Fatalf("authz_scope_source=%q want declared", f.AuthzScopeSource)
+		}
 	})
 
 	t.Run("secret account open", func(t *testing.T) {
@@ -208,6 +211,9 @@ annotations:
 	}
 	if one[1].Causes["authz_scope"] != "fray.yaml#aws_ecs_service.app -> aws_db_instance.main credentials" {
 		t.Fatalf("cause %q", one[1].Causes["authz_scope"])
+	}
+	if one[1].AuthzScopeSource != authzScopeSourceDeclared {
+		t.Fatalf("authz_scope_source=%q want declared", one[1].AuthzScopeSource)
 	}
 
 	// data_class-only annotations still rewrite the class and need no reason.
