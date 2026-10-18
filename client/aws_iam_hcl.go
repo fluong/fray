@@ -93,7 +93,7 @@ func readRootIAMPolicyLiterals(moduleDir string) (iamPolicyHCLIndex, error) {
 				continue
 			}
 			switch typ {
-			case "aws_dynamodb_resource_policy", "aws_s3_bucket_policy", "aws_secretsmanager_secret_policy":
+			case "aws_dynamodb_resource_policy", "aws_s3_bucket_policy", "aws_secretsmanager_secret_policy", "aws_sqs_queue_policy", "aws_sns_topic_policy":
 				if dup[addr] || seen[addr] {
 					dup[addr] = true
 					delete(out, addr)
@@ -568,6 +568,9 @@ func planRootResourceAttr(ref string, resources []planResource) (string, bool) {
 		return v, true
 	}
 	if attr == "arn" && attrAfterUnknown(r, attr) {
+		if r.typ == "aws_sqs_queue" || r.typ == "aws_sns_topic" {
+			return planResourceRef(r.address), true
+		}
 		if arn, ok := synthesizeS3BucketARN(r); ok {
 			return arn, true
 		}

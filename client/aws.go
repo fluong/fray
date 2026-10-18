@@ -4,7 +4,7 @@ package client
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
 func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle preventIndex, auditOwned bool) ([]*Element, []*Flow, []*Boundary, []string, error) {
-	var lbs, services, dbs, buckets, tables, caches, secrets, restAPIs, httpAPIs, fnURLs, lambdas, instances, asgs, nodeGroups []planResource
+	var lbs, services, dbs, buckets, tables, caches, secrets, sqsQueues, snsTopics, restAPIs, httpAPIs, fnURLs, lambdas, instances, asgs, nodeGroups []planResource
 	for _, r := range resources {
 		switch r.typ {
 		case "aws_lb":
@@ -21,6 +21,10 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			caches = append(caches, r)
 		case "aws_secretsmanager_secret":
 			secrets = append(secrets, r)
+		case "aws_sqs_queue":
+			sqsQueues = append(sqsQueues, r)
+		case "aws_sns_topic":
+			snsTopics = append(snsTopics, r)
 		case "aws_api_gateway_rest_api":
 			restAPIs = append(restAPIs, r)
 		case "aws_apigatewayv2_api":
@@ -37,7 +41,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 			nodeGroups = append(nodeGroups, r)
 		}
 	}
-	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(tables)+len(caches)+len(secrets)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas)+len(instances)+len(asgs)+len(nodeGroups) == 0 {
+	if len(lbs)+len(services)+len(dbs)+len(buckets)+len(tables)+len(caches)+len(secrets)+len(sqsQueues)+len(snsTopics)+len(restAPIs)+len(httpAPIs)+len(fnURLs)+len(lambdas)+len(instances)+len(asgs)+len(nodeGroups) == 0 {
 		return nil, nil, nil, nil, nil
 	}
 	idx, err := indexConfig(plan)
@@ -86,6 +90,14 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 		add(awsSecretElement(r, resources, idx, lifecycle.protected(r.address)))
 	}
 	applySecretsManagerResourcePolicies(resources, data, idx, plan, byAddr, &warnings)
+	for _, r := range sqsQueues {
+		add(awsSQSQueueElement(r))
+	}
+	for _, r := range snsTopics {
+		add(awsSNSTopicElement(r))
+	}
+	applySQSQueueResourcePolicies(resources, data, idx, plan, byAddr, &warnings)
+	applySNSQueueResourcePolicies(resources, data, idx, plan, byAddr, &warnings)
 	for _, r := range dbs {
 		add(awsDBElement(r, resources, data, idx, lifecycle.protected(r.address)))
 	}
@@ -373,6 +385,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 		flows = append(flows, secretFlowsFrom(svc, svcEl, mod, task.address, specs, resources, data, idx, elements, &warnings)...)
 		flows = append(flows, bucketFlows(svc, svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
 		flows = append(flows, tableFlows(svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
+		flows = append(flows, messageQueueFlows(svcEl, mod, task.address, resources, data, idx, elements, &warnings)...)
 	}
 	iamOmitWarned := map[string]bool{}
 	flows = append(flows, dbFlows(resources, data, idx, elements, &warnings, iamOmitWarned)...)
@@ -386,6 +399,7 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 	}
 	flows = append(flows, dynamodbLambdaFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 	flows = append(flows, lambdaS3Flows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
+	flows = append(flows, lambdaMessageQueueFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 
 	var bounds []*Boundary
 	if public != nil && len(inside) > 0 {

@@ -528,6 +528,9 @@ func classifyStatementCross(st resourcePolicyStmt, ctx awsResourcePolicyContext)
 	if !st.allow {
 		return triFalse
 	}
+	if sourceOwnerConditionPresent(st.condition) && !ctx.ownerOK {
+		return triOmit
+	}
 	if st.principal.samePlanIdent {
 		return triFalse
 	}
@@ -603,12 +606,31 @@ func accountFromResourceARN(arn any) string {
 
 var restrictingResourcePolicyConditionKeys = map[string]struct{}{
 	"aws:SourceOwner":      {},
+	"AWS:SourceOwner":      {}, // SNS topic policies often use the service-prefixed key.
 	"aws:SourceAccount":    {},
 	"aws:SourceArn":        {},
 	"aws:PrincipalOrgID":   {},
 	"aws:PrincipalAccount": {},
 	"aws:SourceVpc":        {},
 	"aws:SourceVpce":       {},
+}
+
+func sourceOwnerConditionPresent(cond map[string]any) bool {
+	if len(cond) == 0 {
+		return false
+	}
+	for _, body := range cond {
+		m, ok := body.(map[string]any)
+		if !ok {
+			continue
+		}
+		for key := range m {
+			if key == "aws:SourceOwner" || key == "AWS:SourceOwner" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func conditionFullyRestricts(cond map[string]any) bool {

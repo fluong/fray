@@ -2038,6 +2038,8 @@ const (
 	iamServiceRDSDB          = "rds-db"
 	iamServiceDynamoDB       = "dynamodb"
 	iamServiceBedrock        = "bedrock"
+	iamServiceSQS            = "sqs"
+	iamServiceSNS            = "sns"
 )
 
 // knownWideAWSManagedPolicies maps AWS-managed ARNs we recognise to the
@@ -2057,6 +2059,8 @@ var knownWideAWSManagedPolicies = map[string][]string{
 	"arn:aws:iam::aws:policy/AmazonS3FullAccess":           {iamServiceS3},
 	"arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess":       {iamServiceS3},
 	"arn:aws:iam::aws:policy/SecretsManagerReadWrite":      {iamServiceSecretsManager},
+	"arn:aws:iam::aws:policy/AmazonSQSFullAccess":          {iamServiceSQS},
+	"arn:aws:iam::aws:policy/AmazonSNSFullAccess":          {iamServiceSNS},
 	"arn:aws:iam::aws:policy/AdministratorAccess":          {iamWideAll},
 }
 

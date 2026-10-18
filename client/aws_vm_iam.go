@@ -353,6 +353,7 @@ func virtualMachineIAMFlows(resources, data []planResource, idx configIndex, ele
 		}
 		flows = append(flows, bucketFlowsForRole(el, mod, roleRefs, resources, data, idx, elements, warnings)...)
 		flows = append(flows, tableFlowsForRole(el, mod, roleRefs, resources, data, idx, elements, warnings)...)
+		flows = append(flows, messageQueueFlowsForRole(el, mod, roleRefs, resources, data, idx, elements, warnings)...)
 	}
 	return flows
 }
