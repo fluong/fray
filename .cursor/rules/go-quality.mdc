@@ -9,11 +9,15 @@ alwaysApply: false
 Cursor must not run Docker or `./scripts/check-quality.sh` (pinned images and
 module tags live in that script).
 
-After changing Go files, run locally in the touched modules:
+After changing Go files, run locally in the touched modules (offline only):
 
 - `gofmt -l` on changed files (or `gofmt -w` to fix)
-- `go vet ./...`
-- `go test ./...` (add `-tags …` from that module's `.quality-tags` when the file exists)
+- `./scripts/offline-go.sh vet ./...`
+- `./scripts/offline-go.sh test ./...` (add `-tags …` from that module's `.quality-tags` when the file exists)
+
+All local Go commands use `./scripts/offline-go.sh` (`GOPROXY=off`, `-mod=readonly`). Never
+`go install` or `go run` with a remote module version (`go run …@…`). If the module cache misses,
+stop — do not download modules to fix it. Rerun the full suite after any edit, including placeholder scrubs.
 
 In your report, list the changed Go files and ask Francis to run
 `./scripts/check-quality.sh --fast`, and the full script before a release.
