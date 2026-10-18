@@ -37,7 +37,9 @@
       "provider": "aws",
       "attributes": {
         "customer_managed_key": false,
-        "deletion_protection": true
+        "deletion_protection": true,
+        "resource_policy_cross_account": false,
+        "resource_policy_world_principal": false
       }
     },
     {

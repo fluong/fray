@@ -65,6 +65,88 @@ func TestMergeResourcePolicyAnyTrueWins(t *testing.T) {
 	}
 }
 
+func TestS3BPANeutralizesAnyPrincipalNotForeign(t *testing.T) {
+	ctx := awsResourcePolicyContext{owner: "111122223333", ownerOK: true}
+	policy := `{"Statement":[
+		{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"*"},
+		{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::999888777666:root"},"Action":"s3:GetObject","Resource":"*"}
+	]}`
+	doc, ok := syntheticDocFromPolicyJSON("aws_s3_bucket_policy.test", policy)
+	if !ok {
+		t.Fatal("bad policy")
+	}
+	got := classifyResourcePolicyDocWithOptions(doc, ctx, resourcePolicyDocOptions{
+		neutralizeAnyPrincipalAllow: true,
+		neutralizeCause:             "aws_s3_bucket_public_access_block.test",
+	})
+	if got.world != triFalse || got.cross != triTrue {
+		t.Fatalf("world=%v cross=%v want false/true (foreign principal still counts)", got.world, got.cross)
+	}
+}
+
+func TestAccountBPASameProviderNeutralizesWorldPrincipal(t *testing.T) {
+	plan := []byte(`{
+	  "configuration": {"root_module": {"resources": [
+	    {"address":"aws_s3_bucket.uploads","provider_config_key":"aws","expressions":{}},
+	    {"address":"aws_s3_account_public_access_block.this","provider_config_key":"aws","expressions":{}}
+	  ]}},
+	  "resource_changes": [
+	    {"address":"aws_s3_bucket.uploads","mode":"managed","type":"aws_s3_bucket","change":{"after":{"bucket":"b","region":"us-east-1"},"after_unknown":{"arn":true}}},
+	    {"address":"aws_s3_account_public_access_block.this","mode":"managed","type":"aws_s3_account_public_access_block","change":{"after":{"restrict_public_buckets":true}}}
+	  ]
+	}`)
+	keys := awsResourceProviderConfigKeys(plan)
+	if keys["aws_s3_bucket.uploads"] != "aws" {
+		t.Fatalf("provider key=%q", keys["aws_s3_bucket.uploads"])
+	}
+	resources, _ := loadResources(plan)
+	ok, addr := accountBPARestrictsPublic(resources, keys, "aws")
+	if !ok || addr != "aws_s3_account_public_access_block.this" {
+		t.Fatalf("account BPA ok=%v addr=%q", ok, addr)
+	}
+	bucket := resources[0]
+	neutral := s3BucketPolicyNeutralization(bucket, resources, configIndex{}, keys)
+	if !neutral.blockAnyPrincipal || neutral.cause != addr {
+		t.Fatalf("neutral=%+v", neutral)
+	}
+}
+
+func TestAccountBPADifferentProviderIgnored(t *testing.T) {
+	plan := []byte(`{
+	  "configuration": {"root_module": {"resources": [
+	    {"address":"aws_s3_bucket.uploads","provider_config_key":"aws"},
+	    {"address":"aws_s3_account_public_access_block.other","provider_config_key":"aws.other"}
+	  ]}},
+	  "resource_changes": [
+	    {"address":"aws_s3_bucket.uploads","mode":"managed","type":"aws_s3_bucket","change":{"after":{"bucket":"b"}}},
+	    {"address":"aws_s3_account_public_access_block.other","mode":"managed","type":"aws_s3_account_public_access_block","change":{"after":{"restrict_public_buckets":true}}}
+	  ]
+	}`)
+	keys := awsResourceProviderConfigKeys(plan)
+	resources, _ := loadResources(plan)
+	bucket := resources[0]
+	neutral := s3BucketPolicyNeutralization(bucket, resources, configIndex{}, keys)
+	if neutral.blockAnyPrincipal {
+		t.Fatalf("expected no account BPA neutralization for provider alias mismatch")
+	}
+}
+
+func TestBlockPublicPolicyNeutralizesWorldOnly(t *testing.T) {
+	ctx := awsResourcePolicyContext{owner: "111122223333", ownerOK: true}
+	policy := `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"secretsmanager:GetSecretValue","Resource":"*"}]}`
+	doc, ok := syntheticDocFromPolicyJSON("aws_secretsmanager_secret_policy.test", policy)
+	if !ok {
+		t.Fatal("bad policy")
+	}
+	got := classifyResourcePolicyDocWithOptions(doc, ctx, resourcePolicyDocOptions{
+		neutralizeAnyPrincipalAllow: true,
+		neutralizeCause:             "aws_secretsmanager_secret_policy.test",
+	})
+	if got.world != triFalse || got.cross != triFalse {
+		t.Fatalf("world=%v cross=%v want false/false", got.world, got.cross)
+	}
+}
+
 func TestConditionSourceArnWildcardNotRestricting(t *testing.T) {
 	cond := map[string]any{
 		"ArnLike": map[string]any{

@@ -27,6 +27,8 @@
         "object_lock": false,
         "public": false,
         "public_access_blocked": true,
+        "resource_policy_cross_account": false,
+        "resource_policy_world_principal": false,
         "versioning": false
       }
     },
@@ -101,6 +103,8 @@
       "attributes": {
         "audit_logging": true,
         "deletion_protection": true,
+        "resource_policy_cross_account": false,
+        "resource_policy_world_principal": false,
         "rotation_configured": false
       }
     },
