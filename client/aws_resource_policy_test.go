@@ -23,12 +23,12 @@ func TestClassifyResourcePolicyWorldAndCross(t *testing.T) {
 		},
 		{
 			name:   "foreign_literal_unknown_owner",
-			policy: `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:root"},"Action":"dynamodb:GetItem","Resource":"*"}]}`,
+			policy: `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::444455556666:root"},"Action":"dynamodb:GetItem","Resource":"*"}]}`,
 			world:  triFalse, cross: triOmit,
 		},
 		{
 			name:   "foreign_literal_known_owner",
-			policy: `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:root"},"Action":"dynamodb:GetItem","Resource":"*"}]}`,
+			policy: `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::444455556666:root"},"Action":"dynamodb:GetItem","Resource":"*"}]}`,
 			world:  triFalse, cross: triTrue,
 		},
 		{
@@ -69,7 +69,7 @@ func TestS3BPANeutralizesAnyPrincipalNotForeign(t *testing.T) {
 	ctx := awsResourcePolicyContext{owner: "111122223333", ownerOK: true}
 	policy := `{"Statement":[
 		{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"*"},
-		{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:root"},"Action":"s3:GetObject","Resource":"*"}
+		{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::444455556666:root"},"Action":"s3:GetObject","Resource":"*"}
 	]}`
 	doc, ok := syntheticDocFromPolicyJSON("aws_s3_bucket_policy.test", policy)
 	if !ok {

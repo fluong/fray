@@ -70,7 +70,7 @@ resource "aws_s3_bucket_policy" "s3_rp_foreign" {
       Sid    = "ForeignRoot"
       Effect = "Allow"
       Principal = {
-        AWS = "arn:aws:iam::111122223333:root"
+        AWS = "arn:aws:iam::444455556666:root"
       }
       Action   = "s3:GetObject"
       Resource = "${aws_s3_bucket.s3_rp_foreign.arn}/*"

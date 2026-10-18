@@ -20,7 +20,7 @@ resource "aws_dynamodb_resource_policy" "ddb_rp_foreign" {
       Sid    = "ForeignRoot"
       Effect = "Allow"
       Principal = {
-        AWS = "arn:aws:iam::111122223333:root"
+        AWS = "arn:aws:iam::444455556666:root"
       }
       Action   = "dynamodb:GetItem"
       Resource = aws_dynamodb_table.ddb_rp_foreign.arn
