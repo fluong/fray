@@ -3,7 +3,7 @@ package client
 import "testing"
 
 func TestClassifyResourcePolicyWorldAndCross(t *testing.T) {
-	ctx := awsResourcePolicyContext{owner: "999888777666", ownerOK: true}
+	ctx := awsResourcePolicyContext{owner: "111122223333", ownerOK: true}
 	cases := []struct {
 		name   string
 		policy string
@@ -69,7 +69,7 @@ func TestS3BPANeutralizesAnyPrincipalNotForeign(t *testing.T) {
 	ctx := awsResourcePolicyContext{owner: "111122223333", ownerOK: true}
 	policy := `{"Statement":[
 		{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"*"},
-		{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::999888777666:root"},"Action":"s3:GetObject","Resource":"*"}
+		{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:root"},"Action":"s3:GetObject","Resource":"*"}
 	]}`
 	doc, ok := syntheticDocFromPolicyJSON("aws_s3_bucket_policy.test", policy)
 	if !ok {
