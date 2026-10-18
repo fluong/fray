@@ -17,6 +17,8 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-034](FR-034.md) | Admin ports are not open to the internet | high | Elevation of privilege | AWS | 2026-10-13 |
 | [FR-041](FR-041.md) | Cache accepts traffic only from restricted networks | low | Information disclosure | AWS | 2026-10-17 |
 | [FR-048](FR-048.md) | NoSQL table is not shared through its resource policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
+| [FR-049](FR-049.md) | Storage bucket is not shared through its bucket policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
+| [FR-050](FR-050.md) | Secret is not shared through its resource policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 
 ## Encryption
 
