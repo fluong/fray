@@ -596,7 +596,11 @@ func lookup(field string, el *client.Element, f *client.Flow, byID map[string]cl
 		v, exists := el.Attributes[name]
 		return v, exists
 	}
-	if el != nil {
+	kind, inTable := lookupFieldTable[field]
+	if !inTable {
+		return nil, false
+	}
+	if kind == lookupFieldElement && el != nil {
 		switch field {
 		case "type":
 			return el.Type, true
@@ -611,7 +615,7 @@ func lookup(field string, el *client.Element, f *client.Flow, byID map[string]cl
 			return el.Provider, true
 		}
 	}
-	if f != nil {
+	if kind == lookupFieldFlow && f != nil {
 		switch field {
 		case "data_class":
 			return f.DataClass, f.DataClass != ""
