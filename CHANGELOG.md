@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-10-18
+
+### Added
+- S3 bucket policies are modelled on `object_storage` elements as
+  `resource_policy_world_principal` and `resource_policy_cross_account` for
+  rule FR-049 (Action v0.37.0 or later).
+- Secrets Manager resource policies are modelled on `secret_store` elements with
+  the same attributes for rule FR-050 (Action v0.37.0 or later).
+- Bucket and account Block Public Access can neutralise any-principal Allow
+  statements; `block_public_policy` on `aws_secretsmanager_secret_policy` does
+  the same for any-principal grants on that policy.
+
 ## [0.36.0] — 2026-10-18
 
 ### Added
