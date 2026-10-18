@@ -230,6 +230,10 @@ func classifyResourcePolicyDoc(doc planResource, ctx awsResourcePolicyContext) r
 		world = mergeTriOrTrue(world, w)
 		cross = mergeTriOrTrue(cross, c)
 	}
+	if world == triTrue {
+		// Any principal includes principals in other accounts.
+		cross = triTrue
+	}
 	return resourcePolicyClass{world: world, cross: cross, cause: doc.address}
 }
 
@@ -250,6 +254,9 @@ func mergeResourcePolicyClassesSlice(classes []resourcePolicyClass) resourcePoli
 		}
 		world = mergeTriAnyTrue(world, c.world)
 		cross = mergeTriAnyTrue(cross, c.cross)
+	}
+	if world == triTrue {
+		cross = triTrue
 	}
 	return resourcePolicyClass{world: world, cross: cross, cause: cause}
 }
@@ -664,7 +671,11 @@ func setResourcePolicyAttrsFromTri(el *Element, world, cross triBool, cause stri
 		el.Attributes["resource_policy_world_principal"] = world == triTrue
 		el.Causes["resource_policy_world_principal"] = cause
 	}
-	if cross != triOmit {
+	// Invariant: cross is emitted only when world is known; any-principal world implies cross.
+	if world == triTrue {
+		el.Attributes["resource_policy_cross_account"] = true
+		el.Causes["resource_policy_cross_account"] = cause
+	} else if world != triOmit && cross != triOmit {
 		el.Attributes["resource_policy_cross_account"] = cross == triTrue
 		el.Causes["resource_policy_cross_account"] = cause
 	}

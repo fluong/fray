@@ -14,7 +14,7 @@ func TestClassifyResourcePolicyWorldAndCross(t *testing.T) {
 		{
 			name:   "world_open",
 			policy: `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"dynamodb:GetItem","Resource":"*"}]}`,
-			world:  triTrue, cross: triFalse,
+			world:  triTrue, cross: triTrue,
 		},
 		{
 			name:   "org_restricted",
@@ -58,9 +58,9 @@ func TestClassifyResourcePolicyWorldAndCross(t *testing.T) {
 func TestMergeResourcePolicyAnyTrueWins(t *testing.T) {
 	merged := mergeResourcePolicyClassesSlice([]resourcePolicyClass{
 		{world: triFalse, cross: triFalse},
-		{world: triTrue, cross: triFalse},
+		{world: triTrue, cross: triTrue},
 	})
-	if merged.world != triTrue || merged.cross != triFalse {
+	if merged.world != triTrue || merged.cross != triTrue {
 		t.Fatalf("merged world=%v cross=%v", merged.world, merged.cross)
 	}
 }

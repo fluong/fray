@@ -54,7 +54,7 @@ func TestCoverageB73ResourcePolicyAttrs(t *testing.T) {
 		}
 	})
 	t.Run("K_world", func(t *testing.T) {
-		assertRP(t, "aws_dynamodb_table.ddb_rp_world", &trueVal, &falseVal, "aws_dynamodb_resource_policy.ddb_rp_world")
+		assertRP(t, "aws_dynamodb_table.ddb_rp_world", &trueVal, &trueVal, "aws_dynamodb_resource_policy.ddb_rp_world")
 	})
 	t.Run("L_foreign_cross_omitted", func(t *testing.T) {
 		assertRP(t, "aws_dynamodb_table.ddb_rp_foreign", &falseVal, nil, "aws_dynamodb_resource_policy.ddb_rp_foreign")
