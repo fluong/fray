@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.38.0] — 2026-10-18
+
+### Added
+- SQS queues and SNS topics are modelled as `message_queue` elements with
+  `resource_policy_world_principal` and `resource_policy_cross_account` for
+  rule FR-044 (Action v0.38.0 or later).
+- Compute-to-queue IAM grants emit flows with `authz_scope` for rule FR-045
+  (Action v0.38.0 or later), including known-wide AWS managed policies for SQS
+  and SNS and HCL `jsonencode` fallback for single-hop queue/topic ARN refs.
+
 ## [0.37.0] — 2026-10-18
 
 ### Added
