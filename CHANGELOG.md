@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-10-18
+
 ### Added
 - DFD flows gain an optional `authz_scope_source` field. `declared` marks an
   `authz_scope` that came from fray.yaml (`annotations.flows` or `flows:`);
@@ -660,7 +662,8 @@ Upgrading may change results on existing repositories; see "Changed".
   (`com.cloudflare.api.account.…`) → `account`. When no token is in the plan,
   `authz_scope` is omitted and the parser warns (no blanket `resource` guess).
 
-[Unreleased]: https://github.com/fluong/fray/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/fluong/fray/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/fluong/fray/compare/v0.38.0...v0.39.0
 [0.34.0]: https://github.com/fluong/fray/compare/v0.33.2...v0.34.0
 [0.33.2]: https://github.com/fluong/fray/compare/v0.33.1...v0.33.2
 [0.33.1]: https://github.com/fluong/fray/compare/v0.33.0...v0.33.1
