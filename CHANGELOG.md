@@ -4,6 +4,10 @@
 
 ## [0.40.0] — 2026-10-18
 
+### Fixed
+- A REST API policy that is only known after apply is no longer treated as
+  absent; it is read from the configuration, or left unverified.
+
 ### Added
 - REST API Gateway resource policies (inline `policy` or
   `aws_api_gateway_rest_api_policy`) are classified on `api_gateway` elements for

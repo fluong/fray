@@ -46,7 +46,7 @@ func applyAPIGatewayRESTResourcePolicies(resources, data []planResource, idx con
 			continue
 		}
 		mod, _, _, _ := splitResourceAddress(api.address)
-		if !restAPIHasInlinePolicy(api) {
+		if !restAPIInlinePolicyConfigured(api, idx) {
 			continue
 		}
 		docs, unknown := resolvePolicyContent(api, "policy", mod, data, resources, idx)
@@ -57,6 +57,9 @@ func applyAPIGatewayRESTResourcePolicies(resources, data []planResource, idx con
 
 	for _, el := range byAddr {
 		if el == nil || el.Kind != "api_gateway" || el.Provider != "aws" {
+			continue
+		}
+		if !restAPIElement(el, resources) {
 			continue
 		}
 		key := el.canonicalKey()
@@ -109,8 +112,42 @@ func restAPIHasInlinePolicy(api planResource) bool {
 	return restAPIHasPolicy(api)
 }
 
+func restAPIElement(el *Element, resources []planResource) bool {
+	if el == nil || len(el.Evidence.Addresses) == 0 {
+		return false
+	}
+	r, ok := planResourceByAddress(el.Evidence.Addresses[0], resources)
+	return ok && r.typ == "aws_api_gateway_rest_api"
+}
+
+// restAPIInlinePolicyConfigured is true when the REST API declares an inline
+// policy in configuration or the plan carries a non-empty policy string.
+// A known empty policy string is not configured. after_unknown on policy with
+// configuration present counts as configured (content may come from HCL).
+func restAPIInlinePolicyConfigured(api planResource, idx configIndex) bool {
+	if restAPIHasPolicy(api) {
+		return true
+	}
+	if !hasConfigAttr(idx, api.address, "policy") {
+		return false
+	}
+	if attrAfterUnknown(api, "policy") {
+		return true
+	}
+	if raw, ok := api.values["policy"]; ok {
+		if s, is := raw.(string); is && strings.TrimSpace(s) == "" {
+			return false
+		}
+	}
+	mod, _, _, _ := splitResourceAddress(api.address)
+	if _, ok := resolvePolicyFromHCL(api.address, api.address, mod, nil, idx); ok {
+		return true
+	}
+	return len(idx.attrRefs(api.address, "policy")) > 0
+}
+
 func restAPIHasAnyPolicy(api planResource, resources []planResource, idx configIndex) bool {
-	if restAPIHasInlinePolicy(api) {
+	if restAPIInlinePolicyConfigured(api, idx) {
 		return true
 	}
 	for _, rp := range resources {

@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 )
 
@@ -356,6 +357,200 @@ func apigwRESTPlanStandalonePolicy(t *testing.T, policy string, unlink bool) str
 			"expressions": map[string]any{
 				"rest_api_id": map[string]any{"references": refs},
 				"policy":      map[string]any{"constant_value": policy},
+			},
+		},
+		{
+			"address": "aws_api_gateway_stage.prod", "type": "aws_api_gateway_stage", "name": "prod",
+			"expressions": map[string]any{
+				"rest_api_id": map[string]any{"references": []any{"aws_api_gateway_rest_api.api.id", "aws_api_gateway_rest_api.api"}},
+			},
+		},
+		{
+			"address": "aws_api_gateway_method.m", "type": "aws_api_gateway_method", "name": "m",
+			"expressions": map[string]any{
+				"rest_api_id": map[string]any{"references": []any{"aws_api_gateway_rest_api.api.id", "aws_api_gateway_rest_api.api"}},
+			},
+		},
+	}
+	return apigwMarshalPlan(t, resources, cfgResources)
+}
+
+func TestCoverageF51VPCEPolicyHCLConditionShape(t *testing.T) {
+	modDir := filepath.Join("..", "..", "fray-demo-coverage", "infra")
+	idx, err := readRootIAMPolicyLiterals(modDir)
+	if err != nil {
+		t.Skip(err)
+	}
+	pol, ok := idx["aws_api_gateway_rest_api.f51_vpce"]
+	if !ok {
+		t.Fatal("missing f51_vpce policy in HCL index")
+	}
+	if len(pol.statements) < 2 {
+		t.Fatalf("want 2 statements, got %d", len(pol.statements))
+	}
+	cond := pol.statements[1].condition
+	body, ok := cond["StringNotEquals"].(map[string]any)
+	if !ok {
+		t.Fatalf("StringNotEquals body type %T value %#v", cond["StringNotEquals"], cond["StringNotEquals"])
+	}
+	if _, ok := body["aws:SourceVpce"]; !ok {
+		t.Fatalf("missing aws:SourceVpce key in %#v", body)
+	}
+}
+
+func TestPlanRootResourceAttrVPCEIDUnknown(t *testing.T) {
+	resources := []planResource{{
+		address:      "aws_vpc_endpoint.vpce",
+		typ:          "aws_vpc_endpoint",
+		values:       map[string]any{"vpc_id": "vpc-1"},
+		afterUnknown: map[string]any{"id": true},
+	}}
+	got, ok := planRootResourceAttr("aws_vpc_endpoint.vpce.id", resources)
+	if !ok {
+		t.Fatal("want plan ref for unknown vpc endpoint id")
+	}
+	if _, ok := planResourceRefAddr(got); !ok {
+		t.Fatalf("got %q want plan resource ref", got)
+	}
+}
+
+func TestAPIGatewayUnknownInlinePolicyFromConfig(t *testing.T) {
+	t.Run("vpce_ref_from_hcl_mitigated_no_edge", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, `resource "aws_vpc_endpoint" "vpce" {
+  vpc_id       = "vpc-1"
+  service_name = "com.amazonaws.us-east-1.execute-api"
+}
+resource "aws_api_gateway_rest_api" "api" {
+  name = "api"
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "execute-api:Invoke"
+        Resource  = "execute-api:/*"
+      },
+      {
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "execute-api:Invoke"
+        Resource  = "execute-api:/*"
+        Condition = {
+          StringNotEquals = {
+            "aws:SourceVpce" = aws_vpc_endpoint.vpce.id
+          }
+        }
+      },
+    ]
+  })
+}`)
+		plan := apigwRESTPlanInlinePolicyUnknown(t, []any{
+			"aws_vpc_endpoint.vpce.id", "aws_vpc_endpoint.vpce",
+		})
+		doc, _, err := Parse([]byte(plan), apigwOwnerConfig(t), "", Source{
+			Repo: "example/api-gw", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Tool: "terraform", Fidelity: "plan",
+		}, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if findEdgeFlow(doc) != nil {
+			t.Fatal("want no edge when VPCE-restricted policy is resolved from config")
+		}
+		api := apigwElement(doc)
+		if api == nil {
+			t.Fatal("want api_gateway element")
+		}
+		w, ok := api.Attributes["resource_policy_world_principal"].(bool)
+		if !ok || w {
+			t.Fatalf("world=%v ok=%v want false", w, ok)
+		}
+		c, ok := api.Attributes["resource_policy_cross_account"].(bool)
+		if !ok || c {
+			t.Fatalf("cross=%v ok=%v want false", c, ok)
+		}
+	})
+	t.Run("unresolvable_unknown_omits_no_edge", func(t *testing.T) {
+		plan := apigwRESTPlanInlinePolicyUnknown(t, []any{"var.opaque_policy"})
+		doc, _, err := Parse([]byte(plan), apigwOwnerConfig(t), "", Source{
+			Repo: "example/api-gw", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Tool: "terraform", Fidelity: "plan",
+		}, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if findEdgeFlow(doc) != nil {
+			t.Fatal("want no edge when policy is configured but unreadable")
+		}
+		api := apigwElement(doc)
+		if api == nil {
+			t.Fatal("want api_gateway element")
+		}
+		if _, ok := api.Attributes["resource_policy_world_principal"]; ok {
+			t.Fatal("want attrs omitted")
+		}
+	})
+	t.Run("known_empty_string_still_no_policy", func(t *testing.T) {
+		plan := apigwRESTPlanWithPolicy(t, "", false, "REGIONAL")
+		doc, _, err := Parse([]byte(plan), apigwOwnerConfig(t), "", Source{
+			Repo: "example/api-gw", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Tool: "terraform", Fidelity: "plan",
+		}, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if findEdgeFlow(doc) == nil {
+			t.Fatal("want edge when policy is known empty")
+		}
+		api := apigwElement(doc)
+		w, ok := api.Attributes["resource_policy_world_principal"].(bool)
+		if !ok || w {
+			t.Fatalf("world=%v ok=%v want false", w, ok)
+		}
+	})
+}
+
+func apigwRESTPlanInlinePolicyUnknown(t *testing.T, policyRefs []any) string {
+	t.Helper()
+	resources := []map[string]any{
+		{
+			"address": "aws_vpc_endpoint.vpce", "mode": "managed", "type": "aws_vpc_endpoint",
+			"name": "vpce",
+			"change": map[string]any{
+				"after":         map[string]any{"vpc_id": "vpc-1"},
+				"after_unknown": map[string]any{"id": true, "arn": true},
+			},
+		},
+		{
+			"address": "aws_api_gateway_rest_api.api", "mode": "managed", "type": "aws_api_gateway_rest_api",
+			"name": "api",
+			"change": map[string]any{
+				"after": map[string]any{
+					"name":                   "api",
+					"endpoint_configuration": []any{map[string]any{"types": []any{"REGIONAL"}}},
+				},
+				"after_unknown": map[string]any{"policy": true, "id": true, "arn": true},
+			},
+		},
+		{
+			"address": "aws_api_gateway_stage.prod", "mode": "managed", "type": "aws_api_gateway_stage",
+			"name": "prod", "change": map[string]any{"after": map[string]any{"stage_name": "prod"}},
+		},
+		{
+			"address": "aws_api_gateway_method.m", "mode": "managed", "type": "aws_api_gateway_method",
+			"name": "m", "change": map[string]any{"after": map[string]any{"http_method": "GET", "authorization": "NONE"}},
+		},
+	}
+	cfgResources := []map[string]any{
+		{
+			"address": "aws_api_gateway_rest_api.api", "type": "aws_api_gateway_rest_api", "name": "api",
+			"expressions": map[string]any{
+				"policy": map[string]any{"references": policyRefs},
 			},
 		},
 		{

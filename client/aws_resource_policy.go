@@ -678,6 +678,14 @@ func concreteConditionString(key, s string) bool {
 	if s == "" || strings.Contains(s, "*") {
 		return false
 	}
+	if _, ok := planResourceRefAddr(s); ok {
+		switch key {
+		case "aws:SourceVpce", "aws:SourceVpc":
+			return true
+		default:
+			return false
+		}
+	}
 	if key == "aws:SourceArn" && sourceARNAccountWildcard(s) {
 		return false
 	}

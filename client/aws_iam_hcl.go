@@ -93,7 +93,7 @@ func readRootIAMPolicyLiterals(moduleDir string) (iamPolicyHCLIndex, error) {
 				continue
 			}
 			switch typ {
-			case "aws_dynamodb_resource_policy", "aws_s3_bucket_policy", "aws_secretsmanager_secret_policy", "aws_sqs_queue_policy", "aws_sns_topic_policy":
+			case "aws_api_gateway_rest_api", "aws_dynamodb_resource_policy", "aws_s3_bucket_policy", "aws_secretsmanager_secret_policy", "aws_sqs_queue_policy", "aws_sns_topic_policy":
 				if dup[addr] || seen[addr] {
 					dup[addr] = true
 					delete(out, addr)
@@ -424,12 +424,17 @@ func literalObjectTree(expr hclsyntax.Expression) (map[string]any, bool) {
 	return out, true
 }
 
+const iamHCLAttrRefPrefix = "fray-iam-hcl-ref:"
+
 func literalValueTree(expr hclsyntax.Expression) (any, bool) {
 	if s, ok := literalString(expr); ok {
 		return s, true
 	}
 	if _, ok := expr.(*hclsyntax.ObjectConsExpr); ok {
 		return literalObjectTree(expr)
+	}
+	if ref, ok := rootModuleResourceRef(expr); ok {
+		return iamHCLAttrRefPrefix + ref, true
 	}
 	tup, ok := expr.(*hclsyntax.TupleConsExpr)
 	if !ok {
@@ -472,6 +477,53 @@ func resolvePolicyFromHCL(cause, holderKey, module string, resources []planResou
 	return syntheticDocFromPolicyJSON(cause, raw)
 }
 
+func materializeIAMHCLCondition(cond map[string]any, resources []planResource) (map[string]any, bool) {
+	out := map[string]any{}
+	for op, body := range cond {
+		m, ok := body.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		inner := map[string]any{}
+		for key, val := range m {
+			mv, ok := materializeIAMHCLConditionValue(val, resources)
+			if !ok {
+				return nil, false
+			}
+			inner[key] = mv
+		}
+		out[op] = inner
+	}
+	return out, true
+}
+
+func materializeIAMHCLConditionValue(val any, resources []planResource) (any, bool) {
+	switch t := val.(type) {
+	case string:
+		if strings.HasPrefix(t, iamHCLAttrRefPrefix) {
+			ref := strings.TrimPrefix(t, iamHCLAttrRefPrefix)
+			v, ok := planRootResourceAttr(ref, resources)
+			if !ok {
+				return nil, false
+			}
+			return v, true
+		}
+		return t, true
+	case []any:
+		var list []any
+		for _, item := range t {
+			mv, ok := materializeIAMHCLConditionValue(item, resources)
+			if !ok {
+				return nil, false
+			}
+			list = append(list, mv)
+		}
+		return list, true
+	default:
+		return t, true
+	}
+}
+
 func materializeIAMHCLPolicyJSON(pol iamHCLPolicy, resources []planResource) (string, bool) {
 	type stmtOut struct {
 		Effect    string         `json:"Effect"`
@@ -507,7 +559,11 @@ func materializeIAMHCLPolicyJSON(pol iamHCLPolicy, resources []planResource) (st
 			out.Principal = pr
 		}
 		if len(st.condition) > 0 {
-			out.Condition = st.condition
+			cond, ok := materializeIAMHCLCondition(st.condition, resources)
+			if !ok {
+				return "", false
+			}
+			out.Condition = cond
 		}
 		stmts = append(stmts, out)
 	}
@@ -566,6 +622,11 @@ func planRootResourceAttr(ref string, resources []planResource) (string, bool) {
 	}
 	if v, ok := r.values[attr].(string); ok && v != "" && !attrAfterUnknown(r, attr) {
 		return v, true
+	}
+	if attr == "id" && attrAfterUnknown(r, attr) {
+		if r.typ == "aws_vpc_endpoint" {
+			return planResourceRef(r.address), true
+		}
 	}
 	if attr == "arn" && attrAfterUnknown(r, attr) {
 		if r.typ == "aws_sqs_queue" || r.typ == "aws_sns_topic" {

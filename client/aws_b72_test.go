@@ -151,7 +151,7 @@ func TestB72HCLNegativeConstructs(t *testing.T) {
       Effect    = "Allow"
       Action    = ["s3:GetObject"]
       Resource  = "*"
-      Condition = { StringEquals = { "aws:SourceArn" = aws_s3_bucket.neg.arn } }
+      Condition = { StringEquals = { "aws:SourceArn" = var.x } }
     }]
   })
 }`},
