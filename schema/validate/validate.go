@@ -183,9 +183,9 @@ func Semantic(doc document) error {
 			}
 			if el.ProviderSubtype != "" {
 				switch el.ProviderSubtype {
-				case "redis", "valkey", "memcached":
+				case "redis", "valkey", "memcached", "rest_api":
 				default:
-					set(ptr+"/provider_subtype", "redacted provider_subtype must be redis, valkey, or memcached")
+					set(ptr+"/provider_subtype", "redacted provider_subtype must be redis, valkey, memcached, or rest_api")
 				}
 			}
 			if err := checkRedactedEvidence(ptr, el); err != "" {

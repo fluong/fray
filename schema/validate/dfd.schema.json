@@ -261,11 +261,12 @@
           "$ref": "#/$defs/purpose"
         },
         "provider_subtype": {
-          "description": "Closed cache engine label when kind is cache (FR-043 memcached exclusion). Only these values may appear on redacted DFDs; other subtypes stay on the plaintext wire only.",
+          "description": "Closed labels for redacted elements: cache engine when kind is cache (FR-043 memcached exclusion), or rest_api for API Gateway REST APIs (FR-051). Only these values may appear on redacted DFDs; other subtypes stay on the plaintext wire only.",
           "enum": [
             "redis",
             "valkey",
-            "memcached"
+            "memcached",
+            "rest_api"
           ]
         }
       },
