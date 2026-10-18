@@ -74,6 +74,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	for _, r := range buckets {
 		add(awsBucketElement(r, resources, idx, lifecycle.protected(r.address), auditOwned))
 	}
+	applyS3BucketResourcePolicies(resources, data, idx, plan, byAddr, &warnings)
 	for _, r := range tables {
 		add(awsDynamoDBTableElement(r, lifecycle.protected(r.address)))
 	}
@@ -84,6 +85,7 @@ func buildAWS(plan []byte, resources []planResource, moduleDir string, lifecycle
 	for _, r := range secrets {
 		add(awsSecretElement(r, resources, idx, lifecycle.protected(r.address)))
 	}
+	applySecretsManagerResourcePolicies(resources, data, idx, plan, byAddr, &warnings)
 	for _, r := range dbs {
 		add(awsDBElement(r, resources, data, idx, lifecycle.protected(r.address)))
 	}

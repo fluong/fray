@@ -210,7 +210,16 @@ func classifyResourcePolicyDocs(docs []planResource, ctx awsResourcePolicyContex
 	return mergeResourcePolicyClassesSlice(parts)
 }
 
+type resourcePolicyDocOptions struct {
+	neutralizeAnyPrincipalAllow bool
+	neutralizeCause             string
+}
+
 func classifyResourcePolicyDoc(doc planResource, ctx awsResourcePolicyContext) resourcePolicyClass {
+	return classifyResourcePolicyDocWithOptions(doc, ctx, resourcePolicyDocOptions{})
+}
+
+func classifyResourcePolicyDocWithOptions(doc planResource, ctx awsResourcePolicyContext, opts resourcePolicyDocOptions) resourcePolicyClass {
 	stmts := resourcePolicyStatements(doc)
 	if len(stmts) == 0 {
 		return resourcePolicyClass{world: triOmit, cross: triOmit}
@@ -221,8 +230,13 @@ func classifyResourcePolicyDoc(doc planResource, ctx awsResourcePolicyContext) r
 		}
 	}
 	var world, cross triBool = triFalse, triFalse
+	skippedAnyPrincipal := false
 	for _, st := range stmts {
 		if st.deny {
+			continue
+		}
+		if opts.neutralizeAnyPrincipalAllow && st.allow && st.principal.worldEligible {
+			skippedAnyPrincipal = true
 			continue
 		}
 		w := classifyStatementWorld(st)
@@ -234,7 +248,11 @@ func classifyResourcePolicyDoc(doc planResource, ctx awsResourcePolicyContext) r
 		// Any principal includes principals in other accounts.
 		cross = triTrue
 	}
-	return resourcePolicyClass{world: world, cross: cross, cause: doc.address}
+	cause := doc.address
+	if opts.neutralizeCause != "" && world == triFalse && cross == triFalse && skippedAnyPrincipal {
+		cause = opts.neutralizeCause
+	}
+	return resourcePolicyClass{world: world, cross: cross, cause: cause}
 }
 
 func mergeResourcePolicyClasses(classes []resourcePolicyClass) (world, cross triBool, cause string) {

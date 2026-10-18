@@ -93,7 +93,7 @@ func readRootIAMPolicyLiterals(moduleDir string) (iamPolicyHCLIndex, error) {
 				continue
 			}
 			switch typ {
-			case "aws_dynamodb_resource_policy":
+			case "aws_dynamodb_resource_policy", "aws_s3_bucket_policy", "aws_secretsmanager_secret_policy":
 				if dup[addr] || seen[addr] {
 					dup[addr] = true
 					delete(out, addr)
@@ -574,6 +574,9 @@ func planRootResourceAttr(ref string, resources []planResource) (string, bool) {
 		if arn, ok := synthesizeDynamoDBTableARN(r); ok {
 			return arn, true
 		}
+		if arn, ok := synthesizeSecretsManagerSecretARN(r); ok {
+			return arn, true
+		}
 		return "", false
 	}
 	if v, ok := r.values[attr].(string); ok && v != "" && !attrAfterUnknown(r, attr) {
@@ -766,6 +769,24 @@ func synthesizeDynamoDBTableARN(r planResource) (string, bool) {
 		return "", false
 	}
 	return "arn:aws:dynamodb:" + region + ":111122223333:table/" + name, true
+}
+
+func synthesizeSecretsManagerSecretARN(r planResource) (string, bool) {
+	if r.typ != "aws_secretsmanager_secret" || !attrAfterUnknown(r, "arn") {
+		return "", false
+	}
+	name, ok := r.values["name"].(string)
+	if !ok || name == "" || attrAfterUnknown(r, "name") {
+		return "", false
+	}
+	region, _ := r.values["region"].(string)
+	if region == "" {
+		region = "us-east-1"
+	}
+	if strings.HasPrefix(region, "cn-") || strings.HasPrefix(region, "us-gov-") {
+		return "", false
+	}
+	return "arn:aws:secretsmanager:" + region + ":111122223333:secret:" + name, true
 }
 
 func synthesizeS3BucketARN(r planResource) (string, bool) {
