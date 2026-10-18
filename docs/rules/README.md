@@ -19,6 +19,7 @@ A high-severity finding blocks a pull request only when it is new compared with 
 | [FR-048](FR-048.md) | NoSQL table is not shared through its resource policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 | [FR-049](FR-049.md) | Storage bucket is not shared through its bucket policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 | [FR-050](FR-050.md) | Secret is not shared through its resource policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
+| [FR-051](FR-051.md) | REST API is not shared through its resource policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 | [FR-044](FR-044.md) | Queue or topic is not shared through its access policy | medium | Information disclosure, Elevation of privilege | AWS | 2026-10-18 |
 
 ## Encryption
