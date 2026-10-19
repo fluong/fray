@@ -16,15 +16,17 @@ var pendingSchemaKinds = []string{
 }
 
 func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
-	els := []*Element{{
-		Attributes: map[string]any{
-			"public":            true,
-			"encrypted_at_rest": true,
-			"max_instances":     3,
-			"evil_secret":       "should-drop",
-			"region":            "TOTALLY_INVALID_REGION!!!",
+	els := []*Element{
+		{
+			Attributes: map[string]any{
+				"public":            true,
+				"encrypted_at_rest": true,
+				"max_instances":     3,
+				"evil_secret":       "should-drop",
+				"region":            "TOTALLY_INVALID_REGION!!!",
+			},
 		},
-	}}
+	}
 	sanitizeAttributes(els)
 	got := els[0].Attributes
 	if got["public"] != true || got["encrypted_at_rest"] != true || got["max_instances"] != 3 {

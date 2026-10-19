@@ -14,15 +14,21 @@ func TestFlowMarshalOmitsEmptyTransport(t *testing.T) {
 			Tool: "terraform", Fidelity: "plan",
 		},
 		Elements: []Element{
-			{ID: "e1111111111111111", Type: "process", Kind: "api_gateway", Provider: "aws", Provenance: "iac",
-				Evidence: Evidence{Addresses: []string{"aws_api_gateway_rest_api.api"}}},
-			{ID: "e2222222222222222", Type: "external_entity", Kind: "public_client", Provenance: "inferred",
-				Evidence: Evidence{Signals: []Signal{{Type: "network_ingress", Name: "0.0.0.0/0"}}}},
+			{
+				ID: "e1111111111111111", Type: "process", Kind: "api_gateway", Provider: "aws", Provenance: "iac",
+				Evidence: Evidence{Addresses: []string{"aws_api_gateway_rest_api.api"}},
+			},
+			{
+				ID: "e2222222222222222", Type: "external_entity", Kind: "public_client", Provenance: "inferred",
+				Evidence: Evidence{Signals: []Signal{{Type: "network_ingress", Name: "0.0.0.0/0"}}},
+			},
 		},
-		Flows: []Flow{{
-			ID: "f1111111111111111", From: "e1111111111111111", To: "e2222222222222222",
-			DataClass: "unknown", Transport: "", Boundaries: []string{},
-		}},
+		Flows: []Flow{
+			{
+				ID: "f1111111111111111", From: "e1111111111111111", To: "e2222222222222222",
+				DataClass: "unknown", Transport: "", Boundaries: []string{},
+			},
+		},
 		TrustBoundaries: []Boundary{},
 	}
 	raw, err := Marshal(doc)
