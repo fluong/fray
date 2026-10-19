@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Lambda functions that use IAM database authentication or environment
+  variables pointing at Secrets Manager secrets are modeled as flows, so
+  database-scope and secret-delivery rules can evaluate them.
+
 ## [0.42.0] — 2026-10-19
 
 ### Added

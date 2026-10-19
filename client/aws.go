@@ -401,6 +401,8 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 	flows = append(flows, dynamodbLambdaFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 	flows = append(flows, lambdaS3Flows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 	flows = append(flows, lambdaMessageQueueFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
+	flows = append(flows, lambdaRDSFlows(resources, data, idx, elements, byAddr, &extra, &warnings, iamOmitWarned)...)
+	flows = append(flows, lambdaSecretEnvFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 
 	var bounds []*Boundary
 	var outside []string
