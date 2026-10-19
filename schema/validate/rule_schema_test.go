@@ -37,6 +37,7 @@ func TestRuleSchemaFixtures(t *testing.T) {
 		"valid-severity-when.json",
 		"valid-flow-db-control-plane.json",
 		"valid-cache-provider-subtype-not.json",
+		"valid-detection-revisions.json",
 	} {
 		t.Run(name, func(t *testing.T) {
 			raw, err := os.ReadFile(filepath.Join(dir, name))
@@ -45,6 +46,9 @@ func TestRuleSchemaFixtures(t *testing.T) {
 			}
 			if err := validate.Schema(schema, raw); err != nil {
 				t.Fatalf("want accept: %v", err)
+			}
+			if err := validate.CheckDetectionRevisions(raw); err != nil {
+				t.Fatalf("detection_revisions: %v", err)
 			}
 		})
 	}
@@ -61,6 +65,7 @@ func TestRuleSchemaFixtures(t *testing.T) {
 		{"negative-severity-when-empty.json", "minitems"},
 		{"negative-severity-when-bad-severity.json", "severity"},
 		{"negative-severity-when-extra-key.json", "additional properties"},
+		{"negative-detection-revision-one.json", "revision"},
 	}
 	for _, tc := range negatives {
 		t.Run(tc.file, func(t *testing.T) {
@@ -76,5 +81,23 @@ func TestRuleSchemaFixtures(t *testing.T) {
 				t.Fatalf("want failure mentioning %q, got:\n%s", tc.want, err)
 			}
 		})
+	}
+}
+
+func TestDetectionRevisionsNonIncreasingRejected(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "fixtures", "rules")
+	raw, err := os.ReadFile(filepath.Join(dir, "negative-detection-revision-non-increasing.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := validate.Compile(filepath.Join("..", "rule.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.Schema(schema, raw); err != nil {
+		t.Fatalf("fixture must pass JSON Schema (ordering checked separately): %v", err)
+	}
+	if err := validate.CheckDetectionRevisions(raw); err == nil {
+		t.Fatal("want rejection for non-increasing detection_revisions")
 	}
 }

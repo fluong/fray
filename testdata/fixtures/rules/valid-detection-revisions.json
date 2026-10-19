@@ -1,0 +1,29 @@
+{
+  "id": "FR-998",
+  "title": "Synthetic rule with detection revisions",
+  "threat": "Synthetic threat for schema fixtures",
+  "explanation": "Synthetic explanation for schema fixtures.",
+  "stride": ["information_disclosure"],
+  "severity": "medium",
+  "platforms": ["aws"],
+  "category": "encryption",
+  "target": "flow",
+  "when": [
+    { "op": "exists", "field": "boundary" }
+  ],
+  "pass": [
+    { "op": "equals", "field": "transport", "value": "tls" }
+  ],
+  "rationale": "Fixture only.",
+  "mitigation": "Fixture only.",
+  "evaluation": {
+    "open": "open",
+    "mitigated": "mitigated",
+    "unverified": "unverified"
+  },
+  "min_action": "v0.41.0",
+  "detection_revisions": [
+    { "revision": 2, "min_action": "v0.42.0" },
+    { "revision": 3, "min_action": "v0.43.0" }
+  ]
+}
