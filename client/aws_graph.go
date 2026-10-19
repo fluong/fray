@@ -3782,6 +3782,9 @@ func dedupeFlows(flows []*Flow) []*Flow {
 	var out []*Flow
 	for _, f := range flows {
 		k := f.From + "\n" + f.To + "\n" + f.DataClass
+		if c := f.Causes["transport"]; c != "" {
+			k += "\n" + c
+		}
 		if seen[k] {
 			continue
 		}

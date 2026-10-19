@@ -8,6 +8,15 @@ import (
 // entries. Mirrors the ALB path: inferred public_client → edge flow → network
 // boundary, plus entry → backend integration flows.
 //
+// Outbound HTTP/HTTP_PROXY integrations to the internet emit flows to a shared
+// inferred external_http_endpoint peer (B-07).
+
+const (
+	externalHTTPSignalType = "external_egress"
+	externalHTTPSignalName = "http"
+)
+
+//
 // REST API resource policies (inline or aws_api_gateway_rest_api_policy) set
 // resource_policy_* attributes and gate the public_client edge on world exposure.
 
@@ -163,6 +172,7 @@ func awsAPIEntries(
 		flows = append(flows, flow)
 		addInside(fnEl)
 	}
+	flows = append(flows, awsAPIOutboundHTTPFlows(resources, idx, byAddr, extra, addInside)...)
 	return flows, warnings
 }
 
@@ -417,9 +427,7 @@ func integrationBackendFlow(
 			DataClass: "unknown", Transport: transport,
 		}, true
 	case "http":
-		// External HTTP/HTTP_PROXY URLs have no DFD peer element — no
-		// partial flow or element is emitted. Transport classification is
-		// covered by integrationTransport unit tests.
+		// Outbound HTTP flows are emitted by awsAPIOutboundHTTPFlows.
 		return nil, false
 	case "vpc_link":
 		// TODO: when a VPC_LINK resolves to exactly one load_balancer in the
@@ -470,6 +478,127 @@ func httpURITransport(uri string) string {
 	default:
 		return ""
 	}
+}
+
+func externalHTTPEndpointElement() *Element {
+	return &Element{
+		Name:       "External HTTP endpoint",
+		Type:       "external_entity",
+		Kind:       "external_http_endpoint",
+		Provenance: "inferred",
+		Evidence: Evidence{
+			Signals: []Signal{{Type: externalHTTPSignalType, Name: externalHTTPSignalName}},
+		},
+	}
+}
+
+// qualifyingOutboundHTTPIntegration is true for REST HTTP/HTTP_PROXY and v2
+// HTTP_PROXY with INTERNET (or absent) connection_type.
+func qualifyingOutboundHTTPIntegration(integ planResource) bool {
+	switch integ.typ {
+	case "aws_api_gateway_integration", "aws_apigatewayv2_integration":
+	default:
+		return false
+	}
+	_, kind := integrationTransport(integ)
+	if kind != "http" {
+		return false
+	}
+	if integ.typ == "aws_apigatewayv2_integration" {
+		typ := strings.ToUpper(stringAttr(integ.values["integration_type"]))
+		if typ != "HTTP_PROXY" {
+			return false
+		}
+	}
+	conn := strings.ToUpper(stringAttr(integ.values["connection_type"]))
+	return conn != "VPC_LINK"
+}
+
+func outboundIntegrationTransport(integ planResource) string {
+	if integ.attrAfterUnknown("uri") || integ.attrAfterUnknown("integration_uri") {
+		return "unknown"
+	}
+	uri := stringAttr(integ.values["uri"])
+	if uri == "" {
+		uri = stringAttr(integ.values["integration_uri"])
+	}
+	if uri == "" {
+		return "unknown"
+	}
+	if t := httpURITransport(uri); t != "" {
+		return t
+	}
+	return "unknown"
+}
+
+func apiElementForIntegration(
+	integ planResource, resources []planResource, idx configIndex, byAddr map[string]*Element,
+) (*Element, bool) {
+	switch integ.typ {
+	case "aws_api_gateway_integration":
+		for _, api := range resources {
+			if api.typ != "aws_api_gateway_rest_api" || !refsAPI(integ, idx, "rest_api_id", api) {
+				continue
+			}
+			if el := byAddr[api.address]; el != nil {
+				return el, true
+			}
+		}
+	case "aws_apigatewayv2_integration":
+		for _, api := range resources {
+			if api.typ != "aws_apigatewayv2_api" || !refsAPI(integ, idx, "api_id", api) {
+				continue
+			}
+			if el := byAddr[api.address]; el != nil {
+				return el, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func awsAPIOutboundHTTPFlows(
+	resources []planResource,
+	idx configIndex,
+	byAddr map[string]*Element,
+	extra *[]*Element,
+	addInside func(*Element),
+) []*Flow {
+	var peer *Element
+	ensurePeer := func() *Element {
+		if peer != nil {
+			return peer
+		}
+		peer = externalHTTPEndpointElement()
+		*extra = append(*extra, peer)
+		return peer
+	}
+	var flows []*Flow
+	seen := map[string]bool{}
+	for _, integ := range resources {
+		if !qualifyingOutboundHTTPIntegration(integ) {
+			continue
+		}
+		apiEl, ok := apiElementForIntegration(integ, resources, idx, byAddr)
+		if !ok {
+			continue
+		}
+		if seen[integ.address] {
+			continue
+		}
+		seen[integ.address] = true
+		transport := outboundIntegrationTransport(integ)
+		flows = append(flows, &Flow{
+			From:          apiEl.canonicalKey(),
+			To:            ensurePeer().canonicalKey(),
+			DataClass:     "unknown",
+			Transport:     transport,
+			identityClass: integ.address,
+			Causes:        map[string]string{"transport": integ.address},
+		})
+		addInside(apiEl)
+	}
+	return flows
 }
 
 func refsAPI(r planResource, idx configIndex, attr string, api planResource) bool {

@@ -543,7 +543,8 @@
             "iam_role",
             "iam_member",
             "network_ingress",
-            "iam_service"
+            "iam_service",
+            "external_egress"
           ]
         },
         "name": {
@@ -567,7 +568,8 @@
             "iam_role",
             "iam_member",
             "network_ingress",
-            "iam_service"
+            "iam_service",
+            "external_egress"
           ]
         },
         "name": {

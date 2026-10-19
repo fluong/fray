@@ -11,9 +11,7 @@ import (
 )
 
 // pendingSchemaKinds lists kind enum values the schema accepts before the client emits them.
-var pendingSchemaKinds = []string{
-	"external_http_endpoint",
-}
+var pendingSchemaKinds []string
 
 func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 	els := []*Element{

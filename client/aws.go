@@ -1,5 +1,7 @@
 package client
 
+import "slices"
+
 // buildAWS maps the aws-web-app shape: a load balancer, a container service,
 // a relational database, object storage, and a secret store. Other AWS types
 // are ignored by the caller. An empty result is not an error.
@@ -401,11 +403,21 @@ func awsConnections(resources, data []planResource, idx configIndex, elements []
 	flows = append(flows, lambdaMessageQueueFlows(resources, data, idx, elements, byAddr, &extra, &warnings)...)
 
 	var bounds []*Boundary
-	if public != nil && len(inside) > 0 {
+	var outside []string
+	if public != nil {
+		outside = append(outside, public.canonicalKey())
+	}
+	for _, el := range extra {
+		if el.Kind == "external_http_endpoint" {
+			outside = append(outside, el.canonicalKey())
+		}
+	}
+	if len(inside) > 0 && len(outside) > 0 {
+		slices.Sort(outside)
 		bounds = append(bounds, &Boundary{
 			Kind:    "network",
 			Inside:  inside,
-			Outside: []string{public.canonicalKey()},
+			Outside: outside,
 		})
 	}
 	return dedupeFlows(flows), bounds, extra, warnings
