@@ -10,6 +10,11 @@ import (
 	"testing"
 )
 
+// pendingSchemaKinds lists kind enum values the schema accepts before the client emits them.
+var pendingSchemaKinds = []string{
+	"external_http_endpoint",
+}
+
 func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 	els := []*Element{{
 		Attributes: map[string]any{
@@ -36,6 +41,43 @@ func TestSanitizeAttributesDropsUnknownAndBadValues(t *testing.T) {
 	sanitizeAttributes(els)
 	if els[0].Attributes["region"] != "us-east-1" {
 		t.Fatalf("valid region dropped: %#v", els[0].Attributes)
+	}
+}
+
+func TestPendingSchemaKindsNotEmittedInGoldens(t *testing.T) {
+	t.Helper()
+	pending := map[string]bool{}
+	for _, k := range pendingSchemaKinds {
+		pending[k] = true
+	}
+	var files []string
+	_ = filepath.WalkDir(filepath.Join("testdata", "golden"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, ".dfd.json") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	for _, path := range files {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Elements []struct {
+				Kind string `json:"kind"`
+			} `json:"elements"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		for _, el := range doc.Elements {
+			if pending[el.Kind] {
+				t.Fatalf("%s: pending schema kind %q must not appear in goldens yet", path, el.Kind)
+			}
+		}
 	}
 }
 

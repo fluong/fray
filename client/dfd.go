@@ -74,7 +74,7 @@ type Flow struct {
 	From             string   `json:"from"`
 	To               string   `json:"to"`
 	DataClass        string   `json:"data_class"`
-	Transport        string   `json:"transport"`
+	Transport        string   `json:"transport,omitempty"`
 	Boundaries       []string `json:"boundaries"`
 	AuthzScope       string   `json:"authz_scope,omitempty"`
 	AuthzScopeSource string   `json:"authz_scope_source,omitempty"`

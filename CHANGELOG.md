@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- DFD: new `external_entity` kind `external_http_endpoint` (not emitted yet); flow
+  `transport` may be omitted when unknown.
+
 ## [0.41.0] — 2026-10-18
 
 ### Added

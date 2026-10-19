@@ -696,7 +696,6 @@
         "from",
         "to",
         "data_class",
-        "transport",
         "boundaries"
       ],
       "properties": {
@@ -719,6 +718,7 @@
           ]
         },
         "transport": {
+          "description": "Omitted when the transport can't be determined at plan time.",
           "enum": [
             "tls",
             "plaintext",
@@ -837,6 +837,7 @@
         "control_plane",
         "source_repository",
         "public_client",
+        "external_http_endpoint",
         "other"
       ]
     },
