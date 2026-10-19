@@ -4,8 +4,13 @@
 
 ### Added
 
-- DFD: new `external_entity` kind `external_http_endpoint` (not emitted yet); flow
-  `transport` may be omitted when unknown.
+- API Gateway HTTP/HTTP_PROXY integrations to the internet are modelled as flows
+  to an external HTTP endpoint, so FR-026 checks their transport; the URL itself
+  is never sent.
+
+### Changed
+
+- **FR-026** can report new results for APIs with HTTP integrations.
 
 ## [0.41.0] — 2026-10-18
 
